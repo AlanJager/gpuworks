@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 )
 
 // A pod's own /dev is a copy made at container start: on Kubernetes the AMD
@@ -60,7 +61,7 @@ func TestAMDRuntimeInjectionOnKubernetes(t *testing.T) {
 	if _, err := p.Probe(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	inj := p.RuntimeInjectionForDriver([]int{7}, "kube")
+	inj := p.RuntimeInjectionForDriver([]int{7}, runtime.TargetNamed("kube"))
 	if inj.UnsupportedReason != "" {
 		t.Fatal(inj.UnsupportedReason)
 	}

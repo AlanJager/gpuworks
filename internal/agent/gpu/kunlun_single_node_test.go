@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 )
 
 // A host with native XPU devices but no XDR/RDMA devices must still be usable
@@ -26,7 +28,7 @@ func TestKunlunSingleNodeUsesOnlyNativeDevices(t *testing.T) {
 				return inspect(path)
 			}
 			var prober Prober = p
-			injection := prober.(DriverAwareInjector).RuntimeInjectionForDriver(indexes, "docker")
+			injection := prober.(DriverAwareInjector).RuntimeInjectionForDriver(indexes, runtime.TargetNamed("docker"))
 			if injection.UnsupportedReason != "" {
 				t.Fatal(injection.UnsupportedReason)
 			}

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/kube"
 )
 
@@ -76,7 +77,7 @@ func cardDevices(prober gpu.Prober, log *slog.Logger) func(context.Context) (map
 			}
 			var inj gpu.RuntimeInjection
 			if aware, ok := prober.(gpu.DriverAwareInjector); ok {
-				inj = aware.RuntimeInjectionForDriver([]int{g.Index}, kube.DriverName)
+				inj = aware.RuntimeInjectionForDriver([]int{g.Index}, runtime.TargetNamed(kube.DriverName))
 			} else {
 				inj = prober.RuntimeInjection([]int{g.Index})
 			}

@@ -50,11 +50,11 @@ var ascendFrameworkProbeMiss sync.Once
 
 func (p *AscendProber) Vendor() string { return accelerator.VendorAscend }
 
-// DetectRuntimePlugin reports the Ascend Docker Runtime, a Docker-only
-// plugin; GPUWorks injects Ascend devices and driver mounts explicitly for
-// nerdctl.
+// DetectRuntimePlugin reports the Ascend Docker Runtime on a runtime whose
+// containers get their devices from it; on the others GPUWorks injects the
+// devices and driver mounts itself and there is no plugin to look for.
 func (p *AscendProber) DetectRuntimePlugin(ctx context.Context, driver string) runtime.PluginInfo {
-	if !strings.EqualFold(strings.TrimSpace(driver), "docker") {
+	if accelerator.RuntimeGPUPlugin(accelerator.VendorAscend, driver) != accelerator.PluginAscendDockerRuntime {
 		return runtime.PluginInfo{}
 	}
 	// The package name differs between Ascend releases. Keep the lookup
@@ -317,22 +317,22 @@ var ascendDriverMounts = []RuntimeMount{
 	{Source: "/etc/ascend_install.info", Target: "/etc/ascend_install.info", ReadOnly: true},
 }
 
-// RuntimeInjectionForDriver implements DriverAwareInjector. Every driver
-// other than nerdctl keeps the device-injection shape from RuntimeInjection.
-// Rootless execution resolves host logical IDs for ACL; Docker keeps compact
-// container ordinals. The kube runtime hands the --device nodes to the pod
-// through the agent's device plugin and the mounts as host paths, so it
-// takes the nerdctl form too, without needing the runtime on the node.
-// nerdctl has no Ascend Docker Runtime plugin
-// (docs/dev/ledgers/engineering-log.md "Ascend device injection for the nerdctl runtime driver"), so
-// it gets raw device passthrough plus explicit driver/DCMI mounts instead of
-// --runtime ascend. Device paths are passed unrenamed
+// RuntimeInjectionForDriver implements DriverAwareInjector. A runtime where
+// Ascend Docker Runtime injects the devices keeps the shape from
+// RuntimeInjection, with compact container ordinals. Rootless execution,
+// which sees the host's devices, resolves host logical IDs for ACL. A
+// runtime that gives a container only what it was granted and has no such
+// plugin gets the device nodes themselves plus explicit driver/DCMI mounts
+// instead of --runtime ascend: nerdctl
+// (docs/dev/ledgers/engineering-log.md "Ascend device injection for the nerdctl runtime driver"),
+// and kube, which hands the nodes to the pod through the agent's device
+// plugin and the mounts as host paths. Device paths are passed unrenamed
 // (--device /dev/davinciN, not /dev/davinciN:/dev/davinci0) because renaming
 // fails outright on this nerdctl/containerd combination — confirmed on
 // 198.51.100.32.
-func (p *AscendProber) RuntimeInjectionForDriver(indexes []int, driverName string) RuntimeInjection {
+func (p *AscendProber) RuntimeInjectionForDriver(indexes []int, target runtime.Target) RuntimeInjection {
 	base := p.RuntimeInjection(indexes)
-	if driverName == "udocker" && len(indexes) > 0 {
+	if target.View == runtime.ViewHost && len(indexes) > 0 {
 		visible, err := p.rootlessVisibleDevices(indexes)
 		if err != nil {
 			return RuntimeInjection{UnsupportedReason: err.Error()}
@@ -341,7 +341,10 @@ func (p *AscendProber) RuntimeInjectionForDriver(indexes []int, driverName strin
 		base.Env[accelerator.AscendEnvNPUVisible] = visible
 		return base
 	}
-	if (driverName != "nerdctl" && driverName != "kube") || len(indexes) == 0 {
+	// A runtime with the vendor's plugin, or one nothing is known about,
+	// gets the plugin's form; one that isolates devices without it is
+	// handed the device nodes.
+	if target.View != runtime.ViewGranted || accelerator.RuntimeGPUPlugin(accelerator.VendorAscend, target.Name) != "" || len(indexes) == 0 {
 		return base
 	}
 	containerDevices := compactVisibleDevices(len(indexes))

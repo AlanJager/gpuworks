@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -189,7 +190,7 @@ func TestPPURuntimeInjectionSelectsDevicesInRequestedOrder(t *testing.T) {
 		{"duplicate device", []int{8, 8}, rows, "", "duplicate"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			inj := p.runtimeInjection(tc.indexes, tc.inventory, resolve, "docker")
+			inj := p.runtimeInjection(tc.indexes, tc.inventory, resolve, runtime.TargetNamed("docker"))
 			if tc.failure != "" {
 				if !strings.Contains(inj.UnsupportedReason, tc.failure) || len(inj.Env) != 0 || len(inj.Grant.DockerDeviceArgs()) != 0 {
 					t.Fatalf("injection=%+v", inj)
@@ -214,12 +215,12 @@ func TestPPURuntimeInjectionSelectsDevicesInRequestedOrder(t *testing.T) {
 			}
 		})
 	}
-	unknown := p.runtimeInjection([]int{8}, rows, resolve, "unknown")
+	unknown := p.runtimeInjection([]int{8}, rows, resolve, runtime.TargetNamed("unknown"))
 	if unknown.UnsupportedReason == "" || len(unknown.Env) != 0 || len(unknown.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("unsupported runtime injection=%+v", unknown)
 	}
 
-	inj := p.runtimeInjection([]int{8}, rows, func(int, string) (string, error) { return "", fmt.Errorf("device UUID/minor mismatch") }, "docker")
+	inj := p.runtimeInjection([]int{8}, rows, func(int, string) (string, error) { return "", fmt.Errorf("device UUID/minor mismatch") }, runtime.TargetNamed("docker"))
 	if !strings.Contains(inj.UnsupportedReason, "mismatch") || len(inj.Env) != 0 {
 		t.Fatalf("injection=%+v", inj)
 	}
@@ -251,7 +252,7 @@ func TestPPURuntimeInjectionUsesDriverInventory(t *testing.T) {
 		{"udocker", []int{12, 8}, "12,8"},
 	} {
 		t.Run(tc.driver+"/"+tc.want, func(t *testing.T) {
-			inj := p.runtimeInjection(tc.indexes, rows, resolve, tc.driver)
+			inj := p.runtimeInjection(tc.indexes, rows, resolve, runtime.TargetNamed(tc.driver))
 			if inj.UnsupportedReason != "" || inj.Env[accelerator.EnvCUDAVisibleDevices] != tc.want {
 				t.Fatalf("injection=%+v, want visible=%q", inj, tc.want)
 			}
@@ -271,7 +272,7 @@ func TestPPURuntimeInjectionUsesDriverInventory(t *testing.T) {
 		})
 	}
 	t.Setenv("PATH", t.TempDir())
-	inj := p.RuntimeInjectionForDriver(nil, "docker")
+	inj := p.RuntimeInjectionForDriver(nil, runtime.TargetNamed("docker"))
 	if inj.UnsupportedReason != "" || len(inj.Env) != 0 || len(inj.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("empty selection must not query or inject devices: %+v", inj)
 	}

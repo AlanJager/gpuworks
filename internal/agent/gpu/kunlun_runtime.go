@@ -71,7 +71,7 @@ func (p *KunlunProber) RuntimeInjectionForLaunch(ctx context.Context, req Inject
 	if len(req.Indexes) == 0 {
 		return RuntimeInjection{}
 	}
-	inj := p.runtimeInjectionForDriver(ctx, req.Indexes, req.DriverName)
+	inj := p.runtimeInjectionForDriver(ctx, req.Indexes, req.Runtime.Name)
 	if inj.UnsupportedReason != "" {
 		return inj
 	}

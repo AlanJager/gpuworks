@@ -80,3 +80,38 @@ func TestDeviceInjectionLeavesTheWorkloadsOwnOptionsAlone(t *testing.T) {
 		t.Fatalf("docker run arguments = %q, want %q", got, want)
 	}
 }
+
+type viewlessDriver struct {
+	*headlessTestDriver
+}
+
+func (d viewlessDriver) DeviceView() runtime.DeviceView { return runtime.ViewUnknown }
+
+// No devices are granted for a runtime that does not say which devices its
+// containers see, or for no runtime at all: each backend would otherwise
+// number the selection by its own guess. Selecting no cards is not refused.
+func TestDeviceInjectionRefusesARuntimeWhoseDeviceViewIsUnknown(t *testing.T) {
+	grant := gpu.RuntimeInjection{Env: map[string]string{"CUDA_VISIBLE_DEVICES": "0"}, Grant: runtime.DeviceGrant{ToolkitDevices: []int{0}}}
+	for _, tc := range []struct {
+		name   string
+		driver runtime.Driver
+	}{
+		{"no driver", nil},
+		{"an unregistered driver without a view", viewlessDriver{&headlessTestDriver{name: "podman"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := NewWithProber(tc.driver, nil, slog.Default(), t.TempDir(), namedVendorProber{injectionProber: injectionProber{inj: grant}, vendor: accelerator.VendorNVIDIA})
+			ws := runtime.WorkloadSpec{Env: map[string]string{"KEEP": "value"}}
+			before := cloneWorkloadSpec(ws)
+			if err := e.applyDeviceInjection(&ws, []int{0}); err == nil {
+				t.Fatal("devices were granted for a runtime whose device view is unknown")
+			}
+			if !reflect.DeepEqual(ws, before) {
+				t.Fatalf("the refused injection changed the workload: %+v", ws)
+			}
+			if err := e.applyDeviceInjection(&ws, nil); err != nil {
+				t.Fatalf("selecting no cards was refused: %v", err)
+			}
+		})
+	}
+}

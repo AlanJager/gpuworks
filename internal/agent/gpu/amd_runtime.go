@@ -17,7 +17,7 @@ import (
 )
 
 func (p *AMDProber) RuntimeInjection(indexes []int) RuntimeInjection {
-	return p.RuntimeInjectionForDriver(indexes, "docker")
+	return p.RuntimeInjectionForDriver(indexes, runtime.TargetNamed(runtime.DriverDocker))
 }
 
 // The render-device cgroup is the enforceable selection boundary. DRM card
@@ -154,23 +154,23 @@ func (p *AMDProber) dockerDevicePathsUnset(inventory []proto.GPUInfo) []string {
 	return result
 }
 
-func (p *AMDProber) RuntimeInjectionForDriver(indexes []int, driver string) RuntimeInjection {
+func (p *AMDProber) RuntimeInjectionForDriver(indexes []int, target runtime.Target) RuntimeInjection {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	injection, err := boundedSysfsRead(ctx, &p.injectRead, func() (RuntimeInjection, error) { return p.runtimeInjectionForDriver(indexes, driver, ctx), nil })
+	injection, err := boundedSysfsRead(ctx, &p.injectRead, func() (RuntimeInjection, error) { return p.runtimeInjectionForDriver(indexes, target, ctx), nil })
 	if err != nil {
 		return RuntimeInjection{UnsupportedReason: "AMD: injection verification timed out"}
 	}
 	return injection
 }
 
-func (p *AMDProber) runtimeInjectionForDriver(indexes []int, driver string, ctx context.Context) RuntimeInjection {
+func (p *AMDProber) runtimeInjectionForDriver(indexes []int, target runtime.Target, ctx context.Context) RuntimeInjection {
 	fail := func(detail string) RuntimeInjection { return RuntimeInjection{UnsupportedReason: "AMD: " + detail} }
 	if len(indexes) == 0 {
 		return fail("explicit nonempty GPU selection required")
 	}
 	host := p.runtimeFacts()
-	host.Driver = driver
+	host.Driver = target.Name
 	if mismatch := accelerator.RuntimeMismatchParams(accelerator.VendorAMD, host); mismatch != nil {
 		return fail(fmt.Sprintf("host runtime is unsupported: %v", mismatch))
 	}
@@ -219,7 +219,7 @@ func (p *AMDProber) runtimeInjectionForDriver(indexes []int, driver string, ctx 
 		if old.PCIeBDF != current.PCIeBDF || old.UUID != current.UUID {
 			return fail(fmt.Sprintf("device %d PCI or GPU identity changed", index))
 		}
-		if driver == "udocker" {
+		if target.View == runtime.ViewHost {
 			id, ok := strings.CutPrefix(current.UUID, "amd-")
 			if !ok || normalizeAMDUniqueID(id) == "" {
 				return fail(fmt.Sprintf("device %d has no unique_id; runveil cannot pin it", index))

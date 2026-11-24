@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 )
 
 type amdDeviceInfo struct {
@@ -108,7 +109,7 @@ func TestAMDRuntimeFactsDefaultToCurrentHost(t *testing.T) {
 }
 
 func TestAMDRuntimeEmptySelectionFailsClosed(t *testing.T) {
-	inj := (&AMDProber{}).RuntimeInjectionForDriver(nil, "docker")
+	inj := (&AMDProber{}).RuntimeInjectionForDriver(nil, runtime.TargetNamed("docker"))
 	if inj.UnsupportedReason == "" {
 		t.Fatalf("empty selection injection was accepted: %+v", inj)
 	}
@@ -119,7 +120,7 @@ func TestAMDRuntimeUsesSelectedRenderWithoutGuessingUserspaceOrdinals(t *testing
 	if _, err := p.Probe(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	inj := p.RuntimeInjectionForDriver([]int{7}, "docker")
+	inj := p.RuntimeInjectionForDriver([]int{7}, runtime.TargetNamed("docker"))
 	if inj.UnsupportedReason != "" {
 		t.Fatal(inj.UnsupportedReason)
 	}
@@ -159,7 +160,7 @@ func TestAMDRuntimePinsRunveilSelectionByGPUUUID(t *testing.T) {
 	if id == "" {
 		t.Fatalf("fixture card 7 has no unique_id-backed UUID: %q", uuid)
 	}
-	inj := p.RuntimeInjectionForDriver([]int{7}, "udocker")
+	inj := p.RuntimeInjectionForDriver([]int{7}, runtime.TargetNamed("udocker"))
 	if inj.UnsupportedReason != "" {
 		t.Fatal(inj.UnsupportedReason)
 	}
@@ -185,7 +186,7 @@ func TestAMDRuntimeCleanupIncludesByPathAliases(t *testing.T) {
 	if _, err := p.Probe(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	injection := p.RuntimeInjectionForDriver([]int{7}, "docker")
+	injection := p.RuntimeInjectionForDriver([]int{7}, runtime.TargetNamed("docker"))
 	if injection.UnsupportedReason != "" {
 		t.Fatal(injection.UnsupportedReason)
 	}
@@ -215,7 +216,7 @@ func TestAMDRuntimeFailsClosed(t *testing.T) {
 			if _, err := p.Probe(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			if baseline := p.RuntimeInjectionForDriver([]int{7}, "nerdctl"); baseline.UnsupportedReason != "" {
+			if baseline := p.RuntimeInjectionForDriver([]int{7}, runtime.TargetNamed("nerdctl")); baseline.UnsupportedReason != "" {
 				t.Fatalf("invalid baseline fixture: %s", baseline.UnsupportedReason)
 			}
 			if test == "unpublished" {
@@ -275,7 +276,7 @@ func TestAMDRuntimeFailsClosed(t *testing.T) {
 				}
 				p.lastSeen[7] = g
 			}
-			inj := p.RuntimeInjectionForDriver(indexes, driver)
+			inj := p.RuntimeInjectionForDriver(indexes, runtime.TargetNamed(driver))
 			if !strings.Contains(inj.UnsupportedReason, want[test]) {
 				t.Fatalf("refusal = %q, want %q", inj.UnsupportedReason, want[test])
 			}
@@ -333,7 +334,7 @@ func TestAMDRuntimeMultipleNonContiguousCards(t *testing.T) {
 	if _, err := p.Probe(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	inj := p.RuntimeInjectionForDriver([]int{12, 7}, "nerdctl")
+	inj := p.RuntimeInjectionForDriver([]int{12, 7}, runtime.TargetNamed("nerdctl"))
 	if inj.UnsupportedReason != "" {
 		t.Fatal(inj.UnsupportedReason)
 	}
@@ -362,7 +363,7 @@ func TestAMDRuntimeIdentityFailurePersistsAcrossRetriesAndTelemetry(t *testing.T
 		p.Available()
 		p.Metrics(context.Background())
 		p.Topology(context.Background())
-		if inj := p.RuntimeInjectionForDriver([]int{7}, "docker"); inj.UnsupportedReason == "" {
+		if inj := p.RuntimeInjectionForDriver([]int{7}, runtime.TargetNamed("docker")); inj.UnsupportedReason == "" {
 			t.Fatalf("attempt %d accepted replacement before publishing new inventory", attempt)
 		}
 	}
@@ -370,7 +371,7 @@ func TestAMDRuntimeIdentityFailurePersistsAcrossRetriesAndTelemetry(t *testing.T
 	if _, err := p.Probe(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if inj := p.RuntimeInjectionForDriver([]int{7}, "docker"); inj.UnsupportedReason != "" {
+	if inj := p.RuntimeInjectionForDriver([]int{7}, runtime.TargetNamed("docker")); inj.UnsupportedReason != "" {
 		t.Fatal(inj.UnsupportedReason)
 	}
 }
@@ -396,7 +397,7 @@ func TestAMDRuntimeRejectsDuplicatePhysicalIdentity(t *testing.T) {
 	if _, err := p.Probe(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if inj := p.RuntimeInjectionForDriver([]int{7}, "docker"); inj.UnsupportedReason == "" {
+	if inj := p.RuntimeInjectionForDriver([]int{7}, runtime.TargetNamed("docker")); inj.UnsupportedReason == "" {
 		t.Fatalf("duplicate physical identity authorized injection: %+v", inj)
 	}
 }

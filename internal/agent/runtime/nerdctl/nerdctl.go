@@ -62,7 +62,7 @@ func (d *Driver) WithAuthDir(dir string) *Driver {
 }
 
 // Name implements runtime.Driver.
-func (d *Driver) Name() string { return "nerdctl" }
+func (d *Driver) Name() string { return runtime.DriverNerdctl }
 
 // NamedVolumes: nerdctl creates a named volume on first use and keeps it.
 func (d *Driver) NamedVolumes() bool { return true }

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	agentruntime "gpuworks.ai/gpuworks/internal/agent/runtime"
 )
 
 type kunlunDeviceInfo struct {
@@ -283,7 +284,7 @@ func TestKunlunSelectedDevicesIsolation(t *testing.T) {
 				}
 				return originalRead(path)
 			}
-			got := p.RuntimeInjectionForDriver(indexes, driver)
+			got := p.RuntimeInjectionForDriver(indexes, agentruntime.TargetNamed(driver))
 			pass := kind == "single" || kind == "multi" || kind == "empty"
 			if !pass {
 				wantCause := map[string]string{
@@ -378,7 +379,7 @@ func TestKunlunInjectionChecksFreshCLIWhenQueryCacheIsStale(t *testing.T) {
 	if cached, err := p.inventory(t.Context()); err != nil || cached.Cards[1].UUID != "GPU-fixture-2" {
 		t.Fatalf("query cache was not stale: %+v, %v", cached, err)
 	}
-	if got := p.RuntimeInjectionForDriver([]int{1}, "docker"); !strings.Contains(got.UnsupportedReason, "identity changed") || len(got.Grant.DockerDeviceArgs()) != 0 {
+	if got := p.RuntimeInjectionForDriver([]int{1}, agentruntime.TargetNamed("docker")); !strings.Contains(got.UnsupportedReason, "identity changed") || len(got.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("stale query authorized injection: %+v", got)
 	}
 }

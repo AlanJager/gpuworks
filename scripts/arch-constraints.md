@@ -719,6 +719,33 @@ grep -rnE '"gpuworks\.ai/gpuworks/(pkg/bench|pkg/topoparse|pkg/modelrepo|interna
 是监控中枢诊断阈值设置（`monitor.rules`）review 后新增的排除项，目标仍是 0——store 不得导入
 `internal/server/monitor`（该设置已随 ADR 0043 删除，排除项保留）。
 
+### agent_runtime_name_comparisons（初值 7）
+
+意图：设备后端（`internal/agent/gpu`）与 engine 里拿运行时驱动的名字做比较。容器在某个运行时里看得到哪些设备，由
+`runtime.Target.View` 回答；按名字比较的分支在新增运行时时要逐个找出来改。目标 0。
+
+```sh
+grep -rnE '(==|!=) *("(docker|nerdctl|udocker|kube|host)"|(agent)?runtime\.Driver[A-Z]|proto\.RuntimeDriver|kube\.DriverName|hostproc\.DriverName)|("(docker|nerdctl|udocker|kube|host)"|(agent)?runtime\.Driver[A-Z]|proto\.RuntimeDriver|kube\.DriverName|hostproc\.DriverName) *(==|!=)|case .*("(docker|nerdctl|udocker|kube|host)"|(agent)?runtime\.Driver[A-Z]|proto\.RuntimeDriver|kube\.DriverName|hostproc\.DriverName)|(EqualFold|Contains)\(.*("(docker|nerdctl|udocker|kube|host)"|(agent)?runtime\.Driver[A-Z]|proto\.RuntimeDriver|kube\.DriverName|hostproc\.DriverName)' \
+  internal/agent/gpu internal/agent/engine --include='*.go' | grep -v '_test\.go' | grep -c .
+```
+
+排除：`*_test.go`。同时匹配字符串字面量与名字常量，写法包括 `==`、`!=`（名字在哪一边都算）、`case`（一行里任何位置）、`EqualFold` 与 `Contains`。剩下的在 dGPU 注入器（`engine/partition_hygon.go`、
+`partition_ascend.go`）与 `engine/engine.go`、`engine/runtime_mounts.go`。
+
+### agent_container_option_literals（初值 5）
+
+意图：设备后端与 engine 里手写容器命令行选项（`--device`、`--gpus`、`--runtime`、`--group-add`、`--tmpfs`）。设备
+后端授予的是 `runtime.DeviceGrant`，由各运行时驱动自己渲染。目标 0。
+
+```sh
+grep -rnE '"--(device|gpus|runtime|group-add|tmpfs)"' internal/agent/gpu internal/agent/engine --include='*.go' \
+  | grep -v '_test\.go' | grep -c .
+```
+
+排除：`*_test.go`。剩下的是昆仑芯对 server 解析出的 RDMA 选项的检查（`gpu/kunlun_runtime.go`）、AMD 要清掉的
+旧选项名（`gpu/amd_runtime.go`）、海光 dGPU 后端的 `--tmpfs`（`engine/partition_hygon.go`）与 engine 清理旧设备
+路径（`engine/device_injection.go`）。
+
 ### agent_direct_exec（初值 5）
 
 意图：agent 绕过 `runtime.Driver` 直接 `exec`（计划 B9）。目标 ≤ 1（doctor 的可注入 runner）。

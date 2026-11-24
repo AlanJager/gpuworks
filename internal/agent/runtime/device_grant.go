@@ -50,6 +50,12 @@ type DeviceGrant struct {
 	Groups []int
 }
 
+// Empty reports whether the grant hands nothing over: no runtime class, no
+// toolkit devices, no device nodes and no groups.
+func (g DeviceGrant) Empty() bool {
+	return g.RuntimeClass == "" && len(g.ToolkitDevices) == 0 && len(g.Devices) == 0 && len(g.Groups) == 0
+}
+
 // Clone returns a grant that shares no slice with g.
 func (g DeviceGrant) Clone() DeviceGrant {
 	g.ToolkitDevices = append([]int(nil), g.ToolkitDevices...)

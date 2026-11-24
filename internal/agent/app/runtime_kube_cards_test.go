@@ -35,10 +35,10 @@ func (p *kubeCardsProber) Probe(context.Context) ([]proto.GPUInfo, error) {
 	return p.cards, p.probeErr
 }
 func (p *kubeCardsProber) RuntimeInjection(indexes []int) gpu.RuntimeInjection {
-	return p.RuntimeInjectionForDriver(indexes, "")
+	return p.RuntimeInjectionForDriver(indexes, runtime.Target{})
 }
-func (p *kubeCardsProber) RuntimeInjectionForDriver(indexes []int, driver string) gpu.RuntimeInjection {
-	p.drivers = append(p.drivers, driver)
+func (p *kubeCardsProber) RuntimeInjectionForDriver(indexes []int, target runtime.Target) gpu.RuntimeInjection {
+	p.drivers = append(p.drivers, target.Name)
 	if reason := p.refuse[indexes[0]]; reason != "" {
 		return gpu.RuntimeInjection{UnsupportedReason: reason}
 	}

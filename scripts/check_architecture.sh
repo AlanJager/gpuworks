@@ -246,6 +246,15 @@ measure() {
     grep -rnE 'func (normalizeVendor|NormalizeVendor)\(' internal pkg cmd --include='*.go' 2>/dev/null \
       | grep -v '_test\.go' | grep -c . || true
     ;;
+  agent_runtime_name_comparisons)
+    grep -rnE '(==|!=) *("(docker|nerdctl|udocker|kube|host)"|(agent)?runtime\.Driver[A-Z]|proto\.RuntimeDriver|kube\.DriverName|hostproc\.DriverName)|("(docker|nerdctl|udocker|kube|host)"|(agent)?runtime\.Driver[A-Z]|proto\.RuntimeDriver|kube\.DriverName|hostproc\.DriverName) *(==|!=)|case .*("(docker|nerdctl|udocker|kube|host)"|(agent)?runtime\.Driver[A-Z]|proto\.RuntimeDriver|kube\.DriverName|hostproc\.DriverName)|(EqualFold|Contains)\(.*("(docker|nerdctl|udocker|kube|host)"|(agent)?runtime\.Driver[A-Z]|proto\.RuntimeDriver|kube\.DriverName|hostproc\.DriverName)' \
+      internal/agent/gpu internal/agent/engine --include='*.go' 2>/dev/null \
+      | grep -v '_test\.go' | grep -c . || true
+    ;;
+  agent_container_option_literals)
+    grep -rnE '"--(device|gpus|runtime|group-add|tmpfs)"' internal/agent/gpu internal/agent/engine --include='*.go' 2>/dev/null \
+      | grep -v '_test\.go' | grep -c . || true
+    ;;
   infer_vendor_callers)
     grep -rn 'deploy\.InferVendor(' internal pkg cmd --include='*.go' 2>/dev/null \
       | grep -v '_test\.go' | grep -c . || true

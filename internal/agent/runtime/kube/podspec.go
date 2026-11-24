@@ -173,7 +173,15 @@ func parseDockerBytes(s string) (int64, error) {
 // granted are translated in their docker spelling together with the options
 // it carries, so a granted runtime class or toolkit request replaces the
 // workload's own exactly as it does under docker.
+//
+// The plain runtime is the exception: a runtime class here names an object
+// the cluster defines, there is none for it, and the kubelet's default
+// runtime already is it. A grant of it asks nothing of the pod and replaces
+// nothing.
 func workloadTranslation(spec runtime.WorkloadSpec) (dockerTranslation, error) {
+	if spec.Grant.RuntimeClass == runtime.PlainRuntimeClass {
+		spec.Grant.RuntimeClass = ""
+	}
 	return translateDockerArgs(spec.DockerRunArgs())
 }
 

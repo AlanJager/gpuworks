@@ -71,7 +71,10 @@ func NewFakeDriver(name string) *FakeDriver {
 	return &FakeDriver{name: name, servers: map[string]*http.Server{}, ln: map[string]net.Listener{}, names: map[string]string{}, stopped: map[string]bool{}, exitCodes: map[string]int{}, failures: map[string]error{}, loadedImages: map[string]bool{}, sharedPortOf: map[string]sharedClaim{}, archiveSize: 8 << 20}
 }
 
-func (d *FakeDriver) Name() string                         { return d.name }
+func (d *FakeDriver) Name() string { return d.name }
+
+// DeviceView: a fake container sees only the devices it was granted.
+func (d *FakeDriver) DeviceView() runtime.DeviceView       { return runtime.ViewGranted }
 func (d *FakeDriver) Detect(context.Context) (bool, error) { return true, nil }
 
 // SetImageAbsent is useful for the negative image-load regression: loading an

@@ -51,7 +51,12 @@ func New(path string) *Driver {
 	return &Driver{path: path, running: map[string]bool{}, engines: map[string]*exec.Cmd{}}
 }
 
-func (d *Driver) Name() string                         { return "recording" }
+func (d *Driver) Name() string { return "recording" }
+
+// DeviceView says a recorded container sees only the devices it was
+// granted, as one of docker's would.
+func (d *Driver) DeviceView() runtime.DeviceView { return runtime.ViewGranted }
+
 func (d *Driver) Detect(context.Context) (bool, error) { return true, nil }
 
 func (d *Driver) ImageExists(_ context.Context, image string) (bool, error) {

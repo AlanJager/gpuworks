@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 )
 
 func TestKunlunCapturedEightCardInjection(t *testing.T) {
@@ -137,7 +138,7 @@ func TestKunlunCapturedEightCardInjection(t *testing.T) {
 				t.Fatalf("probe: %v %v", cards, err)
 			}
 			indexes := []int{0, 1, 2, 3, 4, 5, 6, 7}
-			got := p.RuntimeInjectionForDriver(indexes, "docker")
+			got := p.RuntimeInjectionForDriver(indexes, runtime.TargetNamed("docker"))
 			if got.UnsupportedReason != "" {
 				t.Fatal(got.UnsupportedReason)
 			}

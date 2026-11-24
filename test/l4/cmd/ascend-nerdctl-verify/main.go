@@ -84,7 +84,7 @@ func verifyDeviceInjection(driver *nerdctl.Driver, image string, indexes []int) 
 	// engine.applyDeviceInjection dispatches to for an Ascend node whose
 	// driver is nerdctl.
 	prober := &gpu.AscendProber{}
-	inj := prober.RuntimeInjectionForDriver(indexes, "nerdctl")
+	inj := prober.RuntimeInjectionForDriver(indexes, runtime.TargetNamed(runtime.DriverNerdctl))
 	if inj.UnsupportedReason != "" {
 		return fmt.Errorf("unsupported: %s", inj.UnsupportedReason)
 	}

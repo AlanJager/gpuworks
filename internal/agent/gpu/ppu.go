@@ -207,10 +207,10 @@ func (p *PPUProber) Metrics(ctx context.Context) ([]Metric, error) {
 }
 
 func (p *PPUProber) RuntimeInjection(indexes []int) RuntimeInjection {
-	return p.RuntimeInjectionForDriver(indexes, "")
+	return p.RuntimeInjectionForDriver(indexes, runtime.Target{})
 }
 
-func (p *PPUProber) RuntimeInjectionForDriver(indexes []int, driverName string) RuntimeInjection {
+func (p *PPUProber) RuntimeInjectionForDriver(indexes []int, target runtime.Target) RuntimeInjection {
 	if len(indexes) == 0 {
 		return RuntimeInjection{}
 	}
@@ -218,10 +218,10 @@ func (p *PPUProber) RuntimeInjectionForDriver(indexes []int, driverName string) 
 	if err != nil {
 		return RuntimeInjection{UnsupportedReason: fmt.Sprintf("cannot verify PPU device inventory: ppu-smi: %v", err)}
 	}
-	return p.runtimeInjection(indexes, rows, resolvePPUDevice, driverName)
+	return p.runtimeInjection(indexes, rows, resolvePPUDevice, target)
 }
 
-func (p *PPUProber) runtimeInjection(indexes []int, rows string, resolve func(int, string) (string, error), driverName string) RuntimeInjection {
+func (p *PPUProber) runtimeInjection(indexes []int, rows string, resolve func(int, string) (string, error), target runtime.Target) RuntimeInjection {
 	devices := []runtime.Device{
 		{Path: "/dev/alixpu", Access: runtime.DeviceAccessAll},
 		{Path: "/dev/alixpu_ctl", Access: runtime.DeviceAccessAll},
@@ -261,9 +261,9 @@ func (p *PPUProber) runtimeInjection(indexes []int, rows string, resolve func(in
 	// Driver-independent diagnostics keep the existing UUID contract. Actual
 	// workloads select their numeric view through DriverAwareInjector.
 	visible := strings.Join(deviceUUIDs, ",")
-	if driverName != "" {
+	if target != (runtime.Target{}) {
 		var err error
-		visible, err = ppuVisibleDeviceIndexes(indexes, driverName)
+		visible, err = ppuVisibleDeviceIndexes(indexes, target)
 		if err != nil {
 			return RuntimeInjection{UnsupportedReason: err.Error()}
 		}
@@ -282,18 +282,18 @@ func (p *PPUProber) runtimeInjection(indexes []int, rows string, resolve func(in
 // order; the kube runtime's device plugin hands the pod the same OCI devices.
 // PRoot exposes the host inventory. Keep the requested compute order in
 // either view, using numeric selectors understood by HGGC and inference engines.
-func ppuVisibleDeviceIndexes(indexes []int, driverName string) (string, error) {
+func ppuVisibleDeviceIndexes(indexes []int, target runtime.Target) (string, error) {
 	visibleIndexes := append([]int(nil), indexes...)
-	switch driverName {
-	case "docker", "nerdctl", "kube":
+	switch target.View {
+	case runtime.ViewGranted:
 		inventory := append([]int(nil), indexes...)
 		sort.Ints(inventory)
 		for i, index := range indexes {
 			visibleIndexes[i] = sort.SearchInts(inventory, index)
 		}
-	case "udocker":
+	case runtime.ViewHost:
 	default:
-		return "", fmt.Errorf("PPU device visibility is not supported for runtime %q", driverName)
+		return "", fmt.Errorf("PPU device visibility is not supported for runtime %q", target.Name)
 	}
 	visible := make([]string, len(visibleIndexes))
 	for i, index := range visibleIndexes {

@@ -54,6 +54,9 @@ func (p *FixedProber) RuntimeInjection(indexes []int) RuntimeInjection {
 		visible[i], compact[i] = strconv.Itoa(index), strconv.Itoa(i)
 	}
 	switch strings.ToLower(strings.TrimSpace(p.VendorName)) {
+	case "apple":
+		// A Mac's engines are host processes; its prober grants nothing.
+		return RuntimeInjection{}
 	case "ascend", "huawei":
 		return RuntimeInjection{Env: map[string]string{"ASCEND_VISIBLE_DEVICES": strings.Join(visible, ","), "ASCEND_RT_VISIBLE_DEVICES": strings.Join(compact, ","), "NPU_VISIBLE_DEVICES": strings.Join(compact, ",")}, Grant: runtime.DeviceGrant{RuntimeClass: "ascend"}}
 	case "ppu", "t-head", "thead":

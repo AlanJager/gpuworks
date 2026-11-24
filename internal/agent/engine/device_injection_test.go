@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
@@ -29,7 +30,7 @@ func TestApplyDeviceInjectionEmptySelectionIsNoOp(t *testing.T) {
 }
 
 func TestApplyDeviceInjectionFailureLeavesWorkloadUnchanged(t *testing.T) {
-	e := NewWithProber(nil, nil, slog.Default(), t.TempDir(), injectionProber{inj: gpu.RuntimeInjection{
+	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, slog.Default(), t.TempDir(), injectionProber{inj: gpu.RuntimeInjection{
 		ManagedSelection:  &gpu.RuntimeSelectionCleanup{Env: []string{"CUDA_VISIBLE_DEVICES"}, DockerOptions: []string{"--runtime"}, DevicePaths: []string{"/dev/host"}},
 		Env:               map[string]string{"VISIBLE": "0"},
 		Mounts:            []gpu.RuntimeMount{{Source: "/host/driver", Target: "/driver"}},
@@ -42,8 +43,9 @@ func TestApplyDeviceInjectionFailureLeavesWorkloadUnchanged(t *testing.T) {
 		Mounts:     []runtime.Mount{{Source: "/models", Target: "/models"}},
 	}
 	before := cloneWorkloadSpec(ws)
-	if err := e.applyDeviceInjection(&ws, []int{3}); err == nil {
-		t.Fatal("expected injection failure")
+	err := e.applyDeviceInjection(&ws, []int{3})
+	if err == nil || !strings.Contains(err.Error(), "selected render device disappeared") {
+		t.Fatalf("err = %v, want the backend's own refusal", err)
 	}
 	if !reflect.DeepEqual(ws, before) {
 		t.Fatalf("failed injection changed workload: got %+v want %+v", ws, before)

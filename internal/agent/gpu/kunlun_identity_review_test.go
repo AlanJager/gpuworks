@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 )
 
 // Synthetic VMD addresses exercise the same-domain collision that motivated
@@ -29,7 +31,7 @@ func TestKunlunLargePCIDomainIsNotTruncated(t *testing.T) {
 	}
 	// Name the container runtime: the driver is not what this test is about,
 	// and Kunlun refuses rather than assume one.
-	if inj := p.RuntimeInjectionForDriver([]int{0, 1}, "docker"); inj.UnsupportedReason != "" {
+	if inj := p.RuntimeInjectionForDriver([]int{0, 1}, runtime.TargetNamed("docker")); inj.UnsupportedReason != "" {
 		t.Fatal(inj.UnsupportedReason)
 	}
 	p.readFile = func(path string) ([]byte, error) {
@@ -38,7 +40,7 @@ func TestKunlunLargePCIDomainIsNotTruncated(t *testing.T) {
 		}
 		return oldRead(path)
 	}
-	if inj := p.RuntimeInjectionForDriver([]int{0}, "docker"); inj.UnsupportedReason != "Kunlun PCI vendor cannot be verified" || len(inj.Grant.DockerDeviceArgs()) != 0 {
+	if inj := p.RuntimeInjectionForDriver([]int{0}, runtime.TargetNamed("docker")); inj.UnsupportedReason != "Kunlun PCI vendor cannot be verified" || len(inj.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("domain-zero fallback: %+v", inj)
 	}
 }
@@ -55,7 +57,7 @@ func TestKunlunMissingUUIDRetainsIndexMetricsButNotLaunchPermission(t *testing.T
 	}
 	// The named cause matters: refusing for want of a runtime driver would
 	// pass this assertion without ever reaching the identity check.
-	if inj := p.RuntimeInjectionForDriver([]int{0}, "docker"); inj.UnsupportedReason != "invalid or duplicate Kunlun device selection" || len(inj.Grant.DockerDeviceArgs()) != 0 {
+	if inj := p.RuntimeInjectionForDriver([]int{0}, runtime.TargetNamed("docker")); inj.UnsupportedReason != "invalid or duplicate Kunlun device selection" || len(inj.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("unidentified card was authorized: %+v", inj)
 	}
 }
@@ -70,7 +72,7 @@ func TestKunlunAvailableRequiresExplicitBrand(t *testing.T) {
 
 func TestKunlunInjectionRequiresProbeBaselineAndManagesWholeInventory(t *testing.T) {
 	p, _ := kunlunFixture(t)
-	inj := p.RuntimeInjectionForDriver([]int{1}, "docker")
+	inj := p.RuntimeInjectionForDriver([]int{1}, runtime.TargetNamed("docker"))
 	if inj.UnsupportedReason != "Kunlun injection requires a successful probe baseline" || inj.Failure == nil || len(inj.Grant.DockerDeviceArgs()) != 0 || inj.ManagedSelection != nil {
 		t.Fatalf("injection without probe baseline: %+v", inj)
 	}
@@ -78,7 +80,7 @@ func TestKunlunInjectionRequiresProbeBaselineAndManagesWholeInventory(t *testing
 	if _, err := p.Probe(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	inj = p.RuntimeInjectionForDriver([]int{1}, "docker")
+	inj = p.RuntimeInjectionForDriver([]int{1}, runtime.TargetNamed("docker"))
 	if inj.UnsupportedReason != "" {
 		t.Fatal(inj.UnsupportedReason)
 	}

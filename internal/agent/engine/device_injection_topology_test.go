@@ -20,7 +20,7 @@ type topologyInjectionProber struct {
 }
 
 func (p *topologyInjectionProber) RuntimeInjectionForLaunch(_ context.Context, req gpu.InjectionRequest) gpu.RuntimeInjection {
-	p.indexes, p.driver, p.nodes, p.env = append([]int(nil), req.Indexes...), req.DriverName, req.NNodes, req.Env
+	p.indexes, p.driver, p.nodes, p.env = append([]int(nil), req.Indexes...), req.Runtime.Name, req.NNodes, req.Env
 	if p.fail {
 		return gpu.RuntimeInjection{UnsupportedReason: "transport unavailable"}
 	}
@@ -34,7 +34,7 @@ func TestDeviceInjectionUsesTopologyExtensionWithoutVendorBranch(t *testing.T) {
 		DockerArgs: []string{"--ipc=host"},
 		Env:        map[string]string{"BKCL_RDMA_NICS": "bond0,bond0", "GLOO_SOCKET_IFNAME": "bond0"},
 	}
-	if err := e.applyDeviceInjectionForLaunch(context.Background(), &ws, []int{3, 7}, "docker", 2); err != nil {
+	if err := e.applyDeviceInjectionForLaunch(context.Background(), &ws, []int{3, 7}, runtime.TargetNamed("docker"), 2); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(p.indexes, []int{3, 7}) || p.driver != "docker" || p.nodes != 2 || !reflect.DeepEqual(p.env, ws.Env) || !reflect.DeepEqual(ws.DockerRunArgs(), []string{"--ipc=host", "--device", "/dev/example-transport"}) {
@@ -42,7 +42,7 @@ func TestDeviceInjectionUsesTopologyExtensionWithoutVendorBranch(t *testing.T) {
 	}
 	p.fail = true
 	before := append([]string(nil), ws.DockerRunArgs()...)
-	if err := e.applyDeviceInjectionForLaunch(context.Background(), &ws, []int{3}, "docker", 2); err == nil || !reflect.DeepEqual(ws.DockerRunArgs(), before) {
+	if err := e.applyDeviceInjectionForLaunch(context.Background(), &ws, []int{3}, runtime.TargetNamed("docker"), 2); err == nil || !reflect.DeepEqual(ws.DockerRunArgs(), before) {
 		t.Fatalf("failure changed workload: %+v, %v", ws, err)
 	}
 }
@@ -53,11 +53,11 @@ func TestDeviceInjectionAllowsEmptySelectionForBackendsThatSupportIt(t *testing.
 	p := &topologyInjectionProber{fail: true}
 	withExtension := NewWithProber(&headlessTestDriver{}, nil, slog.Default(), t.TempDir(), p)
 	ws := runtime.WorkloadSpec{DockerArgs: []string{"--ipc=host"}}
-	if err := withExtension.applyDeviceInjectionForLaunch(context.Background(), &ws, nil, "docker", 2); err != nil || len(ws.DockerRunArgs()) != 1 || p.nodes != 0 {
+	if err := withExtension.applyDeviceInjectionForLaunch(context.Background(), &ws, nil, runtime.TargetNamed("docker"), 2); err != nil || len(ws.DockerRunArgs()) != 1 || p.nodes != 0 {
 		t.Fatalf("empty selection reached extension: %+v %+v %v", p, ws, err)
 	}
 	e := NewWithProber(&headlessTestDriver{}, nil, slog.Default(), t.TempDir(), gpu.NoAccelerator{})
-	if err := e.applyDeviceInjectionForLaunch(context.Background(), &runtime.WorkloadSpec{}, nil, "docker", 1); err != nil {
+	if err := e.applyDeviceInjectionForLaunch(context.Background(), &runtime.WorkloadSpec{}, nil, runtime.TargetNamed("docker"), 1); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -70,7 +70,7 @@ type allInjectionProber struct {
 	args   []string
 }
 
-func (p *allInjectionProber) RuntimeInjectionForDriver([]int, string) gpu.RuntimeInjection {
+func (p *allInjectionProber) RuntimeInjectionForDriver([]int, runtime.Target) gpu.RuntimeInjection {
 	p.called = "driver"
 	return gpu.RuntimeInjection{UnsupportedReason: "wrong interface"}
 }
@@ -87,7 +87,7 @@ func TestResolvedInjectionPrecedesOtherOptionalInterfaces(t *testing.T) {
 	p := &allInjectionProber{}
 	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, slog.Default(), t.TempDir(), p)
 	ws := runtime.WorkloadSpec{DockerArgs: []string{"--device", "/dev/infiniband"}, Env: map[string]string{"GLOO_SOCKET_IFNAME": "bond0"}}
-	if err := e.applyDeviceInjectionForLaunch(context.Background(), &ws, []int{1}, "docker", 2); err != nil {
+	if err := e.applyDeviceInjectionForLaunch(context.Background(), &ws, []int{1}, runtime.TargetNamed("docker"), 2); err != nil {
 		t.Fatal(err)
 	}
 	if p.called != "resolved" || !reflect.DeepEqual(p.args, []string{"--device", "/dev/infiniband"}) || !reflect.DeepEqual(p.env, ws.Env) || p.nodes != 0 {
@@ -96,7 +96,7 @@ func TestResolvedInjectionPrecedesOtherOptionalInterfaces(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	before := append([]string(nil), ws.DockerRunArgs()...)
-	if err := e.applyDeviceInjectionForLaunch(ctx, &ws, []int{1}, "docker", 2); err == nil || !reflect.DeepEqual(ws.DockerRunArgs(), before) {
+	if err := e.applyDeviceInjectionForLaunch(ctx, &ws, []int{1}, runtime.TargetNamed("docker"), 2); err == nil || !reflect.DeepEqual(ws.DockerRunArgs(), before) {
 		t.Fatalf("cancel mutated workload: %v %+v", err, ws)
 	}
 }
@@ -138,7 +138,7 @@ func TestKunlunManagedSelectionUsesAtomicMergeAndPreservesResolvedRDMA(t *testin
 				{Path: "/dev/xdrdrv"},
 			}},
 	}
-	applyRuntimeInjection(&ws, inj, []int{1}, "docker")
+	applyRuntimeInjection(&ws, inj, []int{1}, runtime.TargetNamed("docker"))
 	want := []string{
 		"--device", "/dev/infiniband",
 		"--ulimit", "memlock=-1",

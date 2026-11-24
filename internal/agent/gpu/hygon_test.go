@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -269,7 +270,7 @@ func TestHygonRuntimeInjectionForDriverNumbersCardsAsHIPSeesThem(t *testing.T) {
 			0: {UUID: "GPU-a", PCIeBDF: "0000:19:00.0"},
 			1: {UUID: "GPU-b", PCIeBDF: "0000:67:00.0"},
 		}
-		inj := ResolveInjection(t.Context(), p, InjectionRequest{Indexes: tc.indexes, DriverName: tc.driver})
+		inj := ResolveInjection(t.Context(), p, InjectionRequest{Indexes: tc.indexes, Runtime: runtime.TargetNamed(tc.driver)})
 		if inj.UnsupportedReason != "" {
 			t.Fatalf("%s %v: injection failed: %s", tc.driver, tc.indexes, inj.UnsupportedReason)
 		}
@@ -287,7 +288,7 @@ func TestHygonRuntimeInjectionForDriverNumbersCardsAsHIPSeesThem(t *testing.T) {
 func TestHygonRuntimeInjectionForDriverKeepsRefusals(t *testing.T) {
 	p := testHygonProber(t, readHygonFixture(t))
 	p.seen.cards = map[int]proto.GPUInfo{1: {UUID: "GPU-b", PCIeBDF: "0000:19:00.0"}}
-	inj := p.RuntimeInjectionForDriver([]int{1}, "docker")
+	inj := p.RuntimeInjectionForDriver([]int{1}, runtime.TargetNamed("docker"))
 	if !strings.Contains(inj.UnsupportedReason, "changed from PCI") || inj.Env != nil || inj.Grant.DockerDeviceArgs() != nil {
 		t.Fatalf("refused injection = %+v", inj)
 	}

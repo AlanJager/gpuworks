@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 )
 
 // withKunlunXDR overrides only the transport path; native device checks still
@@ -86,17 +88,17 @@ func TestKunlunDeviceInspectorDoesNotFollowSymlinks(t *testing.T) {
 
 func TestKunlunLaunchInjectionIsAtomic(t *testing.T) {
 	p, _ := kunlunFixture(t)
-	if got := p.RuntimeInjectionForLaunch(context.Background(), InjectionRequest{DriverName: "docker", NNodes: 2}); got.UnsupportedReason != "" || len(got.Grant.DockerDeviceArgs()) != 0 {
+	if got := p.RuntimeInjectionForLaunch(context.Background(), InjectionRequest{Runtime: runtime.TargetNamed("docker"), NNodes: 2}); got.UnsupportedReason != "" || len(got.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("empty selection should expose nothing: %+v", got)
 	}
 	if _, err := p.Probe(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	// Single-node selected cards do not require a distributed driver.
-	if got := p.RuntimeInjectionForLaunch(context.Background(), InjectionRequest{Indexes: []int{1}, DriverName: "docker", NNodes: 1}); got.UnsupportedReason != "" {
+	if got := p.RuntimeInjectionForLaunch(context.Background(), InjectionRequest{Indexes: []int{1}, Runtime: runtime.TargetNamed("docker"), NNodes: 1}); got.UnsupportedReason != "" {
 		t.Fatal(got)
 	}
-	req := InjectionRequest{Indexes: []int{1}, DriverName: "docker", NNodes: 2, DockerArgs: []string{"--device", "/dev/infiniband", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK"}, Env: validKunlunMultiNodeEnv()}
+	req := InjectionRequest{Indexes: []int{1}, Runtime: runtime.TargetNamed("docker"), NNodes: 2, DockerArgs: []string{"--device", "/dev/infiniband", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK"}, Env: validKunlunMultiNodeEnv()}
 	if got := p.RuntimeInjectionForLaunch(context.Background(), req); got.UnsupportedReason == "" || len(got.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("partial injection: %+v", got)
 	}
@@ -128,7 +130,7 @@ func TestKunlunInjectionCanceledDuringXDRValidation(t *testing.T) {
 		return info, err
 	}
 	injection := p.RuntimeInjectionForLaunch(ctx, InjectionRequest{
-		Indexes: []int{1}, DriverName: "docker", NNodes: 2,
+		Indexes: []int{1}, Runtime: runtime.TargetNamed("docker"), NNodes: 2,
 		DockerArgs: []string{"--device", "/dev/infiniband", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK"},
 		Env:        validKunlunMultiNodeEnv(),
 	})

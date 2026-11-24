@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -380,7 +381,7 @@ func withDeviceNodes(t *testing.T, present ...string) {
 
 func TestRuntimeInjectionForDriverNerdctl(t *testing.T) {
 	withDeviceNodes(t, "/dev/davinci_manager", "/dev/devmm_svm", "/dev/hisi_hdc")
-	asc := (&AscendProber{}).RuntimeInjectionForDriver([]int{2, 4}, "nerdctl")
+	asc := (&AscendProber{}).RuntimeInjectionForDriver([]int{2, 4}, runtime.TargetNamed("nerdctl"))
 	if _, ok := asc.Env[accelerator.AscendEnvVisibleDevices]; ok {
 		t.Fatalf("nerdctl injection must not set %s (no plugin reads it): %+v", accelerator.AscendEnvVisibleDevices, asc.Env)
 	}
@@ -415,7 +416,7 @@ func TestRuntimeInjectionForDriverNerdctl(t *testing.T) {
 	}
 
 	// Every other driver keeps the Ascend Docker Runtime plugin path.
-	dockerInj := (&AscendProber{}).RuntimeInjectionForDriver([]int{2, 4}, "docker")
+	dockerInj := (&AscendProber{}).RuntimeInjectionForDriver([]int{2, 4}, runtime.TargetNamed("docker"))
 	if len(dockerInj.Grant.DockerDeviceArgs()) != 2 || dockerInj.Grant.DockerDeviceArgs()[0] != "--runtime" || dockerInj.Grant.DockerDeviceArgs()[1] != "ascend" {
 		t.Fatalf("docker driver must be unaffected by the nerdctl branch: %+v", dockerInj.Grant.DockerDeviceArgs())
 	}
@@ -488,7 +489,7 @@ func TestParseAscendMetrics26TwoLineRows(t *testing.T) {
 
 func TestNerdctlInjectionPassesOnlyTheDeviceNodesTheHostHas(t *testing.T) {
 	withDeviceNodes(t, "/dev/davinci_manager", "/dev/ummu", "/dev/uburma")
-	asc := (&AscendProber{}).RuntimeInjectionForDriver([]int{3}, "nerdctl")
+	asc := (&AscendProber{}).RuntimeInjectionForDriver([]int{3}, runtime.TargetNamed("nerdctl"))
 	want := []string{
 		"--device", "/dev/davinci3",
 		"--device", "/dev/davinci_manager",
@@ -500,7 +501,7 @@ func TestNerdctlInjectionPassesOnlyTheDeviceNodesTheHostHas(t *testing.T) {
 	}
 
 	withDeviceNodes(t)
-	asc = (&AscendProber{}).RuntimeInjectionForDriver([]int{3}, "nerdctl")
+	asc = (&AscendProber{}).RuntimeInjectionForDriver([]int{3}, runtime.TargetNamed("nerdctl"))
 	if strings.Join(asc.Grant.DockerDeviceArgs(), ",") != "--device,/dev/davinci3" {
 		t.Fatalf("device args without any shared node = %+v", asc.Grant.DockerDeviceArgs())
 	}

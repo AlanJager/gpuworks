@@ -13,18 +13,14 @@ import (
 )
 
 func (e *Engine) applyDeviceInjection(ws *runtime.WorkloadSpec, indexes []int) error {
-	driverName := ""
-	if d := e.Driver(); d != nil {
-		driverName = d.Name()
-	}
-	return e.applyDeviceInjectionForDriver(ws, indexes, driverName)
+	return e.applyDeviceInjectionForDriver(ws, indexes, runtime.TargetOf(e.Driver()))
 }
 
-func (e *Engine) applyDeviceInjectionForDriver(ws *runtime.WorkloadSpec, indexes []int, driverName string) error {
-	return e.applyDeviceInjectionForLaunch(context.Background(), ws, indexes, driverName, 1)
+func (e *Engine) applyDeviceInjectionForDriver(ws *runtime.WorkloadSpec, indexes []int, target runtime.Target) error {
+	return e.applyDeviceInjectionForLaunch(context.Background(), ws, indexes, target, 1)
 }
 
-func (e *Engine) applyDeviceInjectionForLaunch(ctx context.Context, ws *runtime.WorkloadSpec, indexes []int, driverName string, nNodes int) error {
+func (e *Engine) applyDeviceInjectionForLaunch(ctx context.Context, ws *runtime.WorkloadSpec, indexes []int, target runtime.Target, nNodes int) error {
 	if e.prober == nil {
 		return nil
 	}
@@ -34,21 +30,21 @@ func (e *Engine) applyDeviceInjectionForLaunch(ctx context.Context, ws *runtime.
 		}
 		return nil
 	}
-	inj := gpu.ResolveInjection(ctx, e.prober, gpu.InjectionRequest{Indexes: indexes, DriverName: driverName, NNodes: nNodes, DockerArgs: ws.DockerArgs, Env: ws.Env})
+	inj := gpu.ResolveInjection(ctx, e.prober, gpu.InjectionRequest{Indexes: indexes, Runtime: target, NNodes: nNodes, DockerArgs: ws.DockerArgs, Env: ws.Env})
 	if inj.Failure != nil {
 		return &gpu.InjectionError{Failure: *inj.Failure, Reason: inj.UnsupportedReason}
 	}
 	if inj.UnsupportedReason != "" {
 		return fmt.Errorf("accelerator runtime unavailable: %s", inj.UnsupportedReason)
 	}
-	applyRuntimeInjection(ws, inj, indexes, driverName)
+	applyRuntimeInjection(ws, inj, indexes, target)
 	return nil
 }
 
 // applyRuntimeInjection applies only a fully validated injection. Unsets and
 // additions are built on copies, then committed together so callers never see
 // a partially applied device selection.
-func applyRuntimeInjection(ws *runtime.WorkloadSpec, inj gpu.RuntimeInjection, indexes []int, driverName string) {
+func applyRuntimeInjection(ws *runtime.WorkloadSpec, inj gpu.RuntimeInjection, indexes []int, target runtime.Target) {
 	updated := *ws
 	env := make(map[string]string, len(ws.Env)+len(inj.Env))
 	for key, value := range ws.Env {
@@ -64,11 +60,10 @@ func applyRuntimeInjection(ws *runtime.WorkloadSpec, inj gpu.RuntimeInjection, i
 		// construct a compact container-visible inventory. Reusing the host
 		// indexes in CUDA_VISIBLE_DEVICES then hides non-zero selected cards
 		// (for example host device 1 is CUDA device 0 inside a one-card
-		// container). nerdctl's --gpus goes through the same toolkit hook, and
-		// the kube runtime gets the same remapping from the NVIDIA runtime
-		// class. Udocker has no such remapping and continues to use the
-		// physical indexes supplied by the prober.
-		if key == "CUDA_VISIBLE_DEVICES" && (driverName == "docker" || driverName == "nerdctl" || driverName == "kube") && len(inj.Grant.ToolkitDevices) > 0 {
+		// container). That holds wherever a container sees only the devices
+		// it was granted. Where it sees the host's, the physical indexes
+		// supplied by the prober stand.
+		if key == "CUDA_VISIBLE_DEVICES" && target.View == runtime.ViewGranted && len(inj.Grant.ToolkitDevices) > 0 {
 			value = compactDeviceIndexes(len(indexes))
 		}
 		env[key] = value

@@ -24,10 +24,10 @@ import (
 // naming one here would authorize a host this backend has not been verified
 // on. gpu.ResolveInjection reaches the seams below instead.
 func (p *KunlunProber) RuntimeInjection(indexes []int) RuntimeInjection {
-	return p.RuntimeInjectionForDriver(indexes, "")
+	return p.RuntimeInjectionForDriver(indexes, agentruntime.Target{})
 }
-func (p *KunlunProber) RuntimeInjectionForDriver(indexes []int, driver string) RuntimeInjection {
-	return p.runtimeInjectionForDriver(context.Background(), indexes, driver)
+func (p *KunlunProber) RuntimeInjectionForDriver(indexes []int, target agentruntime.Target) RuntimeInjection {
+	return p.runtimeInjectionForDriver(context.Background(), indexes, target.Name)
 }
 func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []int, driver string) RuntimeInjection {
 	if len(indexes) == 0 {
@@ -68,15 +68,6 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 	// Probe publishes a new immutable map. Retain one generation for all
 	// selected cards without holding its publication lock during filesystem I/O.
 	previous := p.seen.all()
-	// Docker and nerdctl name runc so a node whose default runtime injects
-	// another vendor's devices cannot add them. A pod has no such option: its
-	// --runtime would become a RuntimeClass named "runc", which no cluster
-	// defines, so the pod could not be created; the kubelet's default runtime
-	// is already the plain one.
-	runtimeClass := ""
-	if driver != "kube" {
-		runtimeClass = "runc"
-	}
 	var devices []agentruntime.Device
 	logical := make([]string, 0, len(indexes))
 	seen := map[int]bool{}
@@ -117,7 +108,9 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 	return RuntimeInjection{
 		ManagedSelection: &RuntimeSelectionCleanup{Env: []string{"XPU_VISIBLE_DEVICES"}, DevicePaths: managedPaths},
 		Env:              map[string]string{"XPU_VISIBLE_DEVICES": strings.Join(logical, ",")},
-		Grant:            agentruntime.DeviceGrant{RuntimeClass: runtimeClass, Devices: devices},
+		// The plain runtime, so that a node whose default runtime injects
+		// another vendor's devices cannot add them.
+		Grant: agentruntime.DeviceGrant{RuntimeClass: agentruntime.PlainRuntimeClass, Devices: devices},
 	}
 }
 

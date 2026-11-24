@@ -8,6 +8,7 @@ package gpu
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -57,7 +58,7 @@ type RuntimeMount struct {
 // driver"). Probers that don't implement this use RuntimeInjection for every
 // driver.
 type DriverAwareInjector interface {
-	RuntimeInjectionForDriver(indexes []int, driverName string) RuntimeInjection
+	RuntimeInjectionForDriver(indexes []int, target runtime.Target) RuntimeInjection
 }
 
 // TopologyAwareInjector extends the same device-injection seam for backends
@@ -70,14 +71,14 @@ type TopologyAwareInjector interface {
 }
 
 // InjectionRequest is what the caller knows about the workload whose devices
-// it is asking for. DriverName is the container runtime driver that will start
+// it is asking for. Runtime is the container runtime that will start
 // it, NNodes its rank count, and DockerArgs the options already resolved for
 // it (the compute network's, among others), which a backend may require but
 // must not duplicate. Env and the other request fields are read-only for the
 // prober.
 type InjectionRequest struct {
 	Indexes    []int
-	DriverName string
+	Runtime    runtime.Target
 	NNodes     int
 	DockerArgs []string
 	Env        map[string]string
@@ -89,20 +90,36 @@ type InjectionRequest struct {
 // predict it ask the same question of the same backend.
 //
 // Asking through a plainer seam than the backend implements means inventing
-// the facts the seam leaves out: a caller that drops DriverName has to assume
+// the facts the seam leaves out: a caller that drops Runtime has to assume
 // some container runtime, and a backend whose contract depends on it then
 // answers for a host that may not be this one.
 func ResolveInjection(ctx context.Context, p Prober, req InjectionRequest) RuntimeInjection {
+	if p == nil {
+		return RuntimeInjection{}
+	}
+	// Which devices a container of this runtime sees decides how a backend
+	// numbers the selection. For a runtime that does not say, every backend
+	// would have to guess, each in its own way.
+	if len(req.Indexes) > 0 && req.Runtime.View == runtime.ViewUnknown {
+		if req.Runtime.Name == "" {
+			return RuntimeInjection{UnsupportedReason: "this agent has no container runtime to grant devices in"}
+		}
+		return RuntimeInjection{UnsupportedReason: fmt.Sprintf("which devices a container of runtime %q sees is not known", req.Runtime.Name)}
+	}
 	var inj RuntimeInjection
 	switch injector := p.(type) {
-	case nil:
-		return RuntimeInjection{}
 	case TopologyAwareInjector:
 		inj = injector.RuntimeInjectionForLaunch(ctx, req)
 	case DriverAwareInjector:
-		inj = injector.RuntimeInjectionForDriver(req.Indexes, req.DriverName)
+		inj = injector.RuntimeInjectionForDriver(req.Indexes, req.Runtime)
 	default:
 		inj = injector.RuntimeInjection(req.Indexes)
+	}
+	// A runtime without a container has nothing to hand a device to. Its
+	// driver reads no grant, so one a backend returns for it is refused
+	// rather than dropped.
+	if req.Runtime.View == runtime.ViewNone && inj.UnsupportedReason == "" && !inj.Grant.Empty() {
+		return RuntimeInjection{UnsupportedReason: fmt.Sprintf("runtime %q runs engines as host processes and cannot be given devices", req.Runtime.Name)}
 	}
 	// The grant's vendor is the backend's, written here for every backend.
 	if len(req.Indexes) > 0 && inj.UnsupportedReason == "" && inj.Failure == nil {

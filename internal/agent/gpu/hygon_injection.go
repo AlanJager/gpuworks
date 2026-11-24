@@ -19,13 +19,12 @@ import (
 // nodes, so HIP sees a compact 0..N-1 list there: host index 2 is HIP device 0, and naming it "2"
 // hides every card ("No HIP GPUs are available"). runveil binds the host's
 // whole /dev and /sys, so HIP enumerates every card and the host indexes stay.
-func (p *HygonProber) RuntimeInjectionForDriver(indexes []int, driverName string) RuntimeInjection {
+func (p *HygonProber) RuntimeInjectionForDriver(indexes []int, target runtime.Target) RuntimeInjection {
 	inj := p.RuntimeInjection(indexes)
 	if inj.UnsupportedReason != "" || len(inj.Env) == 0 {
 		return inj
 	}
-	switch driverName {
-	case "docker", "nerdctl", "kube":
+	if target.View == runtime.ViewGranted {
 		visible := compactVisibleDevices(len(indexes))
 		inj.Env = map[string]string{
 			"HYGON_VISIBLE_DEVICES": visible,

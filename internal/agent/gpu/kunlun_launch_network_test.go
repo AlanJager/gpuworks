@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/netplan"
 )
@@ -39,7 +40,7 @@ func TestKunlunConsumesResolvedHostRDMA(t *testing.T) {
 			t.Fatal(err)
 		}
 		withKunlunXDR(p, os.ModeDevice|os.ModeCharDevice)
-		req := InjectionRequest{Indexes: []int{1}, DriverName: "Docker", NNodes: 2, DockerArgs: launch.DockerArgs, Env: launch.Env}
+		req := InjectionRequest{Indexes: []int{1}, Runtime: runtime.TargetNamed("Docker"), NNodes: 2, DockerArgs: launch.DockerArgs, Env: launch.Env}
 		inj := p.RuntimeInjectionForLaunch(t.Context(), req)
 		if finite {
 			if !strings.Contains(inj.UnsupportedReason, "finite") || len(inj.Grant.DockerDeviceArgs()) != 0 {
@@ -90,7 +91,7 @@ func TestKunlunMultiNodeRequiresBKCLNetworkEnvironment(t *testing.T) {
 			}
 			withKunlunXDR(p, os.ModeDevice|os.ModeCharDevice)
 			inj := p.RuntimeInjectionForLaunch(t.Context(), InjectionRequest{
-				Indexes: []int{1}, DriverName: "docker", NNodes: 2,
+				Indexes: []int{1}, Runtime: runtime.TargetNamed("docker"), NNodes: 2,
 				DockerArgs: []string{"--device", "/dev/infiniband", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK"},
 				Env:        tc.env,
 			})
@@ -106,7 +107,7 @@ func TestKunlunSingleNodeDoesNotInjectBKCLEnvironment(t *testing.T) {
 	if _, err := p.Probe(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	inj := p.RuntimeInjectionForLaunch(t.Context(), InjectionRequest{Indexes: []int{1}, DriverName: "docker", NNodes: 1, Env: validKunlunMultiNodeEnv()})
+	inj := p.RuntimeInjectionForLaunch(t.Context(), InjectionRequest{Indexes: []int{1}, Runtime: runtime.TargetNamed("docker"), NNodes: 1, Env: validKunlunMultiNodeEnv()})
 	if inj.UnsupportedReason != "" {
 		t.Fatal(inj.UnsupportedReason)
 	}
@@ -120,7 +121,7 @@ func TestKunlunSingleNodeMultiGPURequiresAndInjectsInterface(t *testing.T) {
 	if _, err := p.Probe(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	req := InjectionRequest{Indexes: []int{0, 1}, DriverName: "docker", NNodes: 1, Env: map[string]string{"GLOO_SOCKET_IFNAME": "br_eno1_31"}}
+	req := InjectionRequest{Indexes: []int{0, 1}, Runtime: runtime.TargetNamed("docker"), NNodes: 1, Env: map[string]string{"GLOO_SOCKET_IFNAME": "br_eno1_31"}}
 	inj := p.RuntimeInjectionForLaunch(t.Context(), req)
 	if inj.UnsupportedReason != "" {
 		t.Fatal(inj.UnsupportedReason)
@@ -140,7 +141,7 @@ func TestKunlunFreshInjectionHonorsCallerCancellation(t *testing.T) {
 	p.command = func(ctx context.Context, _ ...string) (string, error) { <-ctx.Done(); return "", ctx.Err() }
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()
-	inj := p.RuntimeInjectionForLaunch(ctx, InjectionRequest{Indexes: []int{1}, DriverName: "docker", NNodes: 1})
+	inj := p.RuntimeInjectionForLaunch(ctx, InjectionRequest{Indexes: []int{1}, Runtime: runtime.TargetNamed("docker"), NNodes: 1})
 	if !strings.Contains(inj.UnsupportedReason, "deadline exceeded") || len(inj.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("cancelled injection: %+v", inj)
 	}
@@ -156,7 +157,7 @@ func TestKunlunFreshExecutableRespectsDeadline(t *testing.T) {
 	p.lookPath = func(string) (string, error) { return exe, nil }
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
 	defer cancel()
-	inj := p.RuntimeInjectionForLaunch(ctx, InjectionRequest{Indexes: []int{0}, DriverName: "docker", NNodes: 1})
+	inj := p.RuntimeInjectionForLaunch(ctx, InjectionRequest{Indexes: []int{0}, Runtime: runtime.TargetNamed("docker"), NNodes: 1})
 	if !strings.Contains(inj.UnsupportedReason, "deadline exceeded") || len(inj.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("deadline ignored: %+v", inj)
 	}

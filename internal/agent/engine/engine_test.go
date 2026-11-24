@@ -513,6 +513,10 @@ func (d *headlessTestDriver) Name() string {
 	}
 	return "headless-test"
 }
+
+// DeviceView is asked when the name is not a registered driver's: such a
+// stand-in gives a container only the devices it was granted.
+func (d *headlessTestDriver) DeviceView() runtime.DeviceView                        { return runtime.ViewGranted }
 func (d *headlessTestDriver) Detect(context.Context) (bool, error)                  { return true, nil }
 func (d *headlessTestDriver) ImageExists(context.Context, string) (bool, error)     { return true, nil }
 func (d *headlessTestDriver) PullImage(context.Context, string, func(string)) error { return nil }
@@ -566,15 +570,15 @@ type driverAwareInjectionProber struct {
 	injectionProber
 }
 
-func (p driverAwareInjectionProber) RuntimeInjectionForDriver(indexes []int, driverName string) gpu.RuntimeInjection {
-	if inj, ok := p.driverInj[driverName]; ok {
+func (p driverAwareInjectionProber) RuntimeInjectionForDriver(indexes []int, target runtime.Target) gpu.RuntimeInjection {
+	if inj, ok := p.driverInj[target.Name]; ok {
 		return inj
 	}
 	return p.inj
 }
 
 func TestApplyDeviceInjection(t *testing.T) {
-	e := NewWithProber(nil, nil, slog.Default(), t.TempDir(), injectionProber{
+	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, slog.Default(), t.TempDir(), injectionProber{
 		inj: gpu.RuntimeInjection{
 			Env:   map[string]string{"ASCEND_RT_VISIBLE_DEVICES": "2,4"},
 			Grant: runtime.DeviceGrant{RuntimeClass: "ascend"},
@@ -619,7 +623,7 @@ func (d *oomMarkerDriver) Logs(context.Context, string, bool, int) (io.ReadClose
 }
 
 func TestApplyDeviceInjectionRejectsUnsupportedRuntime(t *testing.T) {
-	e := NewWithProber(nil, nil, slog.Default(), t.TempDir(), injectionProber{
+	e := NewWithProber(&headlessTestDriver{name: "docker"}, nil, slog.Default(), t.TempDir(), injectionProber{
 		inj: gpu.RuntimeInjection{UnsupportedReason: "vendor runtime is not configured"},
 	})
 	ws := runtime.WorkloadSpec{Env: map[string]string{}}
