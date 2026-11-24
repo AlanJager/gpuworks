@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/pkg/bench/loadgen"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -100,7 +101,7 @@ func newPriorityRig(t testing.TB) *priorityRig {
 		}
 	}
 	addr := strings.TrimPrefix(upstream.URL, "http://")
-	rig.p = New(st, storeNetworks(st), dialTestHub{addr: addr}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
+	rig.p = New(storeplane.New(st), storeNetworks(st), dialTestHub{addr: addr}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
 	t.Cleanup(rig.p.Close)
 	rig.st = st
 	return rig
@@ -361,7 +362,7 @@ func TestPlaygroundRequestsRunAtTheClassNamed(t *testing.T) {
 func TestPriorityClassSnapshotAges(t *testing.T) {
 	rig := newPriorityRig(t)
 	clock := time.Unix(1000, 0)
-	cache := &priorityClasses{store: rig.st, now: func() time.Time { return clock }}
+	cache := &priorityClasses{store: storeplane.New(rig.st), now: func() time.Time { return clock }}
 	if cache.get().Default.Name != priority.Normal {
 		t.Fatal("first load")
 	}

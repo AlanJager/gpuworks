@@ -345,16 +345,26 @@ grep -rnE '\.ListInstances\(\)' internal pkg cmd --include='*.go' | grep -v '_te
 
 ```sh
 # scripts/structcount 解析非测试文件的语法树，打印一个数
-go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure fields    # 77
-go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure mutexes   # 12
-go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure methods   # 233
-go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure rpcs      # 51
+go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure fields    # 70
+go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure mutexes   # 9
+go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure methods   # 218
+go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure rpcs      # 43
 go run ./scripts/structcount -dir internal/agent/engine -type Engine      -measure maps      # 9
 ```
 
 口径（`scripts/structcount/main_test.go` 的夹具逐条覆盖）：一行多个名字按名字计；指针锁、`sync.Map`、包内声明的 map 类型都计；匿名 struct 里的字段、锁与 map 照样计（包一层不算离开）；具名类型的字段只计这一个字段（移进具名子系统类型才算离开）；方法按接收者计，值与指针都算；`rpcs` 是包内所有 switch 的 case 里出现的不同 `proto.RPC*` 常量数，`OnRPC` 转交给辅助 switch（`kubeRPC`）的也计。
 
 初值是 R-23 第一个 MR（GWKS-321）之后的值：`Engine` 的 12 张按 UUID 的 map 中，描述引擎进程的四张（睡眠级别、预热、L1 主机缓冲、卡上进程）收成 `processes map[string]*processFacts`，12 → 9。
+
+77 / 12 / 233 / 51 → 70 / 9 / 218 / 43（2026-11-25，GWKS-503）：镜像成为第一个有自己类型的所有者 `nodeImages`，带走 8 个字段、3 把锁；镜像的 17 个 RPC 走它自己的两张表。同一次改动扩大了统计范围：`methods` 把以该类型为参数的函数也算作方法，不论它挂在谁身上（当时 4 个：`storageUsers`、`startSlurm`、`Agent.runServerDial`、`Agent.handlers`）；`rpcs` 把 `==` / `!=` 比较、值类型提到该类型的 map 字面量的键、以该类型为接收者或参数的函数里任何 map 字面量的键也算进去，另一个具名类型的、不接该类型的方法里的分发不算。按旧口径方法数是 214。
+
+### agent_image_deps_fields（初值 9，2026-11-25）
+
+意图：`nodeImages` 向 `NodeRuntime` 要的东西只降不升（ADR 0066 决策 4：依赖收窄）。依赖一多，子系统就是换了名字的 `NodeRuntime`。
+
+```sh
+go run ./scripts/structcount -dir internal/agent/app -type imageDeps -measure fields    # 9
+```
 
 ### store_concrete_importers（初值 17）
 
@@ -393,9 +403,47 @@ go list -e -f '{{.ImportPath}}{{"\t"}}{{join .Imports " "}}' ./... \
 推导、模型准备观测），不依赖 `net/http` 与 `api`（依赖方向检查守护）；`api` 的 handler 只做解码、调用、映射。该包按 store 写入
 与读取，`store_concrete_importers` 22→23；`api` 仍为其余 handler 依赖 store，故没有随之减少。
 
+2026-11-24：推理网关不再持有 store（转发面拆分第 1 步）。`internal/server/proxy` 原先直接持有 `*store.Store`、
+订阅事件总线并引用 hub 的错误；现在只持有 `proxy/plane` 里的接口（路由行快照、请求路径上的查找、回写、少数需要控制面的调用），
+由 `proxy/storeplane` 用本进程的 store 与总线实现。句柄从 proxy 移进了 `storeplane`，行类型（`store.Deployment` 等）暂时仍是
+store 的实体，所以 `plane` 也导入 store：包级导入数 24→26，而 proxy 对句柄的依赖由新增的 `proxy_store_handle_refs`、
+`proxy_bus_hub_imports`、`proxy_adapter_refs` 三项守在 0。
+
+- 放宽 `store_concrete_importers` 24→26（GWKS-460）：网关的 store 句柄移进新包 `proxy/storeplane`，接口包 `proxy/plane` 因行类型仍是 store 实体而导入 store；回落条件：转发面拆分第 2 步给快照定义自己的行类型后，`proxy` 与 `proxy/plane` 不再导入 store，降回 24
+
 调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录；新的放宽按文首规则写 `- 放宽` 行）：
 
 - `store_concrete_importers`（限额 24 时）：raised: the Slurm entry use cases (internal/server/slurmcluster) moved out of the HTTP handlers: the entry views read the store in grouped queries and report ingestion replaces an entry's node list, over the store's own Slurm rows (SlurmCluster, SlurmGPUNode, the counts and blockers), behind narrow interfaces; earlier: the deployment use cases (internal/server/deployment) create and evaluate a deployment and keep its read model (row lookups, runtime state) over the store, moved out of the HTTP handlers so the automation, batches and MCP can call them; api still imports store for the handlers not yet moved; earlier: the scheduling activity (internal/server/schedactivity) counts the events the store hands over (store.ObservedEvent, store.ResidencyMachine) and reads the replay and the deployments it names from the store; earlier: Cloud resource ownership moved into provider/zstack/cloud/resourceclaim; cloud retains host onboarding, while resourceclaim owns node/GPU reads and lease lifecycle state; internal/server/analytics answers the usage analytics queries over the usage tables, whose rows are store's own typed entities (UsageCounts, UsageGroup, the deployment and user name lookups) - a narrow interface would need a parallel set of row types for the same tables
+
+### proxy_store_handle_refs / proxy_bus_hub_imports / proxy_adapter_refs（初值 0，2026-11-24）
+
+意图：推理网关只经 `internal/server/proxy/plane` 的接口取数据与回写，不持有 `*store.Store`、不订阅事件总线、不导入 hub。
+这样网关所依据的数据以后可以由别的成员提供，或者放在进程边界另一侧（GWKS-460 转发面拆分）。本进程的实现在
+`internal/server/proxy/storeplane`，不在统计范围内。
+
+```sh
+grep -nE '\*store\.Store|store\.Open(With)?\(|\.Bus\b' internal/server/proxy/*.go internal/server/proxy/plane/*.go \
+  | grep -v '_test\.go' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' | grep -c .
+grep -nE '"gpuworks\.ai/gpuworks/internal/server/(bus|hub)"' internal/server/proxy/*.go internal/server/proxy/plane/*.go \
+  | grep -v '_test\.go' | grep -c .
+grep -nE '"gpuworks\.ai/gpuworks/internal/server/proxy/storeplane"|storeplane\.' internal/server/proxy/*.go internal/server/proxy/plane/*.go \
+  | grep -v '_test\.go' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' | grep -c .
+```
+
+`proxy_adapter_refs`：适配包 `storeplane.Source` 内嵌 `*store.Store`，网关的生产代码一旦导入它，一次类型断言就拿回句柄，
+前两项却数不到；所以网关的非测试文件不得导入或引用 `storeplane`，接线只在 `app`。
+
+排除：`*_test.go`（测试用真实 store 搭夹具）与注释行。只数 `proxy` 与 `proxy/plane` 两个目录本身，不含 `storeplane`。
+
+### proxy_store_type_files（初值 15，2026-11-24）
+
+意图：网关里还把 store 的实体当行类型用的文件数（`store.Deployment`、`store.Instance`、`store.APIKeyIdentity` 等；
+`planning` 与 `deploy` 的函数以这些类型为参数）。只降不升；第 2 步给快照定义自己的行类型后归零。
+
+```sh
+grep -lE '"gpuworks\.ai/gpuworks/internal/server/store"' internal/server/proxy/*.go internal/server/proxy/plane/*.go \
+  | grep -v '_test\.go' | grep -c .
+```
 
 ### store_db_accessor_callers（初值 0，2026-11-14）
 

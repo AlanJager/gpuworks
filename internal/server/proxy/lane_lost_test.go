@@ -16,7 +16,8 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
-	hubpkg "gpuworks.ai/gpuworks/internal/server/hub"
+	"gpuworks.ai/gpuworks/internal/server/proxy/plane"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -99,7 +100,7 @@ func newMidRequestProxy(t *testing.T, name string, hub Tunneler) (*Proxy, string
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := New(st, storeNetworks(st), hub, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
+	p := New(storeplane.New(st), storeNetworks(st), hub, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
 	t.Cleanup(p.Close)
 	return p, apiKey
 }
@@ -127,7 +128,7 @@ func proxyChat(t *testing.T, p *Proxy, apiKey, model string) *httptest.ResponseR
 // stream opened — not 502.
 func TestProxyDataLaneLostMidRequestReturns503WithRetryAfter(t *testing.T) {
 	lost := fmt.Errorf("%w: node lane-lost-node data lane closed under an open stream: %w",
-		hubpkg.ErrDataLaneUnavailable, errors.New("stream reset: connection closed: EOF"))
+		plane.ErrDataLaneUnavailable, errors.New("stream reset: connection closed: EOF"))
 	p, apiKey := newMidRequestProxy(t, "lanelost", midRequestFailHub{readErr: lost})
 	rec := proxyChat(t, p, apiKey, "lanelost")
 	if rec.Code != http.StatusServiceUnavailable {

@@ -117,7 +117,7 @@ func TestRPCImagePullRejectsDigestAndMissingReferences(t *testing.T) {
 		`{"effective_ref":"repo/image:tag","canonical_ref":"repo/image@sha256:abc"}`,
 		`{"effective_ref":"","canonical_ref":"repo/image:tag"}`,
 	} {
-		if _, err := n.rpcImagePull(context.Background(), json.RawMessage(raw)); err == nil {
+		if _, err := n.imageWork().rpcImagePull(context.Background(), json.RawMessage(raw)); err == nil {
 			t.Errorf("rpcImagePull(%s) unexpectedly succeeded", raw)
 		}
 	}
@@ -145,7 +145,7 @@ func TestRPCImagePullReportsFailureAndSuccessOrder(t *testing.T) {
 				}
 				return nil
 			}
-			result, err := n.rpcImagePull(context.Background(), json.RawMessage(`{"effective_ref":"mirror/repo:tag","canonical_ref":"repo/image:tag"}`))
+			result, err := n.imageWork().rpcImagePull(context.Background(), json.RawMessage(`{"effective_ref":"mirror/repo:tag","canonical_ref":"repo/image:tag"}`))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -191,7 +191,7 @@ func TestRPCImagePullReportsFailureAndSuccessOrder(t *testing.T) {
 
 func TestRPCImageInspect(t *testing.T) {
 	n := NewNodeRuntime(slog.Default(), &imagePullTestDriver{}, t.TempDir())
-	got, err := n.rpcImageInspect(context.Background(), json.RawMessage(`{"image_ref":"repo/image:tag"}`))
+	got, err := n.imageWork().rpcImageInspect(context.Background(), json.RawMessage(`{"image_ref":"repo/image:tag"}`))
 	if err != nil {
 		t.Fatal(err)
 	}

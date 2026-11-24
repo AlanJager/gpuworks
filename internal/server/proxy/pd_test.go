@@ -19,6 +19,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/tsdb"
 )
@@ -206,7 +207,7 @@ func newPDHarnessMode(t testing.TB, mode string, prefills int, fallback string) 
 		t.Fatal(err)
 	}
 	h.key = key
-	h.proxy = New(st, storeNetworks(st), h.hub, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
+	h.proxy = New(storeplane.New(st), storeNetworks(st), h.hub, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
 	t.Cleanup(h.proxy.Close)
 	h.acct = NewAccountant(func([]tsdb.Sample) {}, nil)
 	h.proxy.SetAccountant(h.acct)

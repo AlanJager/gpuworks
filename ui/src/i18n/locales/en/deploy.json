@@ -120,7 +120,7 @@
     "PLANNING_KV_BELOW_CONTEXT": "The estimated KV cache capacity is {{kv_tokens}} tokens, below the maximum context of {{max_model_len}}. Actual capacity depends on the attention architecture and inference engine, so the estimate may be inaccurate. You can lower the maximum context or continue with the current settings; the engine may fail to start.",
     "IMAGE_PARTITION_PROFILE_UNBUILT": "Image CANN {{framework_version}} × {{arch}} is not in the built dGPU asset matrix; the probe only verifies the node execution path, the image itself may still be incompatible.",
     "IMAGE_PARTITION_PROFILE_UNVERIFIED": "The dGPU assets for image CANN {{framework_version}} × {{arch}} have not been verified on real hardware yet.",
-    "PD_CARD_NETWORK_UNREACHABLE": "The selected PD ports on {{network}} cannot reach each other: {{pairs}} (verified pairs: {{available}}; — means none). Select a reachable pair and run the card matrix test again before deploying.",
+    "PD_CARD_NETWORK_UNREACHABLE": "$t(common:apiError.PD_CARD_NETWORK_BLOCKED)",
     "PD_CARD_NETWORK_UNTESTED": "The PD ports on {{network}} have no verified bidirectional connectivity: {{pairs}} (verified pairs: {{available}}; — means none). Pin the cards and run a card matrix test; results hold for 24 hours.",
     "PD_UNVERIFIED_COMBINATION": "PD combined with {{feature}} is allowed but has not been verified on real hardware yet.",
     "PD_GPU_MODELS_DIFFER": "The PD roles run on different GPU models ({{models}}); throughput and latency will differ by role.",
@@ -132,6 +132,8 @@
     "ENGRAM_SHARED_MEMORY_RUNTIME": "Engram shared memory ({{flag}}) needs about {{shm_gib}} GiB of /dev/shm and unlimited locked memory, and {{runtime}} takes both from the host, which the platform cannot check; check the host, or use Docker or nerdctl.",
     "ENGRAM_CONFIG_UNCERTAIN": "The Engram configuration ({{flag}}) cannot be read; if it shares memory it needs about {{shm_gib}} GiB of /dev/shm and unlimited locked memory, which {{runtime}} takes from the host, so check the configuration and the host.",
     "ENGRAM_MANUAL_UNCHECKED": "The manual command mentions Engram ({{flag}}) but is too dynamic to read, so the platform did not derive shared-memory and locked-memory settings from it. Make sure the shared memory and memlock are sufficient, or use engine mode.",
+    "MANUAL_COMMAND_PORT_UNSTATED": "The manual command does not set the API port, so the engine listens on its own default port, and the deployment never becomes ready unless that happens to be the port the platform assigned. Add {{flag}} {{variable}} to the engine command.",
+    "MANUAL_COMMAND_PORT_TAKEN": "Port {{port}} is already in use on {{node}}. The platform always replaces a port written in the command with the one it assigns; write {{flag}} {{variable}} instead.",
     "ASCEND_SLEEP_EXPANDABLE_SEGMENTS_DISABLED": "Sleep mode on Ascend cannot run with expandable segments, so {{variable}} was changed to {{value}}; if memory runs out, lower gpu_memory_utilization or max_model_len, or turn sleep off.",
     "KUBE_ENGINE_PORTS_OUTSIDE": "Running instances hold ports outside the new engine port range {{range}}: {{instances}}. They keep their ports and keep running; only instances started later use the new range.",
     "PD_UCX_NETLINK_HANG": "The kernel of {{names}} makes UCX hang (its IPv6 route dump ends in a way UCX cannot read), and PD mode {{mode}} moves the KV with NIXL over Ethernet, so the engine will likely never finish starting. The deployment can still be created; turn IPv6 off on the node first (this disables IPv6 for the whole host); the commands are listed below.",
@@ -209,7 +211,8 @@
     "runtime_unreported": "{{vendor}} requires {{required_os}}/{{required_arch}} with {{required_runtime}}; this node has not reported all required runtime facts.",
     "accelerator_feature_unsupported": "{{vendor}} does not support {{feature}}. Change the launch options or select another accelerator.",
     "accelerator_device_selection_required": "{{vendor}} requires an explicit GPU assignment before launch.",
-    "launch_features_unknown": "The launch command could not be inspected for {{vendor}}. Use a recognized engine entrypoint or structured launch parameters."
+    "launch_features_unknown": "The launch command could not be inspected for {{vendor}}. Use a recognized engine entrypoint or structured launch parameters.",
+    "dgpu_startup_memory": "$t(common:apiError.DGPU_STARTUP_MEMORY)"
   },
   "placementReason": {
     "node_cordoned": "The node is cordoned. Resume scheduling on it or choose another node.",
@@ -233,6 +236,7 @@
     "sleeping_residue": "keep {{sleeping_gib}} GiB resident for sleeping instances.",
     "foreign_held": "Processes outside the platform use {{foreign_gib}} GiB of the card, and {{foreign_headroom_gib}} GiB is kept free beside them.",
     "foreign_held_only": "Processes outside the platform use {{foreign_gib}} GiB of the card.",
+    "memory_contract_hint": "If the engine offloads weights or quantizes at load time, its template can declare the real per-GPU memory with a placement resolver.",
     "image_delivery_detail": "Reported failure: {{detail}}",
     "model_unavailable_detail": "Reported failure: {{detail}}",
     "plan_failed_detail": "Reported failure: {{detail}}",

@@ -20,6 +20,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/network"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -209,7 +210,7 @@ func TestProxyReachesInstancesOverTheServingNetwork(t *testing.T) {
 	upstreamAddr := strings.TrimPrefix(upstream.URL, "http://")
 	fwd := startFakeForwarder(t, token, upstreamAddr, map[string]bool{"inst-1": true})
 	hub := &countingHub{addr: upstreamAddr}
-	p := New(st, storeNetworks(st), hub, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
+	p := New(storeplane.New(st), storeNetworks(st), hub, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
 	t.Cleanup(p.Close)
 	var dialed atomic.Value
 	p.serving.dial = func(ctx context.Context, network, addr string) (net.Conn, error) {

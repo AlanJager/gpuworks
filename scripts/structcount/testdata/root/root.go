@@ -44,4 +44,40 @@ func (r Root) more(method string) {
 	}
 }
 
+// A function that takes the root is a method by another spelling.
+func helper(r *Root, method string) bool {
+	return method == proto.RPCRestart // an RPC compared, not switched on
+}
+
+// A table of handlers on the root dispatches as a switch does.
+var onRoot = map[string]func(*Root){
+	proto.RPCUpgrade: (*Root).testOnlyTarget,
+}
+
+// A subsystem's own table and its own functions do not count.
+var onImages = map[string]func(*images){
+	proto.RPCPull: (*images).pull,
+}
+
+func newRoot() *Root { return &Root{} }
+
+func (r *Root) testOnlyTarget() {}
+
 func (i *images) pull() {}
+
+// A method of another type that takes the root reaches it all the same.
+func (i *images) route(r *Root, method string) bool {
+	return method == proto.RPCRoute
+}
+
+// A table of closures built where the root is in scope.
+func (r *Root) table() map[string]func() {
+	return map[string]func(){proto.RPCClosure: func() { r.more("") }}
+}
+
+func (i *images) serve(method string) bool {
+	switch method {
+	case proto.RPCRemove:
+	}
+	return method == proto.RPCInspect
+}

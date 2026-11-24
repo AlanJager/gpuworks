@@ -10,6 +10,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/priority"
+	"gpuworks.ai/gpuworks/internal/server/proxy/plane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
 )
@@ -33,7 +34,7 @@ const (
 // it without a lock or the database; the request that finds it stale
 // reloads it while the others keep using the old one.
 type priorityClasses struct {
-	store  *store.Store
+	store  plane.Lookups
 	now    func() time.Time
 	snap   atomic.Pointer[prioritySnapshot]
 	reload sync.Mutex

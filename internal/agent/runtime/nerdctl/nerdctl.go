@@ -39,6 +39,9 @@ type Driver struct {
 	// authDir is where a pull's private registry login is written; "" is the
 	// system temp directory.
 	authDir string
+
+	// hostRoot locates the containerd socket when nerdctl executes on the host.
+	hostRoot string
 }
 
 // New returns a nerdctl driver pinned to the GPUWorks namespace.
@@ -46,7 +49,7 @@ func New() *Driver { return &Driver{ns: Namespace} }
 
 // NewInNamespace returns a driver pinned to another containerd namespace.
 // The Kubernetes runtime uses it for kubelet's "k8s.io" namespace, where the
-// images its pods run from must live; nothing else should need it.
+// images its pods run from must live. Local imports also inspect their source here.
 func NewInNamespace(ns string) *Driver { return &Driver{ns: ns} }
 
 // WithAuthDir makes pulls write their private registry login under dir
@@ -136,36 +139,23 @@ func (d *Driver) inspectImage(ctx context.Context, image string) (runtime.ImageI
 	// matching image on its own line (not a JSON array like `docker image
 	// inspect`); take the first line for the requested reference.
 	line := strings.TrimSpace(out)
+	// nerdctl 2.x can return success with no formatted objects for a missing tag.
+	if line == "" {
+		return runtime.ImageInspection{}, "", runtime.ErrImageNotFound
+	}
 	if i := strings.IndexByte(line, '\n'); i >= 0 {
 		line = line[:i]
 	}
-	var raw struct {
-		Image struct {
-			Target struct {
-				Digest string `json:"digest"`
-			} `json:"target"`
-		} `json:"Image"`
-		ImageConfigDesc struct {
-			Digest string `json:"digest"`
-		} `json:"ImageConfigDesc"`
-		ImageConfig *struct {
-			Config struct {
-				Entrypoint []string       `json:"Entrypoint"`
-				Cmd        []string       `json:"Cmd"`
-				Env        []string       `json:"Env"`
-				Volumes    map[string]any `json:"Volumes"`
-			} `json:"config"`
-		} `json:"ImageConfig"`
-	}
+	var raw nativeImageInspection
 	if err := json.Unmarshal([]byte(line), &raw); err != nil {
 		return runtime.ImageInspection{}, "", err
 	}
 	// nerdctl resolves image IDs against the target (manifest/index) digest.
 	// Its dockercompat Id is a config digest and cannot be used for that lookup.
-	if !imageDigestPattern.MatchString(raw.Image.Target.Digest) || !imageDigestPattern.MatchString(raw.ImageConfigDesc.Digest) || raw.ImageConfig == nil {
+	if !runtime.ValidImageDigest(raw.Image.Target.Digest) || !runtime.ValidImageDigest(raw.ImageConfigDesc.Digest) || raw.ImageConfig == nil {
 		return runtime.ImageInspection{}, "", fmt.Errorf("nerdctl image inspect missing target digest, config digest or image config")
 	}
-	if imageDigestPattern.MatchString(image) && raw.Image.Target.Digest != image {
+	if runtime.ValidImageDigest(image) && raw.Image.Target.Digest != image {
 		return runtime.ImageInspection{}, "", fmt.Errorf("nerdctl image inspect returned a different target digest")
 	}
 	config := raw.ImageConfig.Config
@@ -179,7 +169,7 @@ func (d *Driver) inspectImage(ctx context.Context, image string) (runtime.ImageI
 	for v := range config.Volumes {
 		vols = append(vols, v)
 	}
-	return runtime.ImageInspection{ID: raw.ImageConfigDesc.Digest, Entrypoint: config.Entrypoint, Cmd: config.Cmd, Env: env, Volumes: vols}, raw.Image.Target.Digest, nil
+	return runtime.ImageInspection{Architecture: raw.ImageConfig.Architecture, Labels: config.Labels, ID: raw.ImageConfigDesc.Digest, Entrypoint: config.Entrypoint, Cmd: config.Cmd, Env: env, Volumes: vols}, raw.Image.Target.Digest, nil
 }
 
 // PullImage pulls an image, streaming its progress to onLine in the shared pull
@@ -263,7 +253,8 @@ func (d *Driver) PullImage(ctx context.Context, image string, onLine func(string
 // TagImage records a source-selected pull under the canonical catalog ref.
 func (d *Driver) TagImage(ctx context.Context, source, canonical string) error {
 	slog.Info("runtime command", "runtime", "nerdctl", "args", []string{"-n", d.ns, "tag", source, canonical})
-	return exec.CommandContext(ctx, "nerdctl", "-n", d.ns, "tag", source, canonical).Run()
+	_, err := exec.CommandContext(ctx, "nerdctl", "-n", d.ns, "tag", source, canonical).Output()
+	return err
 }
 
 // HoldsImage reports whether the gpuworks namespace holds image, for a node
@@ -276,8 +267,7 @@ func (d *Driver) SaveImage(ctx context.Context, image string, w io.Writer) error
 	slog.Debug("runtime command", "runtime", "nerdctl", "args", []string{"-n", d.ns, "save", image})
 	cmd := exec.CommandContext(ctx, "nerdctl", "-n", d.ns, "save", image)
 	cmd.Stdout = w
-	cmd.Stderr = io.Discard
-	return cmd.Run()
+	return runImageExport(cmd)
 }
 
 func (d *Driver) LoadImage(ctx context.Context, image string, r io.Reader) error {

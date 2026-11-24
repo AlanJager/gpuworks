@@ -7,7 +7,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/planning"
-	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/proxy/plane"
 )
 
 // pickBy leases a candidate by the deployment's routing policy, passing over
@@ -77,11 +77,11 @@ func (p *Proxy) pickAwake(candidates []candidate, policy, affinity string, fresh
 // deployment-wide sleep order (which rewrites its instances' sleep intent)
 // as a deployment change. Both counters only grow, so the sum stands still
 // exactly while neither moves.
-func routingGeneration(st *store.Store) uint64 {
-	if st == nil || st.Bus == nil {
+func routingGeneration(st plane.Snapshots) uint64 {
+	if st == nil || !st.Announces() {
 		return 0
 	}
-	return st.Bus.Generation("instance") + st.Bus.Generation("deployment")
+	return st.Generation(plane.TopicInstance) + st.Generation(plane.TopicDeployment)
 }
 
 // instanceRowsUnchanged reports whether nothing that can change an instance
@@ -89,6 +89,6 @@ func routingGeneration(st *store.Store) uint64 {
 // (candidate.routedAt): its candidates are then exactly the rows a read
 // would return. A change announced before the caller looks is always seen,
 // so a writer that has returned is never overtaken.
-func instanceRowsUnchanged(st *store.Store, routedAt uint64) bool {
-	return routedAt != 0 && st != nil && st.Bus != nil && routingGeneration(st)+1 == routedAt
+func instanceRowsUnchanged(st plane.Snapshots, routedAt uint64) bool {
+	return routedAt != 0 && st != nil && st.Announces() && routingGeneration(st)+1 == routedAt
 }

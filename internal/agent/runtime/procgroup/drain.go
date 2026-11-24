@@ -89,7 +89,15 @@ func drain(ctx context.Context, target drainTarget, grace, killWait time.Duratio
 		if target.reap != nil {
 			target.reap()
 		}
-		if !target.present() || (killed && !target.working()) {
+		if !target.present() {
+			return nil
+		}
+		if killed && !target.working() {
+			// What is left are exited processes, and one that exited after
+			// the reap above is one nothing else will ever wait for.
+			if target.reap != nil {
+				target.reap()
+			}
 			return nil
 		}
 		select {

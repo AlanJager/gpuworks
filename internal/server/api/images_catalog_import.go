@@ -57,11 +57,12 @@ type manifestSeriesInput struct {
 }
 
 type imageImportPayload struct {
-	Series []manifestSeriesInput `json:"series" yaml:"series"`
+	RuntimeImage *selectedNodeImage    `json:"runtime_image,omitempty" yaml:"runtime_image,omitempty"`
+	Series       []manifestSeriesInput `json:"series" yaml:"series"`
 }
 
 // importImages accepts two bodies. A manifest (schema_version 2 or 3) is the
-// system catalog uploaded by hand, applied exactly like "check for updates".
+// system catalog uploaded by hand. A conflicting upload is rejected in full.
 // A body without schema_version is the community/custom form the image page
 // submits. Any other schema_version is an old catalog format and is refused.
 func (a *apiHandlers) importImages(w http.ResponseWriter, r *http.Request) {
@@ -78,7 +79,7 @@ func (a *apiHandlers) importImages(w http.ResponseWriter, r *http.Request) {
 		SchemaVersion *int `json:"schema_version"`
 	}
 	if json.Unmarshal(body, &probe) == nil && probe.SchemaVersion != nil {
-		a.applyOfficialManifest(w, body)
+		a.applyOfficialManifest(w, body, false)
 		return
 	}
 	var req imageImportPayload
@@ -96,6 +97,10 @@ func (a *apiHandlers) importImages(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.RuntimeImage != nil {
+		a.registerRuntimeImage(w, r, *req.RuntimeImage, inputs)
+		return
+	}
 	result, err := a.upsertImageInputs(inputs)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
@@ -109,10 +114,9 @@ func (a *apiHandlers) importImages(w http.ResponseWriter, r *http.Request) {
 const imageImportMaxBytes = 8 << 20
 
 // applyOfficialManifest imports a system catalog manifest and writes the
-// import counts. A conflict with a community or custom row fails the whole
-// import before anything is written.
-func (a *apiHandlers) applyOfficialManifest(w http.ResponseWriter, body []byte) {
-	result, err := imagecatalog.ImportManifest(a.d.Store, body)
+// import counts. Signed channel updates skip conflicting local entries.
+func (a *apiHandlers) applyOfficialManifest(w http.ResponseWriter, body []byte, skipConflicts bool) {
+	result, err := imagecatalog.ImportManifest(a.d.Store, body, skipConflicts)
 	switch {
 	case errors.Is(err, imagecatalog.ErrManifestInvalid):
 		writeProductError(w, http.StatusBadRequest, ErrorImageManifestInvalid, err.Error(), map[string]any{"detail": err.Error()})
@@ -124,9 +128,10 @@ func (a *apiHandlers) applyOfficialManifest(w http.ResponseWriter, body []byte) 
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
-	// The import is committed; the version is only what the update view shows
-	// as current, so failing to note it does not fail the import.
-	_ = a.d.Store.RecordImageCatalogImport(result.CatalogVersion)
+	if err := a.d.Store.RecordImageCatalogImport(result.CatalogVersion, result.SkippedNames()); err != nil {
+		writeErr(w, http.StatusInternalServerError, err)
+		return
+	}
 	series := make([]dto.ImageSeries, 0)
 	if rows, listErr := a.d.Store.ListImageSeries(); listErr == nil {
 		for i := range rows {
@@ -231,66 +236,64 @@ func (a *apiHandlers) syncImagesManifest(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	a.applyOfficialManifest(w, body)
+	a.applyOfficialManifest(w, body, true)
 }
 
 func (a *apiHandlers) upsertImageInputs(inputs []imageInput) ([]dto.Image, error) {
 	result := make([]dto.Image, 0, len(inputs))
 	for _, in := range inputs {
-		if err := validateImageInput(in); err != nil {
-			return nil, err
-		}
-		if strings.TrimSpace(in.EngineVersion) == "" {
-			in.EngineVersion = community.InferEngineVersion(in.ImageRef)
-		}
-		enabled := true
-		if in.Enabled != nil {
-			enabled = *in.Enabled
-		}
-		source := in.Source
-		seriesName, err := a.resolveInputSeriesName(in, source)
+		series, version, err := a.prepareImageInput(in)
 		if err != nil {
 			return nil, err
 		}
-		if seriesName == "" {
-			seriesName = strings.TrimSpace(in.Name)
-		}
-		if seriesName == "" {
-			seriesName = in.Engine
-		}
-		purpose := strings.TrimSpace(in.Purpose)
-		if purpose == "" {
-			purpose = store.ImagePurposeInference
-		}
-		commonArgs, _ := json.Marshal(in.CommonArgs)
-		commonEnv, _ := json.Marshal(in.CommonEnv)
-		series, err := a.d.Store.UpsertImageSeries(&store.ImageSeries{Name: seriesName, Engine: in.Engine, Purpose: purpose, Framework: in.Framework, Source: source, Enabled: enabled, Notes: in.Notes, CommonArgs: string(commonArgs), CommonEnv: string(commonEnv)})
+		series, err = a.d.Store.UpsertImageSeries(series)
 		if err != nil {
 			return nil, err
 		}
-		framework := series.Framework
-		if framework == "" {
-			framework = in.Framework
+		if err := version.BindCatalogSeries(series); err != nil {
+			return nil, err
 		}
-		// The framework version is one of the three facts a catalog entry
-		// exists to declare, and it gates automatic selection — unlike the
-		// engine version, which is display metadata and may be inferred from
-		// the tag. A gating fact must be declared, not guessed: an entry that
-		// states a framework but no version is exactly the half-declared row
-		// that once made automatic image selection flip between call sites.
-		if framework != "" && strings.TrimSpace(in.FrameworkVersion) == "" {
-			return nil, productError(ErrorImageFrameworkVersionRequired, "framework_version is required when a framework is declared", map[string]any{"image": in.ImageRef, "framework": framework})
-		}
-		sources, _ := json.Marshal(in.RegistrySources)
-		// A known rolling name is rolling whatever the form said; the form can
-		// only add rolling to a tag the name does not reveal.
-		img, err := a.d.Store.UpsertImage(&store.Image{SeriesID: series.ID, Name: in.Name, Engine: in.Engine, EngineVersion: in.EngineVersion, Framework: framework, FrameworkVersion: in.FrameworkVersion, Arch: in.Arch, ImageRef: in.ImageRef, Source: source, RegistrySources: string(sources), Notes: in.Notes, Enabled: enabled, RollingTag: in.RollingTag || community.IsRollingTag(in.ImageRef)})
+		img, err := a.d.Store.UpsertImage(version)
 		if err != nil {
 			return nil, err
 		}
 		result = append(result, a.imageDTO(img, true))
 	}
 	return result, nil
+}
+
+// prepareImageInput resolves catalog defaults without modifying the series or version.
+func (a *apiHandlers) prepareImageInput(in imageInput) (*store.ImageSeries, *store.Image, error) {
+	if err := validateImageInput(in); err != nil {
+		return nil, nil, err
+	}
+	name, err := a.resolveInputSeriesName(in, in.Source)
+	if err != nil {
+		return nil, nil, err
+	}
+	if name == "" {
+		name = strings.TrimSpace(in.Name)
+	}
+	if name == "" {
+		name = in.Engine
+	}
+	purpose := strings.TrimSpace(in.Purpose)
+	if purpose == "" {
+		purpose = store.ImagePurposeInference
+	}
+	if strings.TrimSpace(in.EngineVersion) == "" {
+		in.EngineVersion = community.InferEngineVersion(in.ImageRef)
+	}
+	enabled := in.Enabled == nil || *in.Enabled
+	args, _ := json.Marshal(in.CommonArgs)
+	env, _ := json.Marshal(in.CommonEnv)
+	sources, _ := json.Marshal(in.RegistrySources)
+	series := &store.ImageSeries{Name: name, Engine: in.Engine, Purpose: purpose, Framework: in.Framework,
+		Source: in.Source, Enabled: enabled, Notes: in.Notes, CommonArgs: string(args), CommonEnv: string(env)}
+	version := &store.Image{Name: in.Name, Engine: in.Engine, EngineVersion: in.EngineVersion, Framework: in.Framework,
+		FrameworkVersion: in.FrameworkVersion, Arch: in.Arch, ImageRef: in.ImageRef, Source: in.Source,
+		RegistrySources: string(sources), Notes: in.Notes, Enabled: enabled, RollingTag: in.RollingTag || community.IsRollingTag(in.ImageRef)}
+	return series, version, version.BindCatalogSeries(series)
 }
 
 // resolveInputSeriesName keeps community/custom repositories grouped by both

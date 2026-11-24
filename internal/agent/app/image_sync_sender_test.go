@@ -37,14 +37,14 @@ func TestImageSyncStopCancelsSourceRuntimeBeforeAnyBytes(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { _, err := node.rpcImageSyncSend(ctx, params); done <- err }()
+	go func() { _, err := node.imageWork().rpcImageSyncSend(ctx, params); done <- err }()
 	select {
 	case <-driver.entered:
 	case <-time.After(3 * time.Second):
 		t.Fatal("source save did not start")
 	}
 	wrong, _ := json.Marshal(proto.ImageSyncStopParams{TransferID: "another-attempt"})
-	result, err := node.rpcImageSyncStop(context.Background(), wrong)
+	result, err := node.imageWork().rpcImageSyncStop(context.Background(), wrong)
 	if err != nil || result.(map[string]string)["status"] != "not_running" {
 		t.Fatalf("unrelated stop=%+v err=%v", result, err)
 	}
@@ -54,7 +54,7 @@ func TestImageSyncStopCancelsSourceRuntimeBeforeAnyBytes(t *testing.T) {
 	default:
 	}
 	stop, _ := json.Marshal(proto.ImageSyncStopParams{TransferID: "blocked-save"})
-	if _, err := node.rpcImageSyncStop(context.Background(), stop); err != nil {
+	if _, err := node.imageWork().rpcImageSyncStop(context.Background(), stop); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -65,9 +65,9 @@ func TestImageSyncStopCancelsSourceRuntimeBeforeAnyBytes(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("source runtime stayed blocked after stopping transfer")
 	}
-	node.imageSyncMu.Lock()
-	remaining := len(node.imageSyncSends)
-	node.imageSyncMu.Unlock()
+	node.imageWork().syncMu.Lock()
+	remaining := len(node.imageWork().sends)
+	node.imageWork().syncMu.Unlock()
 	if remaining != 0 {
 		t.Fatalf("source slot leaked: %d", remaining)
 	}

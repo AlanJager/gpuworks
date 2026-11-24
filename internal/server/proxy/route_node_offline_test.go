@@ -7,6 +7,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -72,7 +73,7 @@ func TestNodeOfflineRefusalOnlyWhenNothingElseAnswers(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"lost": false, "live": true}}, nil, 0)
+			p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{"lost": false, "live": true}}, nil, 0)
 			t.Cleanup(p.Close)
 			_, tgt, status, msg, asleep := p.selectStatus("offline-model")
 			if tc.wantNode != "" {

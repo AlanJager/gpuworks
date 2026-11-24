@@ -141,9 +141,18 @@ func (s *Service) checkEverFits(ctx context.Context, reqs map[string][]string, b
 	if err != nil || never == nil {
 		return err
 	}
+	if err := dgpuStartupMemoryError(never.Reason); err != nil {
+		return err
+	}
 	params := map[string]any{"pool": never.Pool, "shapes": never.Shapes}
 	if never.Node != "" {
 		params["node"], params["reason"], params["detail"], params["reason_params"] = never.Node, never.Reason.Code, never.Reason.Message, never.Reason.Params
+	}
+	// The scheduler decided the estimate is what refused the node and no
+	// template contract replaced it; the refusal lifts that to its own param
+	// so a client states the hint without opening the node's reason.
+	if hint, _ := never.Reason.Params[scheduler.ParamMemoryContractHint].(bool); hint {
+		params[scheduler.ParamMemoryContractHint] = true
 	}
 	return productError(messages.ErrorDeploymentNeverFits, "no node the deployment may run on could fit a replica even with nothing else on it", params)
 }

@@ -288,6 +288,9 @@ measure() {
     [ "$key" = agent_onrpc_cases ] && m=rpcs
     CGO_ENABLED=0 go run ./scripts/structcount -dir internal/agent/app -type NodeRuntime -measure "$m" 2>/dev/null || echo NOTFOUND
     ;;
+  agent_image_deps_fields)
+    CGO_ENABLED=0 go run ./scripts/structcount -dir internal/agent/app -type imageDeps -measure fields 2>/dev/null || echo NOTFOUND
+    ;;
   agent_engine_struct_maps)
     CGO_ENABLED=0 go run ./scripts/structcount -dir internal/agent/engine -type Engine -measure maps 2>/dev/null || echo NOTFOUND
     ;;
@@ -298,6 +301,25 @@ measure() {
   planning_concrete_store_refs)
     grep -rnE '\*store\.Store' internal/server/planning --include='*.go' 2>/dev/null \
       | grep -v '_test\.go' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' | grep -c . || true
+    ;;
+  proxy_store_handle_refs)
+    # The gateway holds plane.Source, never the store itself or its bus.
+    grep -nE '\*store\.Store|store\.Open(With)?\(|\.Bus\b' internal/server/proxy/*.go internal/server/proxy/plane/*.go 2>/dev/null \
+      | grep -v '_test\.go' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' | grep -c . || true
+    ;;
+  proxy_bus_hub_imports)
+    grep -nE '"gpuworks\.ai/gpuworks/internal/server/(bus|hub)"' internal/server/proxy/*.go internal/server/proxy/plane/*.go 2>/dev/null \
+      | grep -v '_test\.go' | grep -c . || true
+    ;;
+  proxy_adapter_refs)
+    # The adapter embeds the store: gateway code that imported it would be one
+    # type assertion from the handle. Only the adapter itself and tests may.
+    grep -nE '"gpuworks\.ai/gpuworks/internal/server/proxy/storeplane"|storeplane\.' internal/server/proxy/*.go internal/server/proxy/plane/*.go 2>/dev/null \
+      | grep -v '_test\.go' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' | grep -c . || true
+    ;;
+  proxy_store_type_files)
+    grep -lE '"gpuworks\.ai/gpuworks/internal/server/store"' internal/server/proxy/*.go internal/server/proxy/plane/*.go 2>/dev/null \
+      | grep -v '_test\.go' | grep -c . || true
     ;;
   planning_sync_files)
     grep -rlE '^[[:space:]]*"sync(/atomic)?"|^import "sync(/atomic)?"' internal/server/planning --include='*.go' 2>/dev/null \

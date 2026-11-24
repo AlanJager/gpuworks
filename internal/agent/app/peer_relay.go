@@ -29,36 +29,18 @@ func (n *NodeRuntime) StreamPeerSend(ctx context.Context, method string, params 
 		}
 		return n.modelSyncSend(ctx, params, raw)
 	case proto.RPCImageSyncSend:
-		var p proto.ImageSyncSendParams
+		return n.imageWork().relaySend(ctx, params, raw)
+	case proto.RPCImageSyncProbe:
+		return n.imageWork().relayProbe(ctx, params, raw)
+	case proto.RPCModelSyncProbe:
+		var p proto.ModelSyncSendParams
 		if err := json.Unmarshal(params, &p); err != nil {
 			return nil, err
 		}
 		if !p.AllowRelay {
-			return nil, errors.New("image relay is not authorized")
-		}
-		return n.imageSyncSend(ctx, params, raw)
-	case proto.RPCModelSyncProbe, proto.RPCImageSyncProbe:
-		var token, fingerprint string
-		var allow bool
-		magic := "GPUWORKS-MODEL/1"
-		if method == proto.RPCModelSyncProbe {
-			var p proto.ModelSyncSendParams
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, err
-			}
-			token, fingerprint, allow = p.Token, p.Fingerprint, p.AllowRelay
-		} else {
-			var p proto.ImageSyncSendParams
-			if err := json.Unmarshal(params, &p); err != nil {
-				return nil, err
-			}
-			token, fingerprint, allow = p.Token, p.Fingerprint, p.AllowRelay
-			magic = imageSyncMagic
-		}
-		if !allow {
 			return nil, errors.New("peer relay is not authorized")
 		}
-		if err := agentmodelsync.ProbeOnConnWithMagic(ctx, raw, token, fingerprint, magic); err != nil {
+		if err := agentmodelsync.ProbeOnConnWithMagic(ctx, raw, p.Token, p.Fingerprint, "GPUWORKS-MODEL/1"); err != nil {
 			return nil, err
 		}
 		return map[string]string{"state": "ready"}, nil
@@ -108,17 +90,7 @@ func (n *NodeRuntime) PeerRelayReceiver(ctx context.Context, kind, transferID st
 		}
 		n.syncMu.Unlock()
 	case "image":
-		n.imageSyncMu.Lock()
-		for _, active := range n.imageSyncs {
-			if active.transferID == transferID && !active.reported && active.relayDone == nil && active.receiver != nil {
-				done := make(chan struct{})
-				active.relayDone = done
-				receiver = active.receiver
-				release = func() { n.imageSyncMu.Lock(); active.relayDone = nil; close(done); n.imageSyncMu.Unlock() }
-				break
-			}
-		}
-		n.imageSyncMu.Unlock()
+		receiver, release = n.imageWork().attachRelay(transferID)
 	default:
 		return nil, errors.New("unsupported peer relay receiver kind")
 	}
@@ -158,14 +130,7 @@ func (n *NodeRuntime) rpcPeerRelayWaitClosed(ctx context.Context, params json.Ra
 		}
 		n.syncMu.Unlock()
 	case "image":
-		n.imageSyncMu.Lock()
-		for _, active := range n.imageSyncs {
-			if active.transferID == p.TransferID {
-				done = active.relayDone
-				break
-			}
-		}
-		n.imageSyncMu.Unlock()
+		done = n.imageWork().relayAttached(p.TransferID)
 	default:
 		return nil, errors.New("unsupported peer relay receiver kind")
 	}

@@ -56,6 +56,7 @@ type FakeDriver struct {
 	loadedImages         map[string]bool
 	loadedAny            bool
 	imageAbsent          bool
+	imageFixedByLoad     bool
 	engineHandler        func(EngineInstance) http.Handler
 	sharedPorts          bool
 	sharedPortOf         map[string]sharedClaim // runtime id -> its claim on a shared engine port

@@ -11,6 +11,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/placewait"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/yieldpolicy"
 )
@@ -39,7 +40,7 @@ func residencyFixture(t *testing.T) (*residencyAdapter, *automationAdapter, *sto
 	if _, err := st.CreateInstance(&store.Instance{UUID: "batch-1", DeploymentID: other.ID, NodeID: dep.NodeID, State: proto.InstRunning, GPUIndexes: "[0]", NNodes: 1, DesiredStateJSON: string(spec)}); err != nil {
 		t.Fatal(err)
 	}
-	px := proxy.New(st, noServingNetworks{}, nil, nil, 0)
+	px := proxy.New(storeplane.New(st), noServingNetworks{}, nil, nil, 0)
 	return &residencyAdapter{store: st, proxy: px, acct: nil, orders: &lifecycle.Orders{}}, auto, st, dep, other
 }
 
