@@ -81,6 +81,15 @@ Rules for `list`:
 
 Metric names are the ones registered in `internal/platformmetrics`.
 
+Optional interfaces a driver implements as needed. The framework uses one that is implemented, and a driver without it does not have that capability; the last two also take effect only with the matching declaration in the definition. These are the ones most often needed when adding a vendor; `internal/agent/gpu` has others that are used by type assertion (topology, NVLink, accelerator ports).
+
+| Interface | What it does | Also needed in the definition |
+|---|---|---|
+| `DriverAwareInjector` | The way to grant differs by runtime | Nothing |
+| `ComputeProcessLister` | Which processes are on a card, to tell occupancy from outside the platform | Nothing |
+| `HostRuntimeChecker` | Has the vendor's runtime actually use one card on the host (the per-card runtime check) | `CheckRuntime` among `checks`. Without it the check still runs and a failure still marks the card unusable, but the result is not reported and cannot be rechecked by hand |
+| `ContainerRuntimeGrader` | How the output is graded when the runtime check runs inside an image | `smokeFramework` and `smokeScript`, and `CheckRuntime` among `checks`. Without them the check does not run in an image |
+
 ### Granting Devices
 
 `RuntimeInjection` says which devices this workload gets, and writes no container command-line option:
@@ -176,7 +185,7 @@ grep -n 'probeCards(' internal/agent/gpu/<vendor>*.go | grep -v '_test\.go'
 <!-- translation-source-sha256: 70761906f3f9d64cc518f65d6f2a068e4d3bc5f680e70d2d14dff422aa3f3bd2 # Adding a New Accelerator Vendor -->
 <!-- translation-source-sha256: 30a387a790f39cbd49aba70321e5aee4f6c447d9150bb6c8e183de4711781a3e ## Files to Touch -->
 <!-- translation-source-sha256: 72f35532382ae1f8b24c0827fa855a5c43bf367873e2e75b1910e2509f73face ## Step 1: The Vendor Definition -->
-<!-- translation-source-sha256: 09f2ca39c842bd588608e034d64f1b9fce3f273d4f6a348e18bc182a50cd2672 ## Step 2: The Driver -->
+<!-- translation-source-sha256: 42366b695a9dc29118b9cbb5865620fb7ea0130a0166f4d665bf213aad3cf61a ## Step 2: The Driver -->
 <!-- translation-source-sha256: 8fa3cafc245b6882ec70b3edaff7eee36df16d04a1e496ebe3a2502d1294761d ### Granting Devices -->
 <!-- translation-source-sha256: 5118bf2c99468926a2ca3a4fa8ddaa26b1cd8ab9658ace6bc4550e0c409fef1b ## Step 3: Fixtures and Tests -->
 <!-- translation-source-sha256: e5f1e773baca5a8cd4cf9893e9316affc36ea6e6872236476e3c1b7d7e9324ce ## Step 4: Before Submitting -->

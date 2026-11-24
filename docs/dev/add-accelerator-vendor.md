@@ -81,6 +81,15 @@ func (p *ExampleProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 
 指标名用 `internal/platformmetrics` 里登记过的。
 
+驱动按需实现的可选接口。实现了框架就会用，没实现就是没有这项能力；后两个还要定义里有对应的声明才生效。这里列的是接入时最常用的几个，`internal/agent/gpu` 里还有别的按类型断言使用的接口（拓扑、NVLink、加速端口）。
+
+| 接口 | 作用 | 定义里还要有 |
+|---|---|---|
+| `DriverAwareInjector` | 授予方式随运行时不同 | 无 |
+| `ComputeProcessLister` | 卡上有哪些进程，用于判断平台之外的占用 | 无 |
+| `HostRuntimeChecker` | 在主机上让厂商运行时实际用一张卡（逐卡运行时检查） | `checks` 里列 `CheckRuntime`。不列的话检查照样跑、失败照样把卡标成不可用，但结果不上报，也不能手动复查 |
+| `ContainerRuntimeGrader` | 在镜像里跑运行时检查时，怎么判定输出 | `smokeFramework` 与 `smokeScript`，以及 `checks` 里的 `CheckRuntime`。不写就不会在镜像里跑 |
+
 ### 设备授予
 
 `RuntimeInjection` 说「这个 workload 要哪些设备」，不写任何容器命令行选项：
