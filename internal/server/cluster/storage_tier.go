@@ -13,9 +13,16 @@ var processStorageTier atomic.Pointer[storagetier.Tier]
 
 // UseStorageTier sets the tier every database node started by this process
 // runs with, unless its DatabaseConfig names one. A command calls it once,
-// with the tier its installation records, before it opens the database. What
-// an earlier node of this process was started with no longer counts: the
-// process's tier is the one it was told last, until it starts a node again.
+// with the tier its installation records, before it opens the database.
+//
+// Between this and a node start the later one decides what
+// ProcessStorageTier reports. A server does each once and in this order: it
+// is told its tier when the command starts and then starts its one node,
+// which records what it was started with; nothing tells the process a tier
+// after that. The other order belongs to processes that start more than one
+// node (a command that opens the database twice, a test binary): there the
+// tier told last replaces what an earlier node ran, until the next node
+// start records its own.
 func UseStorageTier(tier storagetier.Tier) {
 	processStorageTier.Store(&tier)
 	runningStorageTier.Store(nil)
