@@ -308,19 +308,27 @@ func TestMemberForwardCarriesStreamsAndUpgrades(t *testing.T) {
 
 func TestMemberForwardRefusesInsteadOfGuessing(t *testing.T) {
 	c := newForwardCluster(t, 1, 2, 3)
-	refused := func(name, url string) {
+	refused := func(name, url, reason string) {
 		t.Helper()
-		if status, body, _ := forwardGet(t, url); status != http.StatusServiceUnavailable || !strings.Contains(body, "member business service is not ready") {
+		before := memberBusinessRefusals.snapshot()[reason]
+		status, body, header := forwardGet(t, url)
+		if status != http.StatusServiceUnavailable || !strings.Contains(body, "member business service is not ready") {
 			t.Fatalf("%s: %d %q", name, status, body)
+		}
+		if got := header.Get(businessRefusalHeader); got != reason {
+			t.Fatalf("%s: refusal header %q, want %q", name, got, reason)
+		}
+		if got := memberBusinessRefusals.snapshot()[reason]; got != before+1 {
+			t.Fatalf("%s: %s counted %d -> %d, want one more", name, reason, before, got)
 		}
 	}
 	// No member has observed a leader: nobody serves business.
-	refused("no leader observed", c.members[1].public.URL+"/api/v1/nodes")
+	refused("no leader observed", c.members[1].public.URL+"/api/v1/nodes", refusalNoKnownLeader)
 	c.lead(2)
 	// The observation ages out when the database stops answering.
 	c.members[1].leader.Store(0)
 	c.members[1].forward.observed.Store(&memberLeaderObservation{leader: 2, at: time.Now().Add(-memberLeaderFresh - time.Second)})
-	refused("stale observation", c.members[1].public.URL+"/api/v1/nodes")
+	refused("stale observation", c.members[1].public.URL+"/api/v1/nodes", refusalNoKnownLeader)
 
 	// Members disagree for a moment after a leader change: 1 still names 2,
 	// while 2 already sees 3 lead. Member 2 refuses; it does not forward a
@@ -332,7 +340,7 @@ func TestMemberForwardRefusesInsteadOfGuessing(t *testing.T) {
 	for len(c.members[3].seen) > 0 {
 		<-c.members[3].seen
 	}
-	refused("forwarded to a member that no longer leads", c.members[1].public.URL+"/api/v1/nodes")
+	refused("forwarded to a member that no longer leads", c.members[1].public.URL+"/api/v1/nodes", refusalNotTheLeader)
 	if len(c.members[3].seen) != 0 || len(c.members[2].seen) != 0 {
 		t.Fatal("a forwarded request was served or forwarded again by a member that does not lead")
 	}
@@ -340,8 +348,16 @@ func TestMemberForwardRefusesInsteadOfGuessing(t *testing.T) {
 	// A member the leader does not admit is refused before business runs.
 	c.lead(3)
 	c.members[3].admit.Store(false)
-	if status, _, _ := forwardGet(t, c.members[1].public.URL+"/api/v1/nodes"); status != http.StatusForbidden {
-		t.Fatalf("unadmitted member was answered %d", status)
+	notAdmitted := memberBusinessRefusals.snapshot()[refusalPeerNotAdmitted]
+	status, body, header := forwardGet(t, c.members[1].public.URL+"/api/v1/nodes")
+	if status != http.StatusForbidden || !strings.Contains(body, "member is not admitted") {
+		t.Fatalf("unadmitted member was answered %d %q", status, body)
+	}
+	if got := header.Get(businessRefusalHeader); got != refusalPeerNotAdmitted {
+		t.Fatalf("refusal header %q, want %q", got, refusalPeerNotAdmitted)
+	}
+	if got := memberBusinessRefusals.snapshot()[refusalPeerNotAdmitted]; got != notAdmitted+1 {
+		t.Fatalf("%s counted %d -> %d, want one more", refusalPeerNotAdmitted, notAdmitted, got)
 	}
 	if len(c.members[3].seen) != 0 {
 		t.Fatal("business ran for a member that is not admitted")
@@ -353,8 +369,12 @@ func TestMemberForwardSurvivesTheLeaderDyingMidRequest(t *testing.T) {
 	c.lead(2)
 	// The leader drops the connection while answering: the client gets a
 	// refusal it may retry, not a hang and not another member's answer.
-	if status, _, _ := forwardGet(t, c.members[1].public.URL+"/die"); status != http.StatusServiceUnavailable {
-		t.Fatalf("a request the leader dropped was answered %d", status)
+	unreachable := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]
+	if status, _, header := forwardGet(t, c.members[1].public.URL+"/die"); status != http.StatusServiceUnavailable || header.Get(businessRefusalHeader) != refusalLeaderUnreachable {
+		t.Fatalf("a request the leader dropped was answered %d, refusal %q", status, header.Get(businessRefusalHeader))
+	}
+	if got := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]; got != unreachable+1 {
+		t.Fatalf("%s counted %d -> %d, want one more", refusalLeaderUnreachable, unreachable, got)
 	}
 	// The leader's route goes away entirely; requests are refused until the
 	// members observe the next leader, then served by it.
@@ -457,9 +477,12 @@ func TestGrantTimeoutDuringAStallDoesNotRefuseTheMembersConnectionAfterwards(t *
 	leader, follower := c.members[2], c.members[1]
 	leader.unanswered.Store(2)
 	for i := range 2 {
-		status, body, _ := forwardGet(t, follower.public.URL+"/api/v1/nodes")
+		status, body, header := forwardGet(t, follower.public.URL+"/api/v1/nodes")
 		if status != http.StatusServiceUnavailable || !strings.Contains(body, "member business service is not ready") {
 			t.Fatalf("request %d during the stall: %d %q, want 503 not ready, never 403", i, status, body)
+		}
+		if got := header.Get(businessRefusalHeader); got != refusalPeerUndecided {
+			t.Fatalf("request %d during the stall: refusal %q, want %q", i, got, refusalPeerUndecided)
 		}
 	}
 	status, body, header := forwardGet(t, follower.public.URL+"/api/v1/nodes")

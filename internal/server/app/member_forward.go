@@ -207,7 +207,7 @@ func (p *memberPeer) authorize(decide func() error) error {
 // as if the client had connected here.
 func (f *memberForward) serveForwarded(w http.ResponseWriter, r *http.Request) {
 	if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
-		refuseMemberBusiness(w)
+		refuseMemberBusiness(w, r, refusalPeerUnidentified)
 		return
 	}
 	peer, _ := r.Context().Value(memberPeerKey{}).(*memberPeer)
@@ -215,24 +215,28 @@ func (f *memberForward) serveForwarded(w http.ResponseWriter, r *http.Request) {
 	authorize, local := f.authorize, f.local
 	f.mu.Unlock()
 	if peer == nil || authorize == nil || local == nil {
-		refuseMemberBusiness(w)
+		refuseMemberBusiness(w, r, refusalForwardNotReady)
 		return
 	}
 	if err := peer.authorize(func() error { return authorize(r.Context(), r.TLS.PeerCertificates[0]) }); err != nil {
 		if store.ClusterGrantUndecided(err) {
 			// No answer about the peer: not ready, and the next request on
 			// this connection asks again.
-			refuseMemberBusiness(w)
+			refuseMemberBusiness(w, r, refusalPeerUndecided)
 			return
 		}
+		markRefusal(w, r, refusalPeerNotAdmitted)
 		http.Error(w, "member is not admitted", http.StatusForbidden)
 		return
 	}
 	// A member forwards to the leader it observed. One that is no longer the
 	// leader answers as a closed member does and never forwards again, so a
 	// request crosses the member route at most once.
-	if leader, known := f.observedLeader(); !known || leader != f.memberID() {
-		refuseMemberBusiness(w)
+	if leader, known := f.observedLeader(); !known {
+		refuseMemberBusiness(w, r, refusalNoKnownLeader)
+		return
+	} else if leader != f.memberID() {
+		refuseMemberBusiness(w, r, refusalNotTheLeader)
 		return
 	}
 	remote := r.Header.Get(memberForwardRemoteHeader)
@@ -281,7 +285,7 @@ func (f *memberForward) wrap(next http.Handler) http.Handler {
 			return
 		}
 		if proxy == nil {
-			refuseMemberBusiness(w)
+			refuseMemberBusiness(w, r, refusalNoKnownLeader)
 			return
 		}
 		proxy.ServeHTTP(w, r)
@@ -434,7 +438,15 @@ func (f *memberForward) proxyTo(member uint64) *httputil.ReverseProxy {
 			if f.log != nil && r.Context().Err() == nil {
 				f.log.Debug("request not forwarded to the leader", "member", member, "err", err)
 			}
-			refuseMemberBusiness(w)
+			refuseMemberBusiness(w, r, refusalLeaderUnreachable)
+		},
+		// The leader's answer, unless it is itself a refusal, ends a run of
+		// refusals on this member.
+		ModifyResponse: func(resp *http.Response) error {
+			if resp.Header.Get(businessRefusalHeader) == "" {
+				memberBusinessRefusals.served()
+			}
+			return nil
 		},
 	}
 	f.proxies[member] = proxy

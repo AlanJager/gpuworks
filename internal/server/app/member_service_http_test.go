@@ -66,6 +66,21 @@ func TestHealthyFollowerAcceptsTheEngineCatalog(t *testing.T) {
 	if !follower.Live || !follower.BusinessReady || follower.Schedulable {
 		t.Fatalf("healthy follower answers = %+v", follower)
 	}
+	// The count of refused business per reason is part of the authenticated
+	// answer once there is one, and never of the other two.
+	memberBusinessRefusals.record(refusalNoKnownLeader)
+	counted := requestMemberEntry(entry, http.MethodGet, "/api/v1/healthz", token)
+	var withRefusals struct {
+		Refusals map[string]uint64 `json:"business_refusals"`
+	}
+	if err := json.Unmarshal(counted.Body.Bytes(), &withRefusals); err != nil || withRefusals.Refusals[refusalNoKnownLeader] == 0 {
+		t.Fatalf("authenticated health lacks business_refusals: %v %s", err, counted.Body.String())
+	}
+	for _, path := range []string{"/healthz", "/api/v1/healthz"} {
+		if anonymous := requestMemberEntry(entry, http.MethodGet, path, ""); strings.Contains(anonymous.Body.String(), "business_refusals") {
+			t.Fatalf("%s without a token exposed the refusal counts: %s", path, anonymous.Body.String())
+		}
+	}
 	engines := requestMemberEntry(entry, http.MethodGet, "/api/v1/engines", token)
 	var catalog struct {
 		Items []struct {

@@ -60,6 +60,7 @@ func newBusinessHandlerGate(loggers ...*slog.Logger) *businessHandlerGate {
 			return
 		}
 		if gate.clusterUpgrade.Load() {
+			markRefusal(w, r, refusalClusterUpgrade)
 			// The same status as any closed member, so an entry layer keeps
 			// treating it as not ready; the code tells a client why, and
 			// that the answer will change without its doing anything.
@@ -68,6 +69,11 @@ func newBusinessHandlerGate(loggers ...*slog.Logger) *businessHandlerGate {
 				"the control-plane cluster is being upgraded; the request was not processed", nil))
 			return
 		}
+		reason, _ := r.Context().Value(gateRefusalKey{}).(string)
+		if reason == "" {
+			reason = refusalNoGeneration
+		}
+		markRefusal(w, r, reason)
 		http.Error(w, "member business service is not ready", http.StatusServiceUnavailable)
 	})
 	var log *slog.Logger
@@ -76,6 +82,17 @@ func newBusinessHandlerGate(loggers ...*slog.Logger) *businessHandlerGate {
 	}
 	gate.closed, gate.readinessLog = closed, log
 	return gate
+}
+
+type gateRefusalKey struct{}
+
+// refuse answers as a closed member and names the reason; a reason that is a
+// proof's own is given its prefix.
+func (g *businessHandlerGate) refuse(w http.ResponseWriter, r *http.Request, reason string, proof bool) {
+	if proof {
+		reason = refusalProofPrefix + reason
+	}
+	g.closed.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), gateRefusalKey{}, reason)))
 }
 
 func (g *businessHandlerGate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +114,7 @@ func (g *businessHandlerGate) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			ready, reason, _ = g.materialEligibility.Load().eligibleForResult(0)
 		}
 		if !ready {
-			g.closed.ServeHTTP(w, r)
+			g.refuse(w, r, reason, true)
 			if r.Method == http.MethodGet && r.URL.Path == "/api/v1/readyz" {
 				g.logReadinessRejection(r, "entry", reason, time.Time{}, 0, 0)
 			}
@@ -115,7 +132,7 @@ func (g *businessHandlerGate) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		active.ServeHTTP(w, r)
 		return
 	}
-	g.closed.ServeHTTP(w, r)
+	g.refuse(w, r, refusalNoGeneration, false)
 	if r.Method == http.MethodGet && r.URL.Path == "/api/v1/readyz" {
 		g.logReadinessRejection(r, "entry", "no_business_generation", time.Time{}, 0, 0)
 	}
@@ -174,7 +191,7 @@ func (g *businessHandlerGate) setBusinessHandler(handler http.Handler) {
 				materialReady, reason, _ = g.materialEligibility.Load().eligibleForResult(0)
 			}
 			if !current || !materialReady {
-				g.closed.ServeHTTP(w, r)
+				g.refuse(w, r, reason, current)
 				if readiness {
 					g.logReadinessRejection(r, "post_admission", reason, started, 0, 0)
 				}
@@ -220,7 +237,7 @@ func (g *businessHandlerGate) setBusinessHandler(handler http.Handler) {
 					return valid
 				}
 				if !currentReady() {
-					g.closed.ServeHTTP(w, r)
+					g.refuse(w, r, currentReason, false)
 					g.logReadinessRejection(r, "post_sql", currentReason, started, 0, 0)
 					return
 				}
@@ -230,14 +247,14 @@ func (g *businessHandlerGate) setBusinessHandler(handler http.Handler) {
 					// timeout before its business closes. Ordinary business
 					// retains its existing eligibility and lifecycle.
 					if !currentReady() {
-						g.closed.ServeHTTP(w, r)
+						g.refuse(w, r, currentReason, false)
 						g.logReadinessRejection(r, "final_publish", currentReason, started, 0, 0)
 						return
 					}
 					if g.materialRequired.Load() {
 						valid, reason, remaining := g.materialEligibility.Load().eligibleForResult(store.ClusterMembershipGrantTimeout)
 						if !valid {
-							g.closed.ServeHTTP(w, r)
+							g.refuse(w, r, reason, true)
 							g.logReadinessRejection(r, "final_publish", reason, started, remaining, store.ClusterMembershipGrantTimeout)
 							return
 						}
@@ -255,7 +272,7 @@ func (g *businessHandlerGate) setBusinessHandler(handler http.Handler) {
 						// final five-second check remains. This never starts a
 						// proof or repeats the buffered SQL.
 						if err := eligibility.waitForReadinessRenewal(r.Context(), store.ClusterMembershipGrantTimeout, waitHeadroom, epoch, currentReady); err != nil {
-							g.closed.ServeHTTP(w, r)
+							g.refuse(w, r, currentReason, false)
 							reason := currentReason
 							if errors.Is(err, context.Canceled) {
 								reason = "request_canceled"

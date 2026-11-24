@@ -18,7 +18,7 @@ import (
 func memberServiceHandler(next http.Handler, member *App) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if next == nil {
-			refuseMemberBusiness(w)
+			refuseMemberBusiness(w, r, refusalNoHandler)
 			return
 		}
 		if r.Method == http.MethodGet && r.URL.Path == "/healthz" {
@@ -29,8 +29,8 @@ func memberServiceHandler(next http.Handler, member *App) http.Handler {
 			serveMemberHealth(w, r, next, member)
 			return
 		}
-		if member == nil || !member.memberService(r.Context(), false).BusinessReady {
-			refuseMemberBusiness(w)
+		if reason := member.businessRefusalReason(); reason != "" {
+			refuseMemberBusiness(w, r, reason)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -104,6 +104,9 @@ func serveMemberHealth(w http.ResponseWriter, r *http.Request, next http.Handler
 	payload["business_ready"] = service.BusinessReady
 	payload["schedulable"] = service.Schedulable
 	payload["entry_candidate"] = member.entryCandidate(r.Context(), service.BusinessReady)
+	if refused := memberBusinessRefusals.snapshot(); len(refused) != 0 {
+		payload["business_refusals"] = refused
+	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
 		rec.replay(w)
@@ -118,9 +121,21 @@ func serveMemberHealth(w http.ResponseWriter, r *http.Request, next http.Handler
 	_, _ = w.Write(append(encoded, '\n'))
 }
 
-func refuseMemberBusiness(w http.ResponseWriter) {
-	w.Header().Set("Cache-Control", "no-store")
-	http.Error(w, "member business service is not ready", http.StatusServiceUnavailable)
+// businessRefusalReason is empty when this member's business is ready: the
+// same facts, in the same order, as memberService without the scheduling
+// answer.
+func (a *App) businessRefusalReason() string {
+	switch {
+	case a == nil || a.store == nil:
+		return refusalNoHandler
+	case !a.materialsSurviveFault():
+		return refusalProofPrefix + "not_eligible"
+	case !a.sessionsRoutable():
+		return refusalSessionsUnroutable
+	case !a.targetsCurrent():
+		return refusalTargetNotCurrent
+	}
+	return ""
 }
 
 type capturingResponse struct {
