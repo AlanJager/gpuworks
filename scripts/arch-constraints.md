@@ -393,9 +393,42 @@ go list -e -f '{{.ImportPath}}{{"\t"}}{{join .Imports " "}}' ./... \
 推导、模型准备观测），不依赖 `net/http` 与 `api`（依赖方向检查守护）；`api` 的 handler 只做解码、调用、映射。该包按 store 写入
 与读取，`store_concrete_importers` 22→23；`api` 仍为其余 handler 依赖 store，故没有随之减少。
 
+2026-11-24：推理网关不再持有 store（转发面拆分第 1 步）。`internal/server/proxy` 原先直接持有 `*store.Store`、
+订阅事件总线并引用 hub 的错误；现在只持有 `proxy/plane` 里的接口（路由行快照、请求路径上的查找、回写、少数需要控制面的调用），
+由 `proxy/storeplane` 用本进程的 store 与总线实现。句柄从 proxy 移进了 `storeplane`，行类型（`store.Deployment` 等）暂时仍是
+store 的实体，所以 `plane` 也导入 store：包级导入数 24→26，而 proxy 对句柄的依赖由新增的 `proxy_store_handle_refs`、
+`proxy_bus_hub_imports` 两项守在 0。
+
+- 放宽 `store_concrete_importers` 24→26（GWKS-460）：网关的 store 句柄移进新包 `proxy/storeplane`，接口包 `proxy/plane` 因行类型仍是 store 实体而导入 store；回落条件：转发面拆分第 2 步给快照定义自己的行类型后，`proxy` 与 `proxy/plane` 不再导入 store，降回 24
+
 调整记录（原 `scripts/arch-constraints.txt` 行尾注释，原文照录；新的放宽按文首规则写 `- 放宽` 行）：
 
 - `store_concrete_importers`（限额 24 时）：raised: the Slurm entry use cases (internal/server/slurmcluster) moved out of the HTTP handlers: the entry views read the store in grouped queries and report ingestion replaces an entry's node list, over the store's own Slurm rows (SlurmCluster, SlurmGPUNode, the counts and blockers), behind narrow interfaces; earlier: the deployment use cases (internal/server/deployment) create and evaluate a deployment and keep its read model (row lookups, runtime state) over the store, moved out of the HTTP handlers so the automation, batches and MCP can call them; api still imports store for the handlers not yet moved; earlier: the scheduling activity (internal/server/schedactivity) counts the events the store hands over (store.ObservedEvent, store.ResidencyMachine) and reads the replay and the deployments it names from the store; earlier: Cloud resource ownership moved into provider/zstack/cloud/resourceclaim; cloud retains host onboarding, while resourceclaim owns node/GPU reads and lease lifecycle state; internal/server/analytics answers the usage analytics queries over the usage tables, whose rows are store's own typed entities (UsageCounts, UsageGroup, the deployment and user name lookups) - a narrow interface would need a parallel set of row types for the same tables
+
+### proxy_store_handle_refs / proxy_bus_hub_imports（初值 0，2026-11-24）
+
+意图：推理网关只经 `internal/server/proxy/plane` 的接口取数据与回写，不持有 `*store.Store`、不订阅事件总线、不导入 hub。
+这样网关所依据的数据以后可以由别的成员提供，或者放在进程边界另一侧（GWKS-460 转发面拆分）。本进程的实现在
+`internal/server/proxy/storeplane`，不在统计范围内。
+
+```sh
+grep -nE '\*store\.Store|store\.Open(With)?\(|\.Bus\b' internal/server/proxy/*.go internal/server/proxy/plane/*.go \
+  | grep -v '_test\.go' | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' | grep -c .
+grep -nE '"gpuworks\.ai/gpuworks/internal/server/(bus|hub)"' internal/server/proxy/*.go internal/server/proxy/plane/*.go \
+  | grep -v '_test\.go' | grep -c .
+```
+
+排除：`*_test.go`（测试用真实 store 搭夹具）与注释行。只数 `proxy` 与 `proxy/plane` 两个目录本身，不含 `storeplane`。
+
+### proxy_store_type_files（初值 15，2026-11-24）
+
+意图：网关里还把 store 的实体当行类型用的文件数（`store.Deployment`、`store.Instance`、`store.APIKeyIdentity` 等；
+`planning` 与 `deploy` 的函数以这些类型为参数）。只降不升；第 2 步给快照定义自己的行类型后归零。
+
+```sh
+grep -lE '"gpuworks\.ai/gpuworks/internal/server/store"' internal/server/proxy/*.go internal/server/proxy/plane/*.go \
+  | grep -v '_test\.go' | grep -c .
+```
 
 ### store_db_accessor_callers（初值 0，2026-11-14）
 

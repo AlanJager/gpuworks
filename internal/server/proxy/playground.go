@@ -76,7 +76,7 @@ func (p *Proxy) PlaygroundHandler(box *auth.Secretbox) http.HandlerFunc {
 			writeRefusal(w, r, rejection)
 			return
 		}
-		contract := inferenceapi.ResolveDeploymentContract(p.store, deployment)
+		contract := p.store.DeploymentContract(deployment)
 		if !inferenceapi.AllowsContractRequest(contract, r.Method, r.URL.Path) {
 			p.acct.RecordImmediate(deployment.ID, http.StatusNotFound, false)
 			writeAPIError(w, r, ErrorModelRouteNotExposed, map[string]any{"model": modelName, "method": r.Method, "path": r.URL.Path})
@@ -128,7 +128,7 @@ func (p *Proxy) serveExternal(w http.ResponseWriter, r *http.Request, selected s
 		writeAPIError(w, r, ErrorExternalModelNotFound, nil)
 		return
 	}
-	key, err := store.DecryptAIKey(box, config.APIKey)
+	key, err := p.store.DecryptAIKey(box, config.APIKey)
 	if err != nil {
 		writeAPIError(w, r, ErrorExternalKeyUnreadable, map[string]any{"detail": err.Error()})
 		return

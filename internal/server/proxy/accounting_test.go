@@ -11,6 +11,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/tsdb"
 )
@@ -99,7 +100,7 @@ func TestSelectDeploymentInstanceDistributedAsleepFlag(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"dist-a": true, "dist-b": true}}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{"dist-a": true, "dist-b": true}}, nil, 0)
 	t.Cleanup(p.Close)
 	selected, _, status, message, asleep := p.selectStatus("dist")
 	if status != http.StatusServiceUnavailable || !strings.Contains(message, "asleep") || !asleep {

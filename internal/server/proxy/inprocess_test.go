@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
 )
@@ -31,11 +32,11 @@ func TestDoSendsARequestAsTheCallersAndAccountsIt(t *testing.T) {
 
 	// A batch's requests carry its key's ID, which must name a real key: its
 	// scope is read at send time.
-	if _, err := p.store.CreateAPIKey("batch-owner", 9); err != nil {
+	if _, err := storeplane.Of(p.store).CreateAPIKey("batch-owner", 9); err != nil {
 		t.Fatal(err)
 	}
 	var key store.APIKey
-	if err := p.store.DB().Where("name = ?", "batch-owner").First(&key).Error; err != nil {
+	if err := storeplane.Of(p.store).DB().Where("name = ?", "batch-owner").First(&key).Error; err != nil {
 		t.Fatal(err)
 	}
 	reply := p.Do(context.Background(), uxrecord.Caller{APIKeyID: key.ID, UserID: 9, Source: uxrecord.SourceBatch}, chatPath, []byte(`{"model":"omni","messages":[]}`))

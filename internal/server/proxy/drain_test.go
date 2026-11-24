@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -50,7 +51,7 @@ func TestADrainingReplicaLeavesItsSiblingServing(t *testing.T) {
 	})
 	p, _, key, depID, closeUpstream := newAccountingProxyFor(t, upstream, &store.Deployment{Engine: "vllm", Sleepable: true, Replicas: 2})
 	t.Cleanup(closeUpstream)
-	st := p.store
+	st := storeplane.Of(p.store)
 	first, err := st.InstanceByUUID("omni-instance")
 	if err != nil {
 		t.Fatal(err)

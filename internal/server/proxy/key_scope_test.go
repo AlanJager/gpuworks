@@ -14,6 +14,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
 )
@@ -64,7 +65,7 @@ func newKeyScopeRig(t *testing.T) *keyScopeRig {
 		}
 	}
 	addr := strings.TrimPrefix(upstream.URL, "http://")
-	rig.p = New(st, storeNetworks(st), dialTestHub{addr: addr}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
+	rig.p = New(storeplane.New(st), storeNetworks(st), dialTestHub{addr: addr}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
 	t.Cleanup(rig.p.Close)
 	return rig
 }
@@ -219,7 +220,7 @@ func TestScopedSelectionAmongDeploymentsSharingAName(t *testing.T) {
 		t.Fatal(err)
 	}
 	pending := legacySharedNameDeployment(t, st, &store.Deployment{ModelID: model.ID, NodeID: node.ID, ServedName: "shared", Engine: "vllm", State: "active"})
-	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"shared-node": true}}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{"shared-node": true}}, nil, 0)
 	t.Cleanup(p.Close)
 
 	onlyPending := &store.APIKeyIdentity{Restricted: true, Deployments: map[uint]struct{}{pending.ID: {}}}

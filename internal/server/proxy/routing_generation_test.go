@@ -14,6 +14,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -43,7 +44,7 @@ func newSleepableRoute(t *testing.T, name string) (*Proxy, *store.Store, uint, s
 	if _, err := st.CreateInstance(&store.Instance{UUID: uuid, DeploymentID: dep.ID, NodeID: node.ID, State: proto.InstRunning, APIPort: 30001, DesiredStateJSON: string(spec)}); err != nil {
 		t.Fatal(err)
 	}
-	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{name + "-node": true}}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{name + "-node": true}}, nil, 0)
 	t.Cleanup(p.Close)
 	p.routes.rebuild()
 	return p, st, dep.ID, uuid
@@ -109,8 +110,8 @@ func TestRoutingTrustsTheSnapshotUntilAChangeIsAnnounced(t *testing.T) {
 // the attempt before it reaches the engine.
 func TestGuardChecksAtRegistrationOnlyAfterAnAnnouncedChange(t *testing.T) {
 	_, st, _, uuid := newSleepableRoute(t, "guard_registration")
-	g := &instanceGuard{store: st}
-	c := candidate{instanceUUID: uuid, port: 30001, routedAt: routingGeneration(st) + 1}
+	g := &instanceGuard{store: storeplane.New(st)}
+	c := candidate{instanceUUID: uuid, port: 30001, routedAt: routingGeneration(storeplane.New(st)) + 1}
 	var reached int
 	base := roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if err := context.Cause(req.Context()); err != nil {
@@ -150,7 +151,7 @@ func TestChatInputFollowsModelModalityEdits(t *testing.T) {
 	now := time.Now()
 	p.modalities.now = func() time.Time { return now }
 	var model store.Model
-	if err := p.store.DB().Where("source_id = ?", "org/omni").First(&model).Error; err != nil {
+	if err := storeplane.Of(p.store).DB().Where("source_id = ?", "org/omni").First(&model).Error; err != nil {
 		t.Fatal(err)
 	}
 	audio := `{"model":"omni","messages":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"UklGR","format":"wav"}}]}]}`
@@ -164,7 +165,7 @@ func TestChatInputFollowsModelModalityEdits(t *testing.T) {
 	setModalities := func(modalities string) {
 		t.Helper()
 		ops, _ := json.Marshal([]inferenceapi.Operation{{Type: "openai.chat"}})
-		if _, err := p.store.SetModelInferenceConfig(model.ID, string(ops), modalities); err != nil {
+		if _, err := storeplane.Of(p.store).SetModelInferenceConfig(model.ID, string(ops), modalities); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -176,7 +177,7 @@ func TestChatInputFollowsModelModalityEdits(t *testing.T) {
 	if code := send(); code != http.StatusBadRequest {
 		t.Fatalf("audio no longer declared, next request: %d, want 400", code)
 	}
-	if err := p.store.DB().Model(&store.Model{}).Where("id = ?", model.ID).Update("input_modalities", `["text","audio"]`).Error; err != nil {
+	if err := storeplane.Of(p.store).DB().Model(&store.Model{}).Where("id = ?", model.ID).Update("input_modalities", `["text","audio"]`).Error; err != nil {
 		t.Fatal(err)
 	}
 	if code := send(); code != http.StatusBadRequest {

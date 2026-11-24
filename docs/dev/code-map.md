@@ -42,7 +42,7 @@
 - `yieldpolicy`：叶子包（仅标准库），部署的出让策略（`never` / `idle` / `timeslice` / `anytime`）及其参数的唯一产地：取值范围、默认值与归一、让卡规则 `Yields` 与让卡条件 `TermsOf`；store（列值）、网关（唤醒时请求最多等多久）、放置与驻留仲裁（谁可以让谁休眠）共用，见 [出让策略](../explanation/service-levels.md)。
 - `deploy`：引擎参数组装、instance 状态机（含 `optimizing`、sleep/wake；状态枚举定义在 `internal/proto`）。
 - `deployment`：部署用例层。创建与评估一个部署（请求类型进，部署行、预览或 ProductError 出；`Kind` 区分请求错误、集群当前状态的冲突与服务端故障，api 映射成 HTTP 状态）以及部署的读模型（`StoreRows`/`ListRows` 行查找、`EffectiveState`/`EffectiveStates` 部署展示状态的唯一推导，列表、监控中心与批处理共用、`ModelPreparation` 模型准备观测）。不依赖 `net/http` 与 `api`（`make check-architecture` 守护），api 的 handler 只做解码、调用、映射；自动化、批处理、MCP 复用同一实现。编辑、节点删除、存储移除与评测执行器尚在 api，按组迁入。
-- `proxy`：`/v1` OpenAI 兼容反代 + API key；睡眠实例返回 503。PD 交接在 `pd_sequential.go` / `pd_concurrent.go`，请求的 prefill 阶段（实例、等待、prefill 实例自报的排队与 Prefill、降级原因、`pd.prefill` span）由 `pd_stage.go` 记下，进请求记录与在途表。
+- `proxy`：`/v1` OpenAI 兼容反代 + API key；睡眠实例返回 503。PD 交接在 `pd_sequential.go` / `pd_concurrent.go`，请求的 prefill 阶段（实例、等待、prefill 实例自报的排队与 Prefill、降级原因、`pd.prefill` span）由 `pd_stage.go` 记下，进请求记录与在途表。 网关不持有 store、不订阅事件总线、不导入 hub：它读写所经的接口在 `proxy/plane`（路由行快照 `Snapshots`、请求路径上的查找 `Lookups`、回写 `Reports`、需要控制面的调用 `ControlPlane`），本进程的实现在 `proxy/storeplane`（store 与总线之上，隧道经 hub），由 `app` 接线；行类型暂时仍是 store 的实体。
 - `inferenceapi`：稳定的推理操作词表与 Contract（openai.chat/embeddings/rerank 等），被目录、部署快照、proxy、Playground 共享。
 - `aihelper`：AI 助手的 agent 循环（流式、并行工具、步数预算）、任务种子与已知故障表；工具以提问用户的身份在进程内读本平台 API（`APIReader`，由 `api` 按请求提供，复用同一路由与鉴权）：`cluster_overview`、`search_api`（目录 `apidocs_gen.go` 由 `docs/reference/api.md` 生成并由测试守护）、`call_api`（jq、条数与长度上限、敏感字段脱敏、时间换算）、`search_metrics`；不可读的 GET 路由及原因在 `apiread.go`。`app/aiservice.go` 组装每次请求。
 

@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	hubpkg "gpuworks.ai/gpuworks/internal/server/hub"
+	"gpuworks.ai/gpuworks/internal/server/proxy/plane"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -123,7 +123,7 @@ func TestRetryTransportRetriesDataLaneUnavailableUsingFailoverPolicy(t *testing.
 		base: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			calls++
 			if calls == 1 {
-				return nil, &tunnelOpenError{err: fmt.Errorf("%w: node node-primary did not reattach within 5s", hubpkg.ErrDataLaneUnavailable)}
+				return nil, &tunnelOpenError{err: fmt.Errorf("%w: node node-primary did not reattach within 5s", plane.ErrDataLaneUnavailable)}
 			}
 			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader("ok"))}, nil
 		}),

@@ -11,6 +11,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -53,7 +54,7 @@ func TestEngineRequestsCarryNoBrowserContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := New(st, storeNetworks(st), dialTestHub{addr: strings.TrimPrefix(upstreamServer.URL, "http://")}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), dialTestHub{addr: strings.TrimPrefix(upstreamServer.URL, "http://")}, nil, 0)
 	defer p.Close()
 
 	const body = `{"model":"omni","messages":[{"role":"user","content":"hi"}]}`

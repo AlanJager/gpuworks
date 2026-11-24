@@ -6,6 +6,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -35,7 +36,7 @@ func TestCachedRouteRejectsKnownNonRunningInstance(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{node.UUID: true}}, nil, 0)
+			p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{node.UUID: true}}, nil, 0)
 			p.Close() // Retain the running snapshot, stop its refresh subscription.
 			switch state {
 			case "deleted":

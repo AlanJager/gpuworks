@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -19,11 +20,11 @@ func TestInstanceProbePinsOneReplicaWithoutAccountingOrFallback(t *testing.T) {
 		_, _ = io.WriteString(w, `{}`)
 	}))
 	defer closeUpstream()
-	first, err := p.store.InstanceByUUID("omni-instance")
+	first, err := storeplane.Of(p.store).InstanceByUUID("omni-instance")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.store.CreateInstance(&store.Instance{UUID: "other-instance", DeploymentID: id, NodeID: first.NodeID, State: proto.InstRunning, APIPort: 30001}); err != nil {
+	if _, err := storeplane.Of(p.store).CreateInstance(&store.Instance{UUID: "other-instance", DeploymentID: id, NodeID: first.NodeID, State: proto.InstRunning, APIPort: 30001}); err != nil {
 		t.Fatal(err)
 	}
 	for range 4 {

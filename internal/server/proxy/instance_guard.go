@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"gpuworks.ai/gpuworks/internal/proto"
-	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/proxy/plane"
 )
 
 var errInstanceUnavailable = errors.New("instance stopped or is restarting; retry when a replica is ready")
@@ -17,7 +17,7 @@ var errInstanceUnavailable = errors.New("instance stopped or is restarting; retr
 // route table's existing instance subscription supplies changes; it does not
 // add a subscription or timer for each request.
 type instanceGuard struct {
-	store *store.Store
+	store plane.Source
 	mu    sync.Mutex
 	calls map[string]map[*guardedCall]struct{}
 }
@@ -62,11 +62,11 @@ func (g *instanceGuard) check(uuid string) {
 		return
 	}
 	in, err := g.store.InstanceByUUID(uuid)
-	if err != nil && !errors.Is(err, store.ErrNotFound) {
+	if err != nil && !errors.Is(err, plane.ErrNotFound) {
 		return
 	}
 	for _, call := range calls {
-		unavailable := errors.Is(err, store.ErrNotFound)
+		unavailable := errors.Is(err, plane.ErrNotFound)
 		if err == nil {
 			switch in.State {
 			case proto.InstFailed, proto.InstStopped, proto.InstPendingRemoval, proto.InstRemoving,

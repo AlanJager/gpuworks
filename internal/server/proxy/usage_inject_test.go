@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/uxrecord"
 )
 
@@ -174,7 +175,7 @@ func TestGatewayRecordsAStreamedVLLMRequest(t *testing.T) {
 	upstream := &vllmUpstream{t: t}
 	p, _, key, depID, closeUpstream := newAccountingProxy(t, upstream)
 	defer closeUpstream()
-	keyID, ok := p.store.ResolveAPIKey(key)
+	keyID, ok := storeplane.Of(p.store).ResolveAPIKey(key)
 	if !ok {
 		t.Fatal("test key does not resolve")
 	}
@@ -256,11 +257,11 @@ func TestPlaygroundRecordsTheSignedInUser(t *testing.T) {
 	p, _, _, depID, closeUpstream := newAccountingProxy(t, upstream)
 	defer closeUpstream()
 	// The playground checks the deployment's contract, which /v1 leaves to the engine.
-	dep, err := p.store.GetDeployment(depID)
+	dep, err := storeplane.Of(p.store).GetDeployment(depID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.store.SetModelInferenceConfig(dep.ModelID, `[{"type":"openai.chat"}]`, `["text"]`); err != nil {
+	if _, err := storeplane.Of(p.store).SetModelInferenceConfig(dep.ModelID, `[{"type":"openai.chat"}]`, `["text"]`); err != nil {
 		t.Fatal(err)
 	}
 	records := make(chan uxrecord.Request, 4)
