@@ -8,9 +8,14 @@
 //	                  inside anonymous structs too
 //	-measure maps     map fields, sync.Map fields and fields of a map type
 //	                  declared in the package, inside anonymous structs too
-//	-measure methods  methods with the type as receiver (value or pointer)
-//	-measure rpcs     distinct proto.RPC* constants used as switch case values
-//	                  anywhere in the package (a helper switch counts too)
+//	-measure methods  functions with the type as receiver (value or pointer)
+//	                  or as a parameter, whatever their own receiver
+//	-measure rpcs     distinct proto.RPC* constants the package dispatches on:
+//	                  switch case values (a helper switch counts too),
+//	                  operands of == and !=, and keys of a map literal whose
+//	                  value type names the type or that sits in a function
+//	                  taking the type. A method of another type that does
+//	                  not take the type is not looked into
 //
 // A field of a named struct type counts once: moving state into a type of
 // its own is how it leaves the composition root.
@@ -49,7 +54,7 @@ func count(dir, typ, measure string) (int, error) {
 	case "methods":
 		return countMethods(files, typ), nil
 	case "rpcs":
-		return countRPCCases(files), nil
+		return countRPCCases(files, typ), nil
 	case "fields", "mutexes", "maps":
 	default:
 		return 0, fmt.Errorf("unknown measure %q", measure)
@@ -168,15 +173,7 @@ func countMethods(files []*ast.File, typ string) int {
 	n := 0
 	for _, f := range files {
 		for _, d := range f.Decls {
-			fn, ok := d.(*ast.FuncDecl)
-			if !ok || fn.Recv == nil || len(fn.Recv.List) == 0 {
-				continue
-			}
-			t := fn.Recv.List[0].Type
-			if star, ok := t.(*ast.StarExpr); ok {
-				t = star.X
-			}
-			if id, ok := t.(*ast.Ident); ok && id.Name == typ {
+			if fn, ok := d.(*ast.FuncDecl); ok && takes(fn, typ) {
 				n++
 			}
 		}
@@ -184,25 +181,84 @@ func countMethods(files []*ast.File, typ string) int {
 	return n
 }
 
-func countRPCCases(files []*ast.File) int {
-	seen := map[string]bool{}
-	for _, f := range files {
-		ast.Inspect(f, func(node ast.Node) bool {
-			cc, ok := node.(*ast.CaseClause)
-			if !ok {
+// takes reports whether fn has typ as its receiver or as a parameter.
+func takes(fn *ast.FuncDecl, typ string) bool {
+	for _, list := range []*ast.FieldList{fn.Recv, fn.Type.Params} {
+		if list == nil {
+			continue
+		}
+		for _, field := range list.List {
+			if mentions(field.Type, typ) {
 				return true
 			}
-			for _, e := range cc.List {
-				sel, ok := e.(*ast.SelectorExpr)
-				if !ok {
-					continue
+		}
+	}
+	return false
+}
+
+// mentions reports whether a type expression names typ.
+func mentions(expr ast.Expr, typ string) bool {
+	found := false
+	ast.Inspect(expr, func(node ast.Node) bool {
+		if id, ok := node.(*ast.Ident); ok && id.Name == typ {
+			found = true
+		}
+		return !found
+	})
+	return found
+}
+
+func countRPCCases(files []*ast.File, typ string) int {
+	seen := map[string]bool{}
+	see := func(e ast.Expr) {
+		sel, ok := e.(*ast.SelectorExpr)
+		if !ok {
+			return
+		}
+		if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "proto" && strings.HasPrefix(sel.Sel.Name, "RPC") {
+			seen[sel.Sel.Name] = true
+		}
+	}
+	// inspect counts the RPCs dispatched under root. anyMap is set inside a
+	// function that takes typ, where a table of closures reaches it too.
+	inspect := func(root ast.Node, anyMap bool) {
+		ast.Inspect(root, func(node ast.Node) bool {
+			switch n := node.(type) {
+			case *ast.CaseClause:
+				for _, e := range n.List {
+					see(e)
 				}
-				if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "proto" && strings.HasPrefix(sel.Sel.Name, "RPC") {
-					seen[sel.Sel.Name] = true
+			case *ast.BinaryExpr:
+				if n.Op == token.EQL || n.Op == token.NEQ {
+					see(n.X)
+					see(n.Y)
+				}
+			case *ast.CompositeLit:
+				if m, ok := n.Type.(*ast.MapType); ok && (anyMap || mentions(m.Value, typ)) {
+					for _, e := range n.Elts {
+						if kv, ok := e.(*ast.KeyValueExpr); ok {
+							see(kv.Key)
+						}
+					}
 				}
 			}
 			return true
 		})
+	}
+	for _, f := range files {
+		for _, d := range f.Decls {
+			fn, ok := d.(*ast.FuncDecl)
+			switch {
+			case !ok:
+				inspect(d, false)
+			case takes(fn, typ):
+				inspect(fn, true)
+			case fn.Recv == nil:
+				inspect(fn, false)
+			}
+			// A method of another type that does not take typ dispatches
+			// that type's own RPCs.
+		}
 	}
 	return len(seen)
 }

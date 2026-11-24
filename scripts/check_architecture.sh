@@ -288,6 +288,9 @@ measure() {
     [ "$key" = agent_onrpc_cases ] && m=rpcs
     CGO_ENABLED=0 go run ./scripts/structcount -dir internal/agent/app -type NodeRuntime -measure "$m" 2>/dev/null || echo NOTFOUND
     ;;
+  agent_image_deps_fields)
+    CGO_ENABLED=0 go run ./scripts/structcount -dir internal/agent/app -type imageDeps -measure fields 2>/dev/null || echo NOTFOUND
+    ;;
   agent_engine_struct_maps)
     CGO_ENABLED=0 go run ./scripts/structcount -dir internal/agent/engine -type Engine -measure maps 2>/dev/null || echo NOTFOUND
     ;;

@@ -12,7 +12,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
-func (n *NodeRuntime) rpcImageLoadPath(ctx context.Context, raw json.RawMessage) (any, error) {
+func (i *nodeImages) rpcImageLoadPath(ctx context.Context, raw json.RawMessage) (any, error) {
 	var p proto.ImageLoadPathParams
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return nil, err
@@ -25,7 +25,7 @@ func (n *NodeRuntime) rpcImageLoadPath(ctx context.Context, raw json.RawMessage)
 	if !filepath.IsAbs(p.ArchivePath) {
 		return nil, errors.New("archive_path must be an absolute file path on the target node")
 	}
-	d := n.runtimeDriver()
+	d := i.deps.driver()
 	loader, ok := d.(runtime.ImageFileLoader)
 	if !ok {
 		return nil, nodeArchiveLoadError(proto.ArchiveLoadUnsupported)
@@ -33,7 +33,7 @@ func (n *NodeRuntime) rpcImageLoadPath(ctx context.Context, raw json.RawMessage)
 	// The hub can cancel the transfer while the worker is still checking the
 	// file. Register before stat and retain this same context through load.
 	loadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), imageOperationTimeout)
-	unregister := n.imageOps.begin(p.CanonicalRef, p.TransferID, cancel)
+	unregister := i.ops.begin(p.CanonicalRef, p.TransferID, cancel)
 	// Validation still belongs to the initiating RPC. Once accepted, ending
 	// that RPC must not interrupt the background load.
 	stopRequestCancel := context.AfterFunc(ctx, cancel)
@@ -69,19 +69,19 @@ func (n *NodeRuntime) rpcImageLoadPath(ctx context.Context, raw json.RawMessage)
 				case <-loadCtx.Done():
 					return
 				case <-ticker.C:
-					n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "syncing", TransferID: p.TransferID, SizeBytes: size})
+					i.deps.report(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "syncing", TransferID: p.TransferID, SizeBytes: size})
 				}
 			}
 		}()
-		n.lockImageOperation(p.CanonicalRef, "syncing")
-		defer n.imagePullMu.Unlock()
-		n.reportImageNode(proto.ImageNodeStatus{
+		i.lockSlot(p.CanonicalRef, "syncing")
+		defer i.slot.Unlock()
+		i.deps.report(proto.ImageNodeStatus{
 			ImageRef: p.CanonicalRef, State: "syncing", TransferID: p.TransferID,
 			SizeBytes: size, Message: "loading image archive from node file",
 		})
 		status, err := loadImageArchive(loadCtx, d, imageArchiveLoad{
 			CanonicalRef: p.CanonicalRef,
-			RuntimeName:  n.RuntimeDriverName(),
+			RuntimeName:  i.driverName(),
 			Loaded:       "image archive loaded from node file",
 			Load: func(ctx context.Context) (string, error) {
 				if err := ctx.Err(); err != nil {
@@ -102,7 +102,7 @@ func (n *NodeRuntime) rpcImageLoadPath(ctx context.Context, raw json.RawMessage)
 		status.SizeBytes = size
 		close(stopHeartbeat)
 		<-heartbeatDone
-		n.reportImageNode(status)
+		i.deps.report(status)
 	}()
 	return proto.ImageLoadPathResult{State: "syncing", CanonicalRef: p.CanonicalRef}, nil
 }

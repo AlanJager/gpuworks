@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"os/exec"
 	"strings"
-	"sync"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
@@ -16,30 +15,22 @@ import (
 	"gpuworks.ai/gpuworks/pkg/imagearchive"
 )
 
-// runtimeImageRPC shares the node's image slot and cancellation registry with
-// archive loads. The handlers retain only the dependencies used by image work.
-type runtimeImageRPC struct {
-	driver   runtime.Driver
-	lock     *sync.Mutex
-	ops      *imageOperations
-	stateDir string
-	report   func(proto.ImageNodeStatus)
+// runtimeImageHandlers is the RPCs over images the node's runtimes already
+// hold. They refuse with ErrorLocalImageBusy while the image slot is taken.
+var runtimeImageHandlers = map[string]func(*nodeImages, context.Context, string, json.RawMessage) (any, error){
+	proto.RPCImageRuntimeList:    (*nodeImages).localSelection,
+	proto.RPCImageRuntimeInspect: (*nodeImages).localSelection,
+	proto.RPCImageRuntimeImport:  (*nodeImages).localSelection,
+	proto.RPCImageRuntimePrepare: (*nodeImages).localSelection,
+	proto.RPCImageRuntimeCopy:    (*nodeImages).startLocalCopy,
 }
 
-var runtimeImageHandlers = map[string]func(runtimeImageRPC, context.Context, string, json.RawMessage) (any, error){
-	proto.RPCImageRuntimeList:    runtimeImageRPC.selection,
-	proto.RPCImageRuntimeInspect: runtimeImageRPC.selection,
-	proto.RPCImageRuntimeImport:  runtimeImageRPC.selection,
-	proto.RPCImageRuntimePrepare: runtimeImageRPC.selection,
-	proto.RPCImageRuntimeCopy:    runtimeImageRPC.startCopy,
-}
-
-func (s runtimeImageRPC) selection(ctx context.Context, method string, raw json.RawMessage) (any, error) {
+func (i *nodeImages) localSelection(ctx context.Context, method string, raw json.RawMessage) (any, error) {
 	var selection proto.RuntimeImageSelection
 	if err := json.Unmarshal(raw, &selection); err != nil {
 		return nil, err
 	}
-	d, ok := s.driver.(runtime.LocalImageStore)
+	d, ok := i.deps.driver().(runtime.LocalImageStore)
 	if !ok {
 		return nil, localImageError(method, selection, runtime.ErrLocalImageUnsupported)
 	}
@@ -60,10 +51,10 @@ func (s runtimeImageRPC) selection(ctx context.Context, method string, raw json.
 		if selection.Namespace != selection.TargetNamespace {
 			return nil, localImageError(method, selection, runtime.ErrLocalImageUnsupported)
 		}
-		if !s.lock.TryLock() {
+		if !i.slot.TryLock() {
 			return nil, &proto.RPCError{Code: proto.ErrorLocalImageBusy, Message: "another image operation is in progress; retry when it finishes"}
 		}
-		defer s.lock.Unlock()
+		defer i.slot.Unlock()
 	}
 	image, err := d.ResolveLocalImage(ctx, selection, nil)
 	if err != nil {
@@ -72,11 +63,11 @@ func (s runtimeImageRPC) selection(ctx context.Context, method string, raw json.
 	meta := imagearchive.MetadataFromConfig(image.Architecture, image.Labels)
 	copyRequired := false
 	if method == proto.RPCImageRuntimePrepare {
-		target, ok := s.driver.(runtime.LocalImageCopyTarget)
+		target, ok := d.(runtime.LocalImageCopyTarget)
 		if !ok {
 			return nil, localImageError(method, selection, runtime.ErrLocalImageUnsupported)
 		}
-		copyRequired, err = target.NeedsLocalImageCopy(ctx, selection.Ref, image.ID, s.stateDir)
+		copyRequired, err = target.NeedsLocalImageCopy(ctx, selection.Ref, image.ID, i.deps.stateDir())
 		if err != nil {
 			return nil, localImageError(method, selection, err)
 		}

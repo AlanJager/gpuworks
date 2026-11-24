@@ -138,6 +138,8 @@ for line in "${ITEMS[@]}"; do
   # 构建期 pip 源（Dockerfile 的 PIP_INDEX_URL 默认阿里云）。镜像站同步不全时
   # （2026-10-10 阿里云缺 transformers 5.14.1 的元数据）用环境变量临时换源；不写进镜像。
   [[ -n "${PIP_INDEX_URL:-}" ]] && build_args+=(--build-arg "PIP_INDEX_URL=$PIP_INDEX_URL")
+  # 同理 apt 源：构建机在境外时（默认的阿里云镜像很慢）用 APT_MIRROR=archive.ubuntu.com 换回官方源。
+  [[ -n "${APT_MIRROR:-}" ]] && build_args+=(--build-arg "APT_MIRROR=$APT_MIRROR")
   while IFS= read -r kv; do
     [[ -n "$kv" ]] && build_args+=(--build-arg "$kv")
   done < <(python3 -c "
