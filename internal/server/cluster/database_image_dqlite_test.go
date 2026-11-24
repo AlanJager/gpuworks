@@ -87,6 +87,19 @@ func TestReadDatabaseImageUnderWrites(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// A write is committed once a majority has it; the third member applies
+	// it a moment later. The bounds below take the 200 transactions written
+	// so far as every member's floor, so wait until every member holds them
+	// before the concurrent writer starts.
+	conversionWait(t, ctx, "every member holding the first 200 transactions", func() bool {
+		for i, member := range dbs {
+			image, err := ReadDatabaseImage(ctx, member.Address, fixtures[i].config.Name, materialQuorumTLS(t, trust, policy, fixtures[i]))
+			if err != nil || imageRows(t, ctx, fixtures[i].config.Name, image) < 400 {
+				return false
+			}
+		}
+		return true
+	})
 	var committed atomic.Int64
 	committed.Store(200)
 	stop := make(chan struct{})
