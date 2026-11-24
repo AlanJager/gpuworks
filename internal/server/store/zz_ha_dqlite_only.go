@@ -83,15 +83,6 @@ func readClosedClusterFactsDB(ctx context.Context, db *gorm.DB, expected Cluster
 // instead of holding the HTTP request until the whole grant budget expires.
 var clusterMembershipObserveTimeout = 1500 * time.Millisecond
 
-// clusterMembershipRetryWindow bounds, from the start of a grant, how long an
-// interrupted live observation may be repeated. An observation that spans a
-// database leadership change can use its whole timeout, and the next one
-// then answers in milliseconds; a member cut off from the majority sees the
-// same interruption every time and must still refuse a direct write within
-// three seconds. The window therefore leaves room for one repeat after a
-// full observation timeout and no more.
-var clusterMembershipRetryWindow = 2200 * time.Millisecond
-
 // Only native construction binds the actual transport authority and live Raft
 // accessor. Callers cannot substitute YAML caches or request-supplied topology.
 func (s *Store) bindClusterMembership(bound ClusterIdentity, live func(context.Context) ([]cluster.Member, error)) {

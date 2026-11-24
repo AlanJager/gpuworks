@@ -3,10 +3,18 @@
 // members' storage acknowledges a synchronous write, and every member must run
 // the same one: it sets how long the database waits before it elects a new
 // leader.
+//
+// A tier's timing can be set apart from its name: "slow-storage@100ms" is the
+// slow-storage tier run at a database latency of 100 ms. Every value derived
+// from the timing (the election timeout, the heartbeat, the membership
+// grant's retry window, the recovery target) follows the latency, so the
+// suffix is the one thing to change.
 package storagetier
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -26,6 +34,22 @@ const (
 // network latency it is given. A follower waits between one and two timeouts
 // before it campaigns; a leader steps down after one without a majority.
 const electionFactor = 15
+
+// The latency a tier may be run at: whole milliseconds from MinLatency
+// (election timeout 150 ms, the standard tier's) to MaxLatency (3 s). Above
+// that a follower may wait six seconds and more before it campaigns, longer
+// than a membership grant is given at all.
+const (
+	MinLatency = 10 * time.Millisecond
+	MaxLatency = 200 * time.Millisecond
+)
+
+// latencySeparator joins a tier's name and the latency it is run at.
+const latencySeparator = "@"
+
+// oneCommit is the time allowed for the replicated commit that repeats a
+// membership grant once a new leader is elected.
+const oneCommit = 500 * time.Millisecond
 
 type profile struct {
 	latency  time.Duration
@@ -48,15 +72,54 @@ var profiles = map[Tier]profile{
 func All() []Tier { return []Tier{Standard, SlowStorage} }
 
 // Parse reads a recorded or configured tier. The empty string is Standard: a
-// cluster installed before tiers existed records none.
+// cluster installed before tiers existed records none. A name may carry the
+// latency the tier is run at ("slow-storage@100ms"); one that names the
+// tier's own latency is the tier itself.
 func Parse(name string) (Tier, error) {
 	if name == "" {
 		return Standard, nil
 	}
-	if _, ok := profiles[Tier(name)]; !ok {
-		return "", fmt.Errorf("unknown storage tier %q: want %s or %s", name, Standard, SlowStorage)
+	base, latency, timed := strings.Cut(name, latencySeparator)
+	if _, ok := profiles[Tier(base)]; !ok {
+		return "", fmt.Errorf("unknown storage tier %q: want %s or %s, optionally with the latency it runs at (%s%s100ms)", name, Standard, SlowStorage, SlowStorage, latencySeparator)
 	}
-	return Tier(name), nil
+	if !timed {
+		return Tier(base), nil
+	}
+	ms, ok := strings.CutSuffix(latency, "ms")
+	n, err := strconv.ParseUint(ms, 10, 16)
+	if !ok || err != nil || strconv.FormatUint(n, 10) != ms {
+		return "", fmt.Errorf("storage tier %q: the latency after %q must be whole milliseconds, as in %s%s100ms", name, latencySeparator, base, latencySeparator)
+	}
+	return Tier(base).WithLatency(time.Duration(n) * time.Millisecond)
+}
+
+// ValidLatency reports whether a database node may be run at this latency.
+func ValidLatency(latency time.Duration) bool {
+	return latency >= MinLatency && latency <= MaxLatency && latency%time.Millisecond == 0
+}
+
+// ElectionTimeoutFor is the election timeout of a database node run at this
+// latency.
+func ElectionTimeoutFor(latency time.Duration) time.Duration { return latency * electionFactor }
+
+// WithLatency is this tier run at another latency. The tier's own latency
+// gives the tier itself, so two spellings of one timing do not exist.
+func (t Tier) WithLatency(latency time.Duration) (Tier, error) {
+	base := t.Base()
+	if !ValidLatency(latency) {
+		return "", fmt.Errorf("storage tier %s: latency %s is outside %s to %s in whole milliseconds", base, latency, MinLatency, MaxLatency)
+	}
+	if latency == profiles[base].latency {
+		return base, nil
+	}
+	return Tier(string(base) + latencySeparator + strconv.FormatInt(latency.Milliseconds(), 10) + "ms"), nil
+}
+
+// Base is the named tier without a latency of its own.
+func (t Tier) Base() Tier {
+	base, _, _ := strings.Cut(string(t), latencySeparator)
+	return Tier(base).known()
 }
 
 // ForNetworkLatency is the tier that runs the database at this latency.
@@ -79,7 +142,18 @@ func (t Tier) Recorded() string {
 }
 
 // NetworkLatency is the latency the database node is started with.
-func (t Tier) NetworkLatency() time.Duration { return profiles[t.known()].latency }
+func (t Tier) NetworkLatency() time.Duration {
+	if _, latency, timed := strings.Cut(string(t), latencySeparator); timed {
+		if n, err := strconv.ParseUint(strings.TrimSuffix(latency, "ms"), 10, 16); err == nil && ValidLatency(time.Duration(n)*time.Millisecond) {
+			return time.Duration(n) * time.Millisecond
+		}
+	}
+	return profiles[t.Base()].latency
+}
+
+// HeartbeatInterval is how often the leader's database sends to an idle
+// follower: one and a half times the latency.
+func (t Tier) HeartbeatInterval() time.Duration { return t.NetworkLatency() * 3 / 2 }
 
 // ElectionTimeout is how long a leader goes without a majority before it
 // steps down, and the shortest a follower waits before it campaigns.
@@ -92,12 +166,45 @@ func (t Tier) ElectionTimer() (shortest, longest time.Duration) {
 }
 
 // RecoveryTarget is the time within which a write succeeds again after the
-// leader's process is killed.
-func (t Tier) RecoveryTarget() time.Duration { return profiles[t.known()].recovery }
+// leader's process is killed. It was measured at each tier's own latency; a
+// tier run slower is given the two election timeouts by which its followers
+// may wait longer.
+func (t Tier) RecoveryTarget() time.Duration {
+	base := t.Base()
+	target := profiles[base].recovery
+	if extra := t.ElectionTimeout() - base.ElectionTimeout(); extra > 0 {
+		target += 2 * extra
+	}
+	return target
+}
+
+// GrantRetryNeed is how long a membership grant interrupted by a leader
+// change must be repeated for to meet the next leader: a follower campaigns
+// up to two election timeouts after the leader is gone, and the repeated
+// grant then needs one replicated commit.
+func (t Tier) GrantRetryNeed() time.Duration {
+	_, longest := t.ElectionTimer()
+	return longest + oneCommit
+}
+
+// RollsWith reports whether members running t and members running other can
+// serve side by side for as long as it takes to restart the members one at a
+// time. Whichever of them leads must send to an idle follower at least three
+// times within the shortest wait before the other campaigns, so that two lost
+// heartbeats do not start an election. Timings further apart than that are
+// changed with every member stopped, or in steps.
+func (t Tier) RollsWith(other Tier) bool {
+	slow, fast := t, other
+	if fast.Slower(slow) {
+		slow, fast = fast, slow
+	}
+	return 3*slow.HeartbeatInterval() <= fast.ElectionTimeout()
+}
 
 // Slower reports whether t waits longer than other before electing a leader.
 func (t Tier) Slower(other Tier) bool { return t.NetworkLatency() > other.NetworkLatency() }
 
+// known is t when it is a named tier, and Standard otherwise.
 func (t Tier) known() Tier {
 	if _, ok := profiles[t]; ok {
 		return t

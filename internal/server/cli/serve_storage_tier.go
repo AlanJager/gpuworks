@@ -5,6 +5,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/cluster"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // useRecordedStorageTier makes every database node this command starts run
@@ -17,5 +18,6 @@ func useRecordedStorageTier(dataDir string) error {
 		return fmt.Errorf("storage tier of %s: %w", dataDir, err)
 	}
 	cluster.UseStorageTier(tier)
+	store.UseStorageTier(tier)
 	return nil
 }
