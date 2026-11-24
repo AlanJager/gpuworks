@@ -87,8 +87,11 @@ type materialEligibility struct {
 	running       bool
 	stopped       bool
 	onInvalidated func()
-	proving       atomic.Bool
-	phase         time.Duration
+	// onOutcome is told, after a proof was decided and any invalidation it
+	// caused was delivered, whether it was accepted as a fresh confirmation.
+	onOutcome func(proved bool)
+	proving   atomic.Bool
+	phase     time.Duration
 }
 
 func newMaterialEligibility(now func() time.Time, prove func(context.Context) (bool, error), interval time.Duration) *materialEligibility {
@@ -120,6 +123,12 @@ func (e *materialEligibility) setIdleRest(rest time.Duration) {
 func (e *materialEligibility) setOnInvalidated(fn func()) {
 	e.mu.Lock()
 	e.onInvalidated = fn
+	e.mu.Unlock()
+}
+
+func (e *materialEligibility) setOnOutcome(fn func(proved bool)) {
+	e.mu.Lock()
+	e.onOutcome = fn
 	e.mu.Unlock()
 }
 
@@ -411,7 +420,7 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 		}
 		ready = false
 	}
-	onInvalidated := e.onInvalidated
+	onInvalidated, onOutcome := e.onInvalidated, e.onOutcome
 	e.mu.Unlock()
 	// An already-started callback must finish before the slot can admit a
 	// replacement proof; it may still be withdrawing the previous routes.
@@ -420,6 +429,9 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	}
 	if notifyInvalidated && onInvalidated != nil {
 		onInvalidated()
+	}
+	if onOutcome != nil {
+		onOutcome(proved)
 	}
 	cancel()
 	return ready, err

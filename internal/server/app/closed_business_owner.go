@@ -68,7 +68,7 @@ func (a *App) closeBusinessAdmission() {
 		owner.BeginStop()
 	}
 	caller := admissionCloser()
-	a.admissionJournal.closed(a.log, caller)
+	a.admissionJournal.closed(a.log, caller, admissionClosedByProof())
 	if a.log != nil {
 		a.log.Debug("closed business admission invalidated", "caller", caller)
 	}
