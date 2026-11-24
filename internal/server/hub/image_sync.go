@@ -306,24 +306,30 @@ func (h *Hub) runDirectImageSync(ctx context.Context, image *store.Image, target
 		}
 		h.watchDirectImageTransfer(image.ID, nodeID)
 	}
+	h.finishDirectImageSync(ctx, image.ID, nodeID, transferID, result, confirmationWait)
+}
+
+// finishDirectImageSync records what a peer copy that returned without an
+// error did, and waits for the target to confirm its load.
+func (h *Hub) finishDirectImageSync(ctx context.Context, imageID, nodeID uint, transferID string, result proto.ImageSyncCopyResult, confirmationWait time.Duration) {
 	if result.InProgress {
 		// The target agent already runs another receiver for this image, so
 		// nothing will ever report on the transfer id we just wrote. Leaving
 		// the row syncing would strand it with no timer to fail it.
 		if result.TransferID != transferID {
-			_ = h.store.FailImageSyncIfActive(image.ID, nodeID, transferID, "target node already has an active transfer for this image; retry after it finishes")
+			_ = h.store.FailImageSyncIfActive(imageID, nodeID, transferID, "target node already has an active transfer for this image; retry after it finishes")
 		}
 		return
 	}
 	h.log.Info("peer image archive transferred", "transfer_id", transferID, "transport", result.Transport)
 	if result.Bytes > imageArchiveMaxBytes {
-		_ = h.store.FailImageSyncIfActive(image.ID, nodeID, transferID, "image archive exceeded 500 GiB transfer limit")
+		_ = h.store.FailImageSyncIfActive(imageID, nodeID, transferID, "image archive exceeded 500 GiB transfer limit")
 		return
 	}
 	// The target's own count is a sample taken about once a second; the
 	// sender's is the whole archive.
-	_, _ = h.store.RecordImageTransferBytes(image.ID, nodeID, transferID, result.Bytes)
-	h.awaitImageConfirmation(ctx, image.ID, nodeID, transferID, "image archive transferred, but target did not confirm completion", confirmationWait)
+	_, _ = h.store.RecordImageTransferBytes(imageID, nodeID, transferID, result.Bytes)
+	h.awaitImageConfirmation(ctx, imageID, nodeID, transferID, "image archive transferred, but target did not confirm completion", confirmationWait)
 }
 
 // trackImageTransfer runs one server-relayed transfer in the background and

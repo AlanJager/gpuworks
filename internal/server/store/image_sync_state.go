@@ -78,16 +78,23 @@ func (s *Store) RecordImageTransferBytes(imageID, nodeID uint, transferID string
 	return res.RowsAffected > 0, nil
 }
 
-// imageStatusAdvancesCount reports whether a node's status carries a byte
-// count the row should take. Within one transfer the count only grows: the
-// node's samples and the sending side's final count reach the server on
-// different streams, and a sample handled after the final count must not
-// replace it. A status of another transfer, or one that names none, is taken
-// as it was before.
-func imageStatusAdvancesCount(current ImageNode, st proto.ImageNodeStatus) bool {
-	if st.TransferredBytes <= 0 {
-		return false
+// imageStatusCount is what a node status with a byte count writes as the
+// row's count. A status is taken as it is, with one exception: a progress
+// sample of a peer copy never lowers the count of the transfer it belongs to.
+// The receiving node's samples and the sending side's final count reach the
+// server on different streams, so a sample sent earlier can be handled after
+// the final count; the comparison is made by the UPDATE itself, on the row as
+// it is then, because the final count can land after the caller read the row.
+//
+// Every other count may fall and must be shown falling: a registry pull keeps
+// one transfer id across its sources and across download and extraction, and
+// an archive download restarts from zero when its server ignores the range.
+func imageStatusCount(current ImageNode, st proto.ImageNodeStatus) any {
+	peerSample := st.State == ImageStateSyncing && current.State == ImageStateSyncing &&
+		current.Source == "peer" && (st.Source == "" || st.Source == "peer") &&
+		st.TransferID != "" && st.TransferID == current.TransferID
+	if !peerSample {
+		return st.TransferredBytes
 	}
-	sameTransfer := st.TransferID != "" && st.TransferID == current.TransferID
-	return !sameTransfer || st.TransferredBytes > current.TransferredBytes
+	return gorm.Expr("CASE WHEN transferred_bytes > ? THEN transferred_bytes ELSE ? END", st.TransferredBytes, st.TransferredBytes)
 }

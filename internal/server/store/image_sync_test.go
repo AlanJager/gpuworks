@@ -272,3 +272,83 @@ func TestRecordImageTransferBytesLeavesOtherTransfersAlone(t *testing.T) {
 		t.Fatalf("row = %+v, want the count untouched", row)
 	}
 }
+
+// A count that is not a peer copy's sample is shown as the node reports it,
+// also when it falls: a registry pull keeps one transfer id while it moves
+// from one source to the next and from download to extraction, and an archive
+// download starts again from zero when its server ignores the range.
+func TestApplyImageNodeStatusShowsAFallingCountOutsideAPeerCopy(t *testing.T) {
+	const gib = int64(1) << 30
+	// rowSource is what the server wrote when it started the transfer;
+	// statusSource is what the node puts in its samples (a pull names the
+	// reference it is pulling, an archive download names nothing).
+	for _, c := range []struct {
+		name, state, rowSource, statusSource string
+	}{
+		{"registry pull moving to its next source", ImageStatePulling, "registry", "mirror.example/image:v1"},
+		{"archive download restarted from zero", ImageStateSyncing, "url", ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			st, err := Open("file:"+strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())+"?mode=memory&cache=shared", bus.New())
+			if err != nil {
+				t.Fatal(err)
+			}
+			image, _ := st.UpsertImage(&Image{ImageRef: "example/image:falls", Engine: "vllm", Enabled: true})
+			node, _ := st.RegisterNode("node-falls", HashToken("t"), "falls")
+			if _, err := st.UpsertImageNode(&ImageNode{ImageID: image.ID, NodeID: node.ID, State: c.state, TransferID: "one", Source: c.rowSource}); err != nil {
+				t.Fatal(err)
+			}
+			for _, sample := range []proto.ImageNodeStatus{
+				{State: c.state, TransferID: "one", Source: c.statusSource, SizeBytes: 4 * gib, TransferredBytes: 3 * gib},
+				{State: c.state, TransferID: "one", Source: c.statusSource, SizeBytes: 2 * gib, TransferredBytes: 100 << 20},
+			} {
+				if err := st.ApplyImageNodeStatus(image.ID, node.ID, sample); err != nil {
+					t.Fatal(err)
+				}
+			}
+			row, _ := st.ImageNode(image.ID, node.ID)
+			if row.TransferredBytes != 100<<20 || row.SizeBytes != 2*gib {
+				t.Fatalf("row shows %d of %d, want the later sample's %d of %d", row.TransferredBytes, row.SizeBytes, int64(100<<20), 2*gib)
+			}
+		})
+	}
+}
+
+// The sending side's count can land between the status writer's read of the
+// row and its update. The comparison is the update's own, so a sample that
+// was read against a lower count still cannot replace a higher one.
+func TestImageStatusCountComparesAgainstTheRowAsItIsAtTheUpdate(t *testing.T) {
+	st, err := Open("file:store_image_count_at_update?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, _ := st.UpsertImage(&Image{ImageRef: "example/image:atupdate", Engine: "vllm", Enabled: true})
+	node, _ := st.RegisterNode("node-atupdate", HashToken("t"), "atupdate")
+	if _, err := st.UpsertImageNode(&ImageNode{ImageID: image.ID, NodeID: node.ID, State: ImageStateSyncing, TransferID: "relay", Source: "peer", TransferredBytes: 10}); err != nil {
+		t.Fatal(err)
+	}
+	// What the status writer read, before the sending side's count landed.
+	read, err := st.ImageNode(image.ID, node.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := st.RecordImageTransferBytes(image.ID, node.ID, "relay", 8388608); err != nil || !ok {
+		t.Fatalf("record = %v, %v", ok, err)
+	}
+	sample := proto.ImageNodeStatus{State: ImageStateSyncing, TransferID: "relay", Source: "peer", TransferredBytes: 5545984}
+	if err := st.db.Model(&ImageNode{}).Where("id = ?", read.ID).Update("transferred_bytes", imageStatusCount(*read, sample)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row, _ := st.ImageNode(image.ID, node.ID); row.TransferredBytes != 8388608 {
+		t.Fatalf("a sample read against the earlier row lowered the count to %d", row.TransferredBytes)
+	}
+	// A sample that is ahead of the row is taken.
+	ahead := sample
+	ahead.TransferredBytes = 9000000
+	if err := st.db.Model(&ImageNode{}).Where("id = ?", read.ID).Update("transferred_bytes", imageStatusCount(*read, ahead)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row, _ := st.ImageNode(image.ID, node.ID); row.TransferredBytes != 9000000 {
+		t.Fatalf("a sample ahead of the row was not taken: %d", row.TransferredBytes)
+	}
+}
