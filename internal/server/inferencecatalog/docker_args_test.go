@@ -56,18 +56,17 @@ func TestSpecDockerArgsParsesAndRoundTripsThroughTheStoreRows(t *testing.T) {
 
 // A spec's docker_args is judged exactly like a deployment's own
 // container_overrides.docker_args (deploy.ValidateDockerArgs): platform-managed
-// options and host-escaping options are refused, and so is --ipc=host
-// together with the same spec's own shm_bytes.
-func TestSpecDockerArgsRejectsUnsafeAndManagedOptions(t *testing.T) {
+// options are refused, and so is --ipc=host together with the same spec's own
+// shm_bytes. Host-access options (--privileged, --pid) are allowed.
+func TestSpecDockerArgsRejectsManagedOptions(t *testing.T) {
 	for name, test := range map[string]struct {
 		dockerArgs string
 		shmBytes   string
 		code       string
 	}{
-		"--privileged":              {dockerArgs: "[--privileged]", code: ""},
 		"--network=host":            {dockerArgs: "[--network=host]", code: deploy.ErrorDockerArgPlatformManaged},
 		"--shm-size":                {dockerArgs: "[--shm-size=8g]", code: deploy.ErrorDockerArgUseShmField},
-		"-v /x:/y":                  {dockerArgs: "[-v, '/x:/y']", code: ""},
+		"-v /x:/y":                  {dockerArgs: "[-v, '/x:/y']", code: deploy.ErrorDockerArgUseMountField},
 		"--ipc=host with shm_bytes": {dockerArgs: "[--ipc=host]", shmBytes: "shm_bytes: 8589934592", code: deploy.ErrorShmSizeWithHostIPC},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -92,6 +91,11 @@ func TestSpecDockerArgsRejectsUnsafeAndManagedOptions(t *testing.T) {
 		"docker_args: [--ipc=host]", 1)
 	if _, err := ParseYAML([]byte(plain)); err != nil {
 		t.Fatalf("--ipc=host without shm_bytes rejected: %v", err)
+	}
+	hostAccess := strings.Replace(dockerArgsSpecYAML, "docker_args: [--cap-add=SYS_PTRACE, --security-opt=seccomp=unconfined]",
+		"docker_args: [--privileged, --pid=host]", 1)
+	if _, err := ParseYAML([]byte(hostAccess)); err != nil {
+		t.Fatalf("--privileged and --pid=host rejected: %v", err)
 	}
 }
 

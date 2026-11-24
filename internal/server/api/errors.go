@@ -380,7 +380,7 @@ const (
 	ErrorLaunchConfigConflict = "LAUNCH_CONFIG_CONFLICT"
 	// ErrorLaunchConfigUnsetConflict is likewise produced by deploy.Materialize.
 	ErrorLaunchConfigUnsetConflict = "LAUNCH_CONFIG_UNSET_CONFLICT"
-	// The docker argument codes are produced by deploy.ValidateContainerDockerArgs
+	// The docker argument codes are produced by deploy.ValidateDockerArgs
 	// and spelled out here for the same inventory reason; the pairs are asserted
 	// equal by TestDockerArgCodesMatchTheirProducer.
 	ErrorDockerArgPlatformManaged    = "DOCKER_ARG_PLATFORM_MANAGED"

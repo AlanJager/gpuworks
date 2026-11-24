@@ -5,6 +5,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 )
@@ -54,6 +55,13 @@ func (r *evaluateState) resolveTemplate() bool {
 	} else if err := r.s.ValidateMountModels(r.req); err != nil {
 		r.errs.add(FieldContainerMounts, err)
 	}
+	// Every refused docker arg, at once, beside the docker args field.
+	// Materialization would refuse only the first, and its errors start on
+	// the extra args field.
+	ownOverrides, _ := RequestContainerOverrides(r.req.ContainerOverrides)
+	for _, err := range deploy.DockerArgErrors(ownOverrides.DockerArgs, ownOverrides.ShmBytes) {
+		r.errs.add(FieldContainerDocker, err)
+	}
 	// Each replica is placed as its own unit; this tree admits no joint
 	// multi-replica group, so the scope is always per-replica. The response
 	// exists from here on so every field-error exit carries the template facts
@@ -68,6 +76,9 @@ func (r *evaluateState) resolveTemplate() bool {
 		r.resp.TemplateSpecName = r.selection.Spec.Name
 	}
 	r.resp.Warnings = append(r.resp.Warnings, r.selection.Warnings...)
+	// Host-access docker args are allowed; the preview names each one, the
+	// template's and the deployment's own, refused args or not.
+	r.resp.Warnings = append(r.resp.Warnings, deploy.DockerArgHostAccessWarnings(append(append([]string(nil), r.selection.dockerArgs()...), ownOverrides.DockerArgs...))...)
 	// A placement read failure was collected above; the zero placement keeps
 	// the rest of the answer renderable.
 	r.pool, r.poolErr = requestPool(r.req)

@@ -45,6 +45,15 @@ const (
 	// device names of two nodes, say). The command cannot be edited from the
 	// form; no params.
 	WarningManualDraftUnavailable = "MANUAL_DRAFT_UNAVAILABLE"
+	// WarningDockerArgPrivileged: a docker arg runs the container privileged
+	// (every device, the host's kernel interfaces). It is allowed; the warning
+	// says what it does. Params: arg (the token as written), option.
+	WarningDockerArgPrivileged = "DOCKER_ARG_PRIVILEGED"
+	// WarningDockerArgSharedPID: a docker arg (--pid) puts the container in
+	// the host's or another container's process namespace, whose processes it
+	// can then read and signal. Allowed and warned the same way. Params: arg,
+	// option.
+	WarningDockerArgSharedPID = "DOCKER_ARG_SHARED_PID"
 )
 
 // WarningKubeEnginePortsOutside: an edit of a Kubernetes entry's engine_ports

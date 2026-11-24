@@ -68,23 +68,25 @@ var (
 // layer's own shared memory size: a deployment's own container_overrides, and
 // a template spec's docker_args with its shm_bytes (inferencecatalog), call
 // this one function so an option refused in one layer is refused in the
-// other. It refuses an option that would hand the container the host
-// (validateUnsafeDockerArg) before judging restatements of a platform-managed
-// field and --ipc=host together with this layer's own shm_bytes
-// (ValidateContainerDockerArgs).
+// other. It answers the first of DockerArgErrors. Only the layer's own args
+// are judged: arguments the launch adds itself (the compute network's RDMA
+// options) are the platform's, not a restatement of them.
+//
+// Options that hand the container the host (--privileged, --pid) are not
+// refused: deployments are written by administrators, and some images need
+// them. DockerArgHostAccessWarnings names them on the preview instead.
 func ValidateDockerArgs(args []string, shmBytes int64) error {
-	for _, arg := range args {
-		if err := validateUnsafeDockerArg(arg); err != nil {
-			return err
-		}
+	if errs := DockerArgErrors(args, shmBytes); len(errs) > 0 {
+		return errs[0]
 	}
-	return ValidateContainerDockerArgs(args, shmBytes)
+	return nil
 }
 
-// ValidateContainerDockerArgs judges a deployment's own docker args. Only the
-// deployment layer is judged: arguments the launch adds itself (the compute
-// network's RDMA options) are the platform's, not a restatement of them.
-func ValidateContainerDockerArgs(args []string, shmBytes int64) error {
+// DockerArgErrors answers every docker arg ValidateDockerArgs refuses, in
+// argument order, so a form shows all of them at once instead of one per
+// correction.
+func DockerArgErrors(args []string, shmBytes int64) []error {
+	var errs []error
 	for index, arg := range args {
 		token := strings.TrimSpace(arg)
 		option := dockerOptionName(token)
@@ -92,13 +94,42 @@ func ValidateContainerDockerArgs(args []string, shmBytes int64) error {
 			continue
 		}
 		if code, managed := managedDockerOptions[option]; managed {
-			return messages.NewProductError(code, "docker arg "+token+" restates "+option+", which the deployment does not take from docker args", map[string]any{"arg": token, "option": option})
+			errs = append(errs, messages.NewProductError(code, "docker arg "+token+" restates "+option+", which the deployment does not take from docker args", map[string]any{"arg": token, "option": option}))
+			continue
 		}
 		if option == "--ipc" && shmBytes > 0 && dockerOptionValue(args, index) == "host" {
-			return messages.NewProductError(ErrorShmSizeWithHostIPC, "a shared memory size has no effect with --ipc=host", map[string]any{"arg": token})
+			errs = append(errs, messages.NewProductError(ErrorShmSizeWithHostIPC, "a shared memory size has no effect with --ipc=host", map[string]any{"arg": token}))
 		}
 	}
-	return nil
+	return errs
+}
+
+// DockerArgHostAccessWarnings names each docker arg that hands the container
+// the host: --privileged (every device, the host's kernel interfaces) and
+// --pid (the host's or another container's processes, which the container can
+// then read and signal). They are allowed, so the preview says what they do.
+func DockerArgHostAccessWarnings(args []string) []messages.Warning {
+	var warnings []messages.Warning
+	for index, arg := range args {
+		token := strings.TrimSpace(arg)
+		var code string
+		switch dockerOptionName(token) {
+		case "--privileged":
+			if value, stated := inlineDockerOptionValue(token); stated && value == "false" {
+				continue
+			}
+			code = messages.WarningDockerArgPrivileged
+		case "--pid":
+			if dockerOptionValue(args, index) == "" {
+				continue
+			}
+			code = messages.WarningDockerArgSharedPID
+		default:
+			continue
+		}
+		warnings = append(warnings, messages.NewWarning(code, map[string]any{"arg": token, "option": dockerOptionName(token)}))
+	}
+	return warnings
 }
 
 // DockerArgsShareHostIPC answers whether docker args put the container in the
@@ -116,7 +147,7 @@ func DockerArgsShareHostIPC(args []string) bool {
 // ErrorShmSizeWithHostIPC: the deployment's own shm_bytes has no effect
 // because the selected template's docker_args already put the container on
 // the host's IPC namespace. The deployment did not state --ipc=host itself,
-// so ValidateContainerDockerArgs (which only sees the deployment's own args)
+// so ValidateDockerArgs (which only sees the deployment's own args)
 // cannot catch this; it is checked once the template layer is known, beside
 // launchShmBytes.
 func shmSizeWithTemplateHostIPC() error {
@@ -165,4 +196,16 @@ func dockerOptionValue(args []string, index int) string {
 		return strings.TrimSpace(args[index+1])
 	}
 	return ""
+}
+
+// inlineDockerOptionValue answers the value a token carries itself, after "="
+// or a space, for a flag option such as --privileged=false.
+func inlineDockerOptionValue(token string) (string, bool) {
+	if _, value, ok := strings.Cut(token, "="); ok {
+		return strings.TrimSpace(value), true
+	}
+	if _, value, ok := strings.Cut(token, " "); ok {
+		return strings.TrimSpace(value), true
+	}
+	return "", false
 }
