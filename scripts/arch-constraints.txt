@@ -38,10 +38,11 @@ store_db_accessor_callers	0	max
 controller_struct_fields	34	max
 controller_struct_mutexes	0	max
 controller_struct_maps	0	max
-agent_node_runtime_fields	77	max
-agent_node_runtime_mutexes	12	max
-agent_node_runtime_methods	233	max
-agent_onrpc_cases	51	max
+agent_node_runtime_fields	70	max
+agent_node_runtime_mutexes	9	max
+agent_node_runtime_methods	218	max
+agent_onrpc_cases	43	max
+agent_image_deps_fields	9	max
 agent_engine_struct_maps	9	max
 controller_exported_methods	15	max
 planning_concrete_store_refs	74	max

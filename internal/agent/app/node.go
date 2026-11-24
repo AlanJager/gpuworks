@@ -97,14 +97,9 @@ type NodeRuntime struct {
 	modelsDirMu sync.RWMutex
 	modelsDir   string // absolute root for downloaded models
 	dcgmMode    string // "" (== off, the default) | "auto" (opt in) | "off"; see gpu.NewDCGMProbe
-	imageRefsMu sync.RWMutex
-	imageRefs   []string
-	// imageSeen is what the inventory last concluded per image, so only a
-	// change is logged (image_presence_log.go).
-	imageSeen   imagePresenceLog
-	imagePullMu sync.Mutex
-	imageOps    imageOperations
-	netBench    *netBenchManager
+	// images is the node's image work (images.go). Only imageWork names it.
+	images   nodeImages
+	netBench *netBenchManager
 
 	sendMu sync.Mutex
 	send   conn.SendFunc // nil when offline
@@ -126,9 +121,6 @@ type NodeRuntime struct {
 	stoppedDownloads map[string]map[string]bool
 	syncMu           sync.Mutex
 	modelSyncs       map[string]*activeModelSync
-	imageSyncs       map[string]*activeImageSync
-	imageSyncMu      sync.Mutex
-	imageSyncSends   map[string]context.CancelFunc // source runtime calls, keyed by transfer id
 
 	// netcfg is the effective network/accelerator configuration from the
 	// server. The node owns it - downloads, model sync and image pulls all read
@@ -297,7 +289,7 @@ func newNodeRuntime(log *slog.Logger, driver runtime.Driver, modelsDir, forceDri
 	if err := os.MkdirAll(stateDir, 0o755); err != nil {
 		log.Warn("agent state directory unavailable", "path", stateDir, "err", err)
 	}
-	n := &NodeRuntime{log: log, modelsDir: modelsDir, stateDir: stateDir, prober: prober, downloading: map[string]*modelDownload{}, modelSyncs: map[string]*activeModelSync{}, imageSyncs: map[string]*activeImageSync{}, netBench: newNetBenchManager(), progress: newProgressGate()}
+	n := &NodeRuntime{log: log, modelsDir: modelsDir, stateDir: stateDir, prober: prober, downloading: map[string]*modelDownload{}, modelSyncs: map[string]*activeModelSync{}, netBench: newNetBenchManager(), progress: newProgressGate()}
 	var mountRunner storagemount.Runner
 	if forceDriver == kube.DriverName {
 		// The agent's pod mounts NFS on the host, with the host's

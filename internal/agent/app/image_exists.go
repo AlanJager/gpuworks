@@ -9,7 +9,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
-func (n *NodeRuntime) rpcImageExists(ctx context.Context, raw json.RawMessage) (any, error) {
+func (i *nodeImages) rpcImageExists(ctx context.Context, raw json.RawMessage) (any, error) {
 	var p proto.ImageExistsParams
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return nil, err
@@ -18,7 +18,7 @@ func (n *NodeRuntime) rpcImageExists(ctx context.Context, raw json.RawMessage) (
 	if ref == "" {
 		return nil, errors.New("image.exists requires image_ref")
 	}
-	d := n.runtimeDriver()
+	d := i.deps.driver()
 	if d == nil {
 		return nil, errors.New("runtime unavailable")
 	}

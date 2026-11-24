@@ -14,7 +14,7 @@ import (
 	"gpuworks.ai/gpuworks/pkg/imagearchive"
 )
 
-func (n *NodeRuntime) rpcImagePreviewPath(ctx context.Context, raw json.RawMessage) (any, error) {
+func (i *nodeImages) rpcImagePreviewPath(ctx context.Context, raw json.RawMessage) (any, error) {
 	var req proto.ImagePreviewPathParams
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, err
@@ -25,7 +25,7 @@ func (n *NodeRuntime) rpcImagePreviewPath(ctx context.Context, raw json.RawMessa
 	}
 	ctx, cancel := context.WithTimeout(ctx, proto.ImageArchivePreviewTimeout)
 	defer cancel()
-	file, err := runtime.OpenImageFile(ctx, n.runtimeDriver(), path)
+	file, err := runtime.OpenImageFile(ctx, i.deps.driver(), path)
 	if err != nil {
 		return nil, archivePreviewError(ctx, err, proto.ArchivePreviewUnreadable)
 	}

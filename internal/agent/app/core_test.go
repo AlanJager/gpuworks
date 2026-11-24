@@ -84,7 +84,7 @@ func TestNodeRuntimeStateAndEmissionLifecycle(t *testing.T) {
 		t.Fatalf("network config = %+v", got)
 	}
 
-	n.imageRefs = []string{"repo/image:tag"}
+	n.imageWork().refs = []string{"repo/image:tag"}
 	images, paths := n.StatusSnapshot(context.Background(), nil)
 	if len(images) != 1 || images[0].ImageRef != "repo/image:tag" || images[0].Present {
 		t.Fatalf("image snapshot = %+v", images)

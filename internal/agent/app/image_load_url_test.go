@@ -84,7 +84,7 @@ func (h *archiveLoadHarness) awaitTerminal(t *testing.T) proto.ImageNodeStatus {
 // archiveDir is where the agent stages downloads for this node.
 func (h *archiveLoadHarness) archiveDir(t *testing.T) string {
 	t.Helper()
-	dir, err := h.node.imageArchiveDir()
+	dir, err := h.node.imageWork().imageArchiveDir()
 	if err != nil {
 		t.Fatalf("image archive dir: %v", err)
 	}
@@ -118,7 +118,7 @@ func TestRPCImageLoadURLRejectsUnusableRequests(t *testing.T) {
 		`{"canonical_ref":"registry.example/team/runner:v1","archive_url":"https://user:pass@mirror.example/img.tar"}`,
 		`{"canonical_ref":"registry.example/team/runner:v1","archive_url":"not a url at all"}`,
 	} {
-		if _, err := h.node.rpcImageLoadURL(context.Background(), json.RawMessage(raw)); err == nil {
+		if _, err := h.node.imageWork().rpcImageLoadURL(context.Background(), json.RawMessage(raw)); err == nil {
 			t.Errorf("rpcImageLoadURL(%s) unexpectedly succeeded", raw)
 		}
 	}
@@ -132,7 +132,7 @@ func TestRPCImageLoadURLRejectsUnusableRequests(t *testing.T) {
 
 func TestRPCImageLoadURLDownloadsLoadsAndHydrates(t *testing.T) {
 	h := newArchiveLoadHarness(t)
-	result, err := h.node.rpcImageLoadURL(context.Background(), h.params(h.size))
+	result, err := h.node.imageWork().rpcImageLoadURL(context.Background(), h.params(h.size))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestRPCImageLoadURLTagsAnArchiveThatCarriedAnotherReference(t *testing.T) {
 	h.driver.InjectMissingImage(loadURLCanonical)
 	h.driver.InjectLoadedRef(realRef)
 
-	if _, err := h.node.rpcImageLoadURL(context.Background(), h.params(h.size)); err != nil {
+	if _, err := h.node.imageWork().rpcImageLoadURL(context.Background(), h.params(h.size)); err != nil {
 		t.Fatal(err)
 	}
 	status := h.awaitTerminal(t)
@@ -201,7 +201,7 @@ func TestRPCImageLoadURLFailsWhenTheArchiveReferenceIsUnknown(t *testing.T) {
 	h.driver.InjectMissingImage(loadURLCanonical)
 	h.driver.InjectNoLoadedRef()
 
-	if _, err := h.node.rpcImageLoadURL(context.Background(), h.params(h.size)); err != nil {
+	if _, err := h.node.imageWork().rpcImageLoadURL(context.Background(), h.params(h.size)); err != nil {
 		t.Fatal(err)
 	}
 	status := h.awaitTerminal(t)
@@ -248,7 +248,7 @@ func TestRPCImageLoadURLReportsRuntimeFailures(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			h := newArchiveLoadHarness(t)
 			tc.inject(h.driver)
-			if _, err := h.node.rpcImageLoadURL(context.Background(), h.params(h.size)); err != nil {
+			if _, err := h.node.imageWork().rpcImageLoadURL(context.Background(), h.params(h.size)); err != nil {
 				t.Fatal(err)
 			}
 			status := h.awaitTerminal(t)
@@ -267,7 +267,7 @@ func TestRPCImageLoadURLReportsRuntimeFailures(t *testing.T) {
 func TestRPCImageLoadURLRefusesBeforeTouchingTheNetworkWhenTheDiskIsTooSmall(t *testing.T) {
 	h := newArchiveLoadHarness(t)
 	// A size no test machine can hold: admission must refuse it outright.
-	if _, err := h.node.rpcImageLoadURL(context.Background(), h.params(1<<60)); err != nil {
+	if _, err := h.node.imageWork().rpcImageLoadURL(context.Background(), h.params(1<<60)); err != nil {
 		t.Fatal(err)
 	}
 	status := h.awaitTerminal(t)
@@ -284,7 +284,7 @@ func TestRPCImageLoadURLRefusesBeforeTouchingTheNetworkWhenTheDiskIsTooSmall(t *
 
 func TestRPCImageLoadURLReportsAMirrorThatDropsTheTransfer(t *testing.T) {
 	h := newArchiveLoadHarness(t, ocifixture.WithMidStreamBreak(4096))
-	if _, err := h.node.rpcImageLoadURL(context.Background(), h.params(h.size)); err != nil {
+	if _, err := h.node.imageWork().rpcImageLoadURL(context.Background(), h.params(h.size)); err != nil {
 		t.Fatal(err)
 	}
 	status := h.awaitTerminal(t)
@@ -307,7 +307,7 @@ func TestRPCImageLoadURLFallsBackToOneConnectionWithoutRangeSupport(t *testing.T
 	// A server that ignores Range also cannot report a trustworthy size ahead
 	// of time, so the request carries none: admission is skipped and the
 	// download still has to work.
-	if _, err := h.node.rpcImageLoadURL(context.Background(), h.params(0)); err != nil {
+	if _, err := h.node.imageWork().rpcImageLoadURL(context.Background(), h.params(0)); err != nil {
 		t.Fatal(err)
 	}
 	if status := h.awaitTerminal(t); status.State != "present" {
@@ -318,30 +318,30 @@ func TestRPCImageLoadURLFallsBackToOneConnectionWithoutRangeSupport(t *testing.T
 
 func TestRPCImageLoadURLSerializesWithOtherImageWorkAndSaysSo(t *testing.T) {
 	h := newArchiveLoadHarness(t)
-	// imagePullMu is what keeps two large image operations off one disk at the
+	// The image slot is what keeps two large image operations off one disk at the
 	// same time. Hold it and prove the load waits — and that waiting is
 	// reported, because a queued transfer that says nothing is indistinguish-
 	// able from a stalled one on the progress column.
-	h.node.imagePullMu.Lock()
-	if _, err := h.node.rpcImageLoadURL(context.Background(), h.params(h.size)); err != nil {
-		h.node.imagePullMu.Unlock()
+	h.node.imageWork().slot.Lock()
+	if _, err := h.node.imageWork().rpcImageLoadURL(context.Background(), h.params(h.size)); err != nil {
+		h.node.imageWork().slot.Unlock()
 		t.Fatal(err)
 	}
 	select {
 	case status := <-h.statuses:
 		if !strings.Contains(status.Message, "waiting for another image operation") {
-			h.node.imagePullMu.Unlock()
+			h.node.imageWork().slot.Unlock()
 			t.Fatalf("a queued load reported %+v, want the waiting notice", status)
 		}
 	case <-time.After(3 * time.Second):
-		h.node.imagePullMu.Unlock()
+		h.node.imageWork().slot.Unlock()
 		t.Fatal("a queued load must say it is waiting")
 	}
 	if requests := h.fixture.Requests(); len(requests) != 0 {
-		h.node.imagePullMu.Unlock()
+		h.node.imageWork().slot.Unlock()
 		t.Fatalf("load downloaded while the image lock was held: %v", requests)
 	}
-	h.node.imagePullMu.Unlock()
+	h.node.imageWork().slot.Unlock()
 	if status := h.awaitTerminal(t); status.State != "present" {
 		t.Fatalf("terminal status = %+v", status)
 	}
@@ -355,46 +355,46 @@ func TestRPCImageCancelStopsTheNamedQueuedTransfer(t *testing.T) {
 	params := json.RawMessage(fmt.Sprintf(`{"canonical_ref":%q,"archive_url":%q,"size_bytes":%d,"transfer_id":"t-1"}`,
 		loadURLCanonical, h.url(), h.size))
 	// Hold the image slot so the transfer is still queued when the cancel lands.
-	h.node.imagePullMu.Lock()
-	if _, err := h.node.rpcImageLoadURL(context.Background(), params); err != nil {
-		h.node.imagePullMu.Unlock()
+	h.node.imageWork().slot.Lock()
+	if _, err := h.node.imageWork().rpcImageLoadURL(context.Background(), params); err != nil {
+		h.node.imageWork().slot.Unlock()
 		t.Fatal(err)
 	}
 	select {
 	case status := <-h.statuses:
 		if !strings.Contains(status.Message, "waiting for another image operation") {
-			h.node.imagePullMu.Unlock()
+			h.node.imageWork().slot.Unlock()
 			t.Fatalf("queued transfer reported %+v", status)
 		}
 	case <-time.After(3 * time.Second):
-		h.node.imagePullMu.Unlock()
+		h.node.imageWork().slot.Unlock()
 		t.Fatal("the queued transfer never said it was waiting")
 	}
 
 	cancelParams := json.RawMessage(fmt.Sprintf(`{"canonical_ref":%q,"transfer_id":"t-1"}`, loadURLCanonical))
-	raw, err := h.node.rpcImageCancel(context.Background(), cancelParams)
+	raw, err := h.node.imageWork().rpcImageCancel(context.Background(), cancelParams)
 	if err != nil {
-		h.node.imagePullMu.Unlock()
+		h.node.imageWork().slot.Unlock()
 		t.Fatal(err)
 	}
 	if result, ok := raw.(proto.ImageCancelResult); !ok || !result.Cancelled {
-		h.node.imagePullMu.Unlock()
+		h.node.imageWork().slot.Unlock()
 		t.Fatalf("cancel result = %#v", raw)
 	}
 	// Cancelling the same attempt twice, or one that never existed, is a no-op
 	// rather than an error: the server may race the cancel against the terminal
 	// status.
 	unknown := json.RawMessage(fmt.Sprintf(`{"canonical_ref":%q,"transfer_id":"t-2"}`, loadURLCanonical))
-	if raw, err = h.node.rpcImageCancel(context.Background(), unknown); err != nil {
-		h.node.imagePullMu.Unlock()
+	if raw, err = h.node.imageWork().rpcImageCancel(context.Background(), unknown); err != nil {
+		h.node.imageWork().slot.Unlock()
 		t.Fatal(err)
 	}
 	if result, ok := raw.(proto.ImageCancelResult); !ok || result.Cancelled {
-		h.node.imagePullMu.Unlock()
+		h.node.imageWork().slot.Unlock()
 		t.Fatalf("unknown transfer cancel = %#v", raw)
 	}
 
-	h.node.imagePullMu.Unlock()
+	h.node.imageWork().slot.Unlock()
 	if status := h.awaitTerminal(t); status.State != "failed" || !strings.Contains(status.Message, "cancelled") {
 		t.Fatalf("terminal status after cancel = %+v", status)
 	}
@@ -403,7 +403,7 @@ func TestRPCImageCancelStopsTheNamedQueuedTransfer(t *testing.T) {
 
 func TestRPCImageLoadURLReportsProgressAgainstTheArchiveSize(t *testing.T) {
 	h := newArchiveLoadHarness(t)
-	if _, err := h.node.rpcImageLoadURL(context.Background(), h.params(h.size)); err != nil {
+	if _, err := h.node.imageWork().rpcImageLoadURL(context.Background(), h.params(h.size)); err != nil {
 		t.Fatal(err)
 	}
 	var syncing []proto.ImageNodeStatus
@@ -451,7 +451,7 @@ func TestRPCImageLoadURLFailsWhenTheRuntimeCannotLoadAFile(t *testing.T) {
 		return nil
 	}
 	raw := json.RawMessage(fmt.Sprintf(`{"canonical_ref":%q,"archive_url":"https://mirror.example/img.tar"}`, loadURLCanonical))
-	if _, err := node.rpcImageLoadURL(context.Background(), raw); err != nil {
+	if _, err := node.imageWork().rpcImageLoadURL(context.Background(), raw); err != nil {
 		t.Fatal(err)
 	}
 	select {

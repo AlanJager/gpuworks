@@ -3,63 +3,16 @@ package hostsim
 import (
 	"encoding/json"
 	"errors"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/proto/prototest"
 )
 
-// protoConstants are the string constants of package proto whose names
-// start with prefix, read from its source so a new one is seen here the day
-// it is added.
 func protoConstants(t *testing.T, prefix string) map[string]string {
-	t.Helper()
-	fset := token.NewFileSet()
-	dir := filepath.Join("..", "..", "proto")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	out := map[string]string{}
-	for _, e := range entries {
-		if !strings.HasSuffix(e.Name(), ".go") || strings.HasSuffix(e.Name(), "_test.go") {
-			continue
-		}
-		f, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, decl := range f.Decls {
-			gen, ok := decl.(*ast.GenDecl)
-			if !ok || gen.Tok != token.CONST {
-				continue
-			}
-			for _, spec := range gen.Specs {
-				vs := spec.(*ast.ValueSpec)
-				for i, name := range vs.Names {
-					if !strings.HasPrefix(name.Name, prefix) || i >= len(vs.Values) {
-						continue
-					}
-					lit, ok := vs.Values[i].(*ast.BasicLit)
-					if !ok || lit.Kind != token.STRING {
-						continue
-					}
-					value, _ := strconv.Unquote(lit.Value)
-					out[name.Name] = value
-				}
-			}
-		}
-	}
-	if len(out) == 0 {
-		t.Fatalf("no %s constants found in package proto", prefix)
-	}
-	return out
+	return prototest.Constants(t, filepath.Join("..", "..", "proto"), prefix)
 }
 
 // TestEveryRPCIsClassified makes a new RPC decide, here, whether a simulated
