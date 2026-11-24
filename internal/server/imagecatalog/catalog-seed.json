@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
-  "catalog_version": "2026-11-24.f9d3feff",
-  "sha256": "5dc6148ea0748ad156dc86ed92d535a4010a70a45c67084901725d0fdac8c202",
+  "catalog_version": "2026-11-24.dc2f3373",
+  "sha256": "8af3d84e4047eb4ad065c1be15d37fe63eba2713ebde09c646f6aa282107f985",
   "series": [
     {
       "name": "MLX Audio · Metal",
@@ -796,6 +796,18 @@
             "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.30.0-r4"
           ],
           "notes": "omni 档，给 vllm-omni 独家支持的负载用（Qwen3-TTS、Ming-omni-tts、图像与 视频生成等）。代价是 transformers 被压到 \u003c5.15、accelerate 钉到 1.12.0， 所以普通负载请用默认档。不声明 diffusion：omni 自带 diffusers 但不带 opencv， 与 sglang 的 diffusion 扩展不是一回事。r3 加装 vllm-omni 的 indextts2 前端 （fugashi、unidic-lite，x86_64 另有 WeTextProcessing）；arm64 上没有 pynini 的 cp312 wheel， 所以 IndexTTS 2.5 的中英文文本规范化只在 x86_64 上可用。r4 以 --no-deps 加装 voxcpm （VoxCPM2 用），并打 omni 补丁 003（MOSS-TTS-Realtime 参考音频编码的设备不一致）。\nrequires: engine, engine_import, omni, indextts2_frontend, voxcpm, mooncake, overlays, audit"
+        },
+        {
+          "name": "cuda13.0-vllm-omni0.34.0-r1",
+          "image_ref": "gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.34.0-r1",
+          "engine_version": "0.34.0",
+          "framework_version": "13.0",
+          "arch": "amd64",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.34.0-r1",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cuda13.0-vllm-omni0.34.0-r1"
+          ],
+          "notes": "omni 档，vllm 0.34.0 + vllm-omni 0.34.0（transformers \u003c5.23、accelerate 1.13.0、 diffusers 0.42.0），取舍同 cuda13.0-vllm-omni0.30.0，只有 amd64。给 vllm-omni 独家支持的 负载用（SenseNova-U1.6 的文生图与图像编辑、Qwen3-TTS 等），普通负载请用默认档。 与 0.30 档的配方差异：opentelemetry-* 整套对齐到 1.45.2（base 的 1.40.0 低于 vllm 与 vllm-omni 的 \u003e=1.45.1），base 自带 lmcache 的 \u003c=1.40.0 钉子因此成为声明过的 pip check 冲突； opencv-python 约束到 base 的 opencv-python-headless 版本；补丁里 vllm 的 001、002，omni 的 002、003 在 0.34 上不适用或上游已修，按 PATCHES_NOT_APPLICABLE / OMNI_PATCHES_NOT_APPLICABLE 声明（原因见 README 补丁表），omni 的 001（--omni 旁路）已重新定位。与上游官方 omni 镜像 的差异：不重编 LMCache，不另装 cuDNN 9.25.1 预加载（上游为 Qwen-Image 2.1 的像素门加的）。 真机：RTX 4090 与 RTX 3090 上 SenseNova-U1.6 的 FP8 文生图与编辑通过，不带 --omni 时普通 文本模型照常起服务。\nrequires: engine, engine_import, omni, indextts2_frontend, voxcpm, mooncake, overlays, audit"
         },
         {
           "name": "cuda12.8-vllm0.16.0-amd64-omni-slot10",

@@ -42,10 +42,13 @@
 #                                        里面有文件）会失败
 #                 TORCHCODEC_SPEC        base 自带的 torchcodec 与本档 CUDA 不匹配时，
 #                                        用它显式替换成正确的构建
-#                 OMNI_PATCHES_NOT_APPLICABLE  昇腾 omni 档：本档 base 的 vllm_omni 上确实
+#                 OMNI_PATCHES_NOT_APPLICABLE  昇腾与 cuda omni 档：本档 base 的 vllm_omni 上确实
 #                                        不适用的 omni 补丁；声明过期会失败
 #                 VOXCPM_SPEC / DECORD_SPEC / MOVIEPY_SPEC  cuda vllm 线按档加装的模型专属依赖
 #                                        （见 cuda/Dockerfile.vllm「模型专属依赖」）
+#                 OMNI_OPENCV_ALIGN      "1" = cuda omni 档装 omni 时把 opencv-python 约束到 base 的 headless 版本
+#                 OTEL_SPECS             cuda vllm 线把 opentelemetry-* 对齐到这些 name==version 规格
+#                                        （见 cuda/Dockerfile.vllm「遥测栈对齐」）
 #                 DTK_VLLM_PATCHES       "1"=dtk vllm 档应用 patches/vllm_dtk/（严格应用，且要经得起
 #                                        重跑 vllm-hcu-apply-patches）；不传则不打
 #   requires    本档必须成立的断言，构建末尾与 verify.sh 都会检查，不过即失败：
@@ -192,6 +195,41 @@ items:
       （fugashi、unidic-lite，x86_64 另有 WeTextProcessing）；arm64 上没有 pynini 的 cp312 wheel，
       所以 IndexTTS 2.5 的中英文文本规范化只在 x86_64 上可用。r4 以 --no-deps 加装 voxcpm
       （VoxCPM2 用），并打 omni 补丁 003（MOSS-TTS-Realtime 参考音频编码的设备不一致）。
+
+  - id: cuda13.0-vllm-omni0.34.0
+    revision: r1
+    backend: cuda
+    engine: vllm
+    # amd64 only for r1: the SenseNova-U1.6 and other omni workloads target x86 GPU nodes, and the
+    # arm64 build (emulated, or on an arm64 builder) was not done for this revision.
+    platforms: [linux/amd64]
+    base: vllm/vllm-openai:v0.34.0
+    base_note: >-
+      vllm-omni 0.34.0 的官方 CUDA 镜像（vllm/vllm-omni:v0.34.0）就以
+      vllm/vllm-openai:v0.34.0 为 base，与本档同一原件；同仓库内大层去重。
+    args:
+      VLLM_OMNI_VERSION: "0.34.0"
+      MOONCAKE: "base"
+      ENGINE_VERSION: "0.34.0"
+      FRAMEWORK_VERSION: "13.0"
+      VOXCPM_SPEC: "voxcpm==2.0.3"
+      OMNI_OPENCV_ALIGN: "1"
+      OTEL_SPECS: "opentelemetry-api==1.45.2 opentelemetry-sdk==1.45.2 opentelemetry-exporter-otlp==1.45.2 opentelemetry-exporter-prometheus==0.66b2"
+      PATCHES_NOT_APPLICABLE: "001_wrong_dp_ray.patch 002_mooncake_prom_metrics.patch"
+      OMNI_PATCHES_NOT_APPLICABLE: "002_ming_audio_dsp_npu_cpu_fallback.diff 003_moss_realtime_ref_encoder_device.diff"
+    requires: [engine, engine_import, omni, indextts2_frontend, voxcpm, mooncake, overlays, audit]
+    note: >-
+      omni 档，vllm 0.34.0 + vllm-omni 0.34.0（transformers <5.23、accelerate 1.13.0、
+      diffusers 0.42.0），取舍同 cuda13.0-vllm-omni0.30.0，只有 amd64。给 vllm-omni 独家支持的
+      负载用（SenseNova-U1.6 的文生图与图像编辑、Qwen3-TTS 等），普通负载请用默认档。
+      与 0.30 档的配方差异：opentelemetry-* 整套对齐到 1.45.2（base 的 1.40.0 低于 vllm 与
+      vllm-omni 的 >=1.45.1），base 自带 lmcache 的 <=1.40.0 钉子因此成为声明过的 pip check 冲突；
+      opencv-python 约束到 base 的 opencv-python-headless 版本；补丁里 vllm 的 001、002，omni 的
+      002、003 在 0.34 上不适用或上游已修，按 PATCHES_NOT_APPLICABLE / OMNI_PATCHES_NOT_APPLICABLE
+      声明（原因见 README 补丁表），omni 的 001（--omni 旁路）已重新定位。与上游官方 omni 镜像
+      的差异：不重编 LMCache，不另装 cuDNN 9.25.1 预加载（上游为 Qwen-Image 2.1 的像素门加的）。
+      真机：RTX 4090 与 RTX 3090 上 SenseNova-U1.6 的 FP8 文生图与编辑通过，不带 --omni 时普通
+      文本模型照常起服务。
 
   - id: cuda13.0-sglang0.5.21
     revision: r2
