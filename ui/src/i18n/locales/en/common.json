@@ -248,6 +248,7 @@
     "DIAGNOSTICS_AGENT_UNSUPPORTED": "The node's agent version does not support this read.",
     "DIAGNOSTICS_ITEM_READ_FAILED": "Could not be read.",
     "DIAGNOSTICS_ITEM_STAGE_FAILED": "Could not be written to the server's disk while collecting.",
+    "DIAGNOSTICS_MEMBER_UNAVAILABLE": "This control-plane member did not give its part, so the collection does not show what that member saw. Collect again once it answers, or run gpuworks support-bundle on that member.",
     "TELEMETRY_ENDPOINT_INVALID": "Invalid collector address: give an http(s) URL such as http://otel-collector:4318, without credentials or a query.",
     "TELEMETRY_HEADER_INVALID": "Header {{name}} cannot be used: the name is invalid, given twice, or one the exporter sets itself (Content-Type and the like).",
     "TELEMETRY_HEADER_VALUE_REQUIRED": "Header {{name}} has no value yet; fill it in.",

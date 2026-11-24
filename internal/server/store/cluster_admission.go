@@ -38,7 +38,7 @@ func (s *Store) InitializeClusterIdentity(ctx context.Context, candidate Cluster
 	}
 	candidate.ID = 1
 	var result ClusterIdentity
-	err := s.clusterTransaction(ctx, func(tx *gorm.DB) error {
+	err := s.membershipTransaction(ctx, func(tx *gorm.DB) error {
 		candidate.CreatedAt = tx.NowFunc().UTC()
 		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&candidate).Error; err != nil {
 			return err
@@ -91,6 +91,8 @@ func (s *Store) IssueClusterInvitationWithOrigin(ctx context.Context, clusterID 
 		return ClusterInvitation{}, "", errors.New("generate cluster invitation")
 	}
 	var invitation ClusterInvitation
+	// Issuing is an administrator's request served by a member: its
+	// statements check the administrator, so the member is checked here.
 	err := s.clusterWriteTransaction(ctx, func(tx *gorm.DB) error {
 		if err := requireClusterIdentity(tx, clusterID); err != nil {
 			return err
@@ -139,7 +141,7 @@ func (s *Store) ClaimClusterInvitationWithOrigin(ctx context.Context, clusterID,
 		return ClusterAdmission{}, err
 	}
 	var admission ClusterAdmission
-	err = s.clusterWriteTransaction(ctx, func(tx *gorm.DB) error {
+	err = s.membershipWriteTransaction(ctx, func(tx *gorm.DB) error {
 		if err := requireClusterIdentity(tx, clusterID); err != nil {
 			return err
 		}
@@ -206,7 +208,7 @@ func (s *Store) ClusterCertificateAuthorization(ctx context.Context, clusterID, 
 	}
 	var admission ClusterAdmission
 	var origin string
-	err := s.clusterTransaction(ctx, func(tx *gorm.DB) error {
+	err := s.membershipTransaction(ctx, func(tx *gorm.DB) error {
 		if err := requireClusterIdentity(tx, clusterID); err != nil {
 			return err
 		}
@@ -287,12 +289,30 @@ func (s *Store) clusterAdmission(ctx context.Context, clusterID, keyFingerprint 
 	return snapshot.Admission, nil
 }
 
+// clusterTransaction is a member's write like any other: the writer guard
+// checks it.
 func (s *Store) clusterTransaction(ctx context.Context, fn func(*gorm.DB) error) error {
 	// Every admission, grant and material write keeps the five-second cap,
 	// whatever longer deadline its caller carries; a shorter one still wins.
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	return s.db.WithContext(ctx).Transaction(fn)
+}
+
+// membershipTransaction and membershipWriteTransaction run what establishes
+// or decides membership, where the writer guard cannot apply: the cluster
+// identity and the seed admission (no admission exists yet), claiming an
+// invitation and revocation (their statements check the named key), the
+// membership, transport and material grants (a member asks about itself
+// through them and is refused by them), the reads of admissions those grants
+// rest on, and revoking the other admissions after a restore. Nothing else
+// may use them; the inventory test counts their callers.
+func (s *Store) membershipTransaction(ctx context.Context, fn func(*gorm.DB) error) error {
+	return s.clusterTransaction(withoutWriterGuard(ctx), fn)
+}
+
+func (s *Store) membershipWriteTransaction(ctx context.Context, fn func(*gorm.DB) error) error {
+	return s.clusterWriteTransaction(withoutWriterGuard(ctx), fn)
 }
 
 // clusterWriteTransaction acquires SQLite's writer before reading admission

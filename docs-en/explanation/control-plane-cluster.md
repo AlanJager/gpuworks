@@ -19,6 +19,23 @@ The community distribution carries neither the cluster runtime nor any cluster c
 - **Business is served by the member that leads the database.** Any other member that receives a business request (management API, console, `/v1` inference, an agent connecting) hands it over unchanged on the mutual-TLS channel between members, so the answer through the entry is the same whichever member it lands on. `/healthz` and `/api/v1/readyz` are answered by the member that received them. A member that cannot observe a leader for the moment answers business requests with 503, which the entry may retry.
 - **A write sent to a member that cannot commit it**: it answers 503, nothing is committed, and the entry can send the request to another member.
 - **A member that has not opened business** (just started, cut off from the majority, or with materials not yet verified): business requests and `/api/v1/readyz` both answer 503 with the body `member business service is not ready`.
+- **Why a member refused a request**: the 503 above, and the 403 the leader gives a request forwarded by a member it does not admit, carry the response header `X-Gpuworks-Refusal`, whose value is one of the codes below. It is given before authentication and holds the code only, no address and no identity. Once a refusal has happened, `GET /api/v1/healthz` with a token has one more field, `business_refusals`: the count per code since the process started. Both are diagnostics for operators and collectors; the codes may change between releases, and clients must not depend on them.
+
+  | Code | Meaning |
+  |---|---|
+  | `no_business_generation`, `generation_changed`, `no_business_handler` | The member's business handler is not installed yet, or was withdrawn under the request |
+  | `cluster_upgrade` | Business is closed for a cluster upgrade |
+  | `proof_missing`, `proof_expired`, `proof_stopped`, `proof_run_canceled`, `proof_canceled`, `proof_not_eligible` | The member has no valid confirmation of its membership at the moment |
+  | `sessions_not_routable`, `target_not_current` | The member cannot accept session calls, or its target version is not the current one |
+  | `no_known_leader`, `not_the_leader`, `leader_unreachable` | No leader was observed in the last few seconds; a forwarded request reached a member that does not lead; the forward to the leader failed |
+  | `forward_peer_unidentified`, `forward_not_ready`, `forward_peer_undecided`, `forward_peer_not_admitted` | On the leader: the forwarding side has no member certificate; the member route is not ready; no answer about the forwarding member; the forwarding member is not admitted (403) |
+  | `proof_headroom`, `proof_epoch_changed`, `proof_owner_changed`, `renewal_unavailable`, `request_canceled`, `request_deadline` | Only on `/api/v1/readyz`: the confirmation ends too soon or changed under the probe; the probe was cancelled or ran out of time |
+  | `other` | A reason this table does not name |
+- **A short storage stall**: a member admits requests on the membership it last confirmed. The confirmation is renewed in the background every few seconds and no request waits for it, so a storage stall of a few seconds neither refuses nor delays a request for authorization. While a renewal gets no answer (a storage stall, a timeout, no database leader) the member keeps admitting requests, and closes business only when no renewal has succeeded for 60 seconds after the start of the last successful confirmation. A pass that copies the members' key files to the other members and runs out of time, finds no database leader, or for the moment gets no answer from a majority of members (one member down and another refusing just then, for example) does not close the member either; files that differ from what was verified, are missing or cannot be read do.
+- **After a member is revoked or cut off**:
+  - Writes: a revoked member's write is refused before it commits, even while the member still reaches the database leader, and the member then closes its own business; a member cut off from the majority could not commit anyway. A check that itself fails (writer taken, no leader, a dropped connection, a timeout) is not a refusal and is returned to the caller as it is. The writes that decide membership itself, loading a backup or an import into an empty database, and the server's own work at startup do not pass this check.
+  - Reads and inference requests: when the database answers that the member was revoked, the member closes at once, normally at its next renewal after the revocation, within a few seconds. When its renewals get no answer, at most 60 seconds after the start of its last successful confirmation; until then it answers from the data it last saw.
+  - Connections between members: admitted on a member list confirmed within the last 15 seconds, and for at most 60 seconds when it cannot be confirmed, the same limit as for the member's own requests; a member revoked during a storage stall is therefore still accepted by the others for up to 60 seconds. The member that commits a revocation drops its list at once. A connection that is already open is checked only when it is opened.
 
 ## Limits
 
@@ -47,7 +64,7 @@ The recovery targets come from a small measured sample and are no guarantee for 
 
 ## Why the Database Leader Changed: Role Records
 
-Each change of the database leader cuts business requests in flight, terminals and log tails, and the agents' sessions are registered again with the new leader. Every member's server log (`logs/gpuworks-server.log`, taken along by [collecting diagnostics](../how-to/troubleshooting.md#无法登录现场时调试采集与收集诊断信息)) records what this member's database process did in Raft and why. It is always on and needs no debug build:
+Each change of the database leader cuts business requests in flight, terminals and log tails, and the agents' sessions are registered again with the new leader. Every member's server log (`<installation>/logs/server.log` on a member installed by the cluster installation; [collecting diagnostics](../how-to/troubleshooting.md#控制面集群诊断包里有三个成员的记录) takes all three members' along under `members/<member>/`, with the role records also extracted as `role-events.log`) records what this member's database process did in Raft and why. It is always on and needs no debug build:
 
 - `cluster database role event`: one role record of the database process. `observed_at` is when it happened (the database process's clock, in nanoseconds); the log line's own time is less than a second later.
 - `cluster database leader changed`: this member has recognized a new leader. It states the leader before (`old_leader`), the new leader (`new_leader`, a member id), the term (`term`), whether this member is the new leader (`leads`), the reason as this member saw it (`reason`), and how long this member had no leader (`without_leader_ms`).
@@ -135,9 +152,9 @@ Current limits:
 
 <!-- translation-source-sha256: d893a7614f922930a0120a0577e4098bee4fbdbc0a805c47575855a11736c20c # Control-Plane Cluster Behaviour and Limits -->
 <!-- translation-source-sha256: 759f9f888c6cdaa0e610709be4e93ac8423ae04edf6c39dc34a64a1eae8fa022 ## Composition -->
-<!-- translation-source-sha256: 142dbf736ea9e3307388d697bf8e3bc6404972ce7557916b76037348cea06640 ## Behaviour on Failure -->
+<!-- translation-source-sha256: f61034837ac10febd8a479706df4c0dc1d4eacd1509dc914a9a1dc02334fe459 ## Behaviour on Failure -->
 <!-- translation-source-sha256: 0c107885f72821f97efd1713f64d70cb0abf5ddbedd10e0a4dc63a4733bcaebb ## Limits -->
 <!-- translation-source-sha256: c56a989bc2555e6ad4a6cf5dd7ffe407203e6a9f32497c41ea4ce8ca3322cf66 ## Storage Tiers -->
-<!-- translation-source-sha256: 50ca0cf7b6be3fcd8143e960c183012100be607db333718f323571fabbaa7bd9 ## Why the Database Leader Changed: Role Records -->
+<!-- translation-source-sha256: e15dc92ff681f9fd2dcd1f95a60a5be893bac3b3ed55317b3ce7b11211f4980d ## Why the Database Leader Changed: Role Records -->
 <!-- translation-source-sha256: 5b963d9b6cab0af7f80ccbda255cde725e9cbf149f23b48fa1e3bc2159cd2c1d ## Protocol Version of the Database Helper -->
 <!-- translation-source-sha256: b861fe35e2506d9b04c5a8a9cb23aee7633bb64c8d1ec6faf4eb5b3df157bae3 ## Upgrading the Cluster's Schema -->

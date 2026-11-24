@@ -8,6 +8,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"io"
+	"io/fs"
 	"log/slog"
 	"maps"
 	"net"
@@ -288,6 +289,13 @@ func materialNetworkInterrupted(err error) bool {
 	if err == nil {
 		return false
 	}
+	// A file's error is a finding about this member's disk, also when its
+	// system call number reads as a timeout (ETIMEDOUT, EAGAIN on a network
+	// file system): the bytes could not be read, so nothing vouches for them.
+	var file *fs.PathError
+	if errors.As(err, &file) {
+		return false
+	}
 	var timeout net.Error
 	if errors.As(err, &timeout) && timeout.Timeout() {
 		return true
@@ -325,9 +333,17 @@ func materialReadinessFailure(ctx context.Context, cause ...error) (bool, error)
 		return false, err
 	}
 	for _, err := range cause {
-		if proofClusterUnavailable(err) {
+		if proofClusterUnavailable(err) || proofReadUnanswered(err) {
 			return false, context.DeadlineExceeded
 		}
 	}
 	return false, nil
+}
+
+// proofReadUnanswered reports a database read the proof could not start: no
+// leader to ask, or a leader not read in time. Neither compares a byte, so
+// neither is a negative proof. A failure the database itself answered stays a
+// verdict: a refusal raised inside a statement arrives the same way.
+func proofReadUnanswered(err error) bool {
+	return store.ReplicatedLeaderUnavailable(err) || errors.Is(err, store.ErrClusterMembershipObservationTimeout)
 }

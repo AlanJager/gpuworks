@@ -40,8 +40,9 @@ func TestNativeMaterialCheckpointRequiresExactSingleCause(t *testing.T) {
 				t.Fatalf("checkpoint contention=%v want=%v", got, tc.want)
 			}
 			// A join closes through any branch that would close on its own;
-			// checkpoint and unavailable peers alone never close admission.
-			benign := tc.want || tc.name == "one cause join" || tc.name == "unavailable peer join"
+			// checkpoint, unavailable peers and a commit of unknown outcome
+			// alone never close admission.
+			benign := tc.want || tc.name == "one cause join" || tc.name == "unavailable peer join" || tc.name == "unknown commit join"
 			if got := materialReplicationFailureInvalidates(tc.err); got == benign {
 				t.Fatalf("worker invalidates=%v benign=%v", got, benign)
 			}

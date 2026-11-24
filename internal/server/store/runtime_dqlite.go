@@ -91,6 +91,8 @@ func openRuntimeDatabaseMode(ctx context.Context, path string, b *bus.Bus, exist
 		return nil, err
 	}
 	st.closeBackend = db.Close
+	st.writerGuard.opening.Store(true)
+	defer st.writerGuard.opening.Store(false)
 	bindNativeRuntimeCallbacks(st, db)
 	if clusterID, pin := db.TransportIdentity(); clusterID != "" {
 		current, identityErr := st.ClusterIdentity(ctx)

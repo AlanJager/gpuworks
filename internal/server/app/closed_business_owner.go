@@ -5,8 +5,6 @@ package app
 import (
 	"context"
 	"errors"
-	"log/slog"
-	"runtime"
 )
 
 // revocableBusiness retains every resource borrowed by one joined business
@@ -61,18 +59,18 @@ func (a *App) stopClosedBusiness(ctx context.Context) error {
 func (a *App) closeBusinessAdmission() {
 	if a.store != nil {
 		a.store.SuspendBusinessWrites()
+		// A member connection must not be admitted from a list confirmed
+		// before this member's own admission closed, whatever closed it.
+		a.store.ForgetConfirmedClusterMembership()
 	}
 
 	if owner := a.currentClosedBusiness(); owner != nil {
 		owner.BeginStop()
 	}
-	if a.log != nil && a.log.Enabled(context.Background(), slog.LevelDebug) {
-		caller := "unknown"
-		if pc, _, _, ok := runtime.Caller(1); ok {
-			if fn := runtime.FuncForPC(pc); fn != nil {
-				caller = fn.Name()
-			}
-		}
+	caller := admissionCloser()
+	a.admissionJournal.closed(a.log, caller, admissionClosedByProof())
+	if a.log != nil {
+		// Every close, including those the journal leaves out.
 		a.log.Debug("closed business admission invalidated", "caller", caller)
 	}
 }

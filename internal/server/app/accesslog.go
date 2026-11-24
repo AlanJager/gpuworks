@@ -10,6 +10,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -120,17 +121,74 @@ func redactAccessLogValue(value any) {
 	switch typed := value.(type) {
 	case map[string]any:
 		for key, child := range typed {
-			if sensitiveAccessLogField(key) {
+			switch text, isText := child.(string); {
+			case sensitiveAccessLogField(key):
 				typed[key] = "[REDACTED]"
+			case accessLogHeadersField(key):
+				typed[key] = redactAccessLogHeaders(child)
+			case isText:
+				typed[key] = redactAccessLogUserinfo(text)
+			default:
+				redactAccessLogValue(child)
+			}
+		}
+	case []any:
+		for i, child := range typed {
+			if text, ok := child.(string); ok {
+				typed[i] = redactAccessLogUserinfo(text)
 				continue
 			}
 			redactAccessLogValue(child)
 		}
-	case []any:
-		for _, child := range typed {
-			redactAccessLogValue(child)
-		}
 	}
+}
+
+// accessLogHeadersField names a set of HTTP headers the server is told to
+// send (the telemetry collector's): the names say what is configured, the
+// values are credentials more often than not.
+func accessLogHeadersField(key string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(key))
+	return normalized == "headers" || strings.HasSuffix(normalized, "_headers")
+}
+
+// redactAccessLogHeaders keeps the header names and drops every value,
+// whether the headers are a list of {name, value} or a map of name to value.
+// Headers in any other shape are dropped whole: where the names end and the
+// values begin is not known.
+func redactAccessLogHeaders(headers any) any {
+	switch typed := headers.(type) {
+	case nil:
+		return nil
+	case map[string]any:
+		for name := range typed {
+			typed[name] = "[REDACTED]"
+		}
+		return typed
+	case []any:
+		for i, header := range typed {
+			entry, ok := header.(map[string]any)
+			if !ok {
+				typed[i] = "[REDACTED]"
+				continue
+			}
+			for key, value := range entry {
+				if strings.ToLower(key) != "name" && value != nil {
+					entry[key] = "[REDACTED]"
+				}
+			}
+		}
+		return typed
+	}
+	return "[REDACTED]"
+}
+
+// accessLogUserinfo is the user and password of a URL: what stands between
+// the scheme and the last @ before the path, query or fragment begins (a
+// password may itself hold an @).
+var accessLogUserinfo = regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*://)[^/?#\s]*@`)
+
+func redactAccessLogUserinfo(text string) string {
+	return accessLogUserinfo.ReplaceAllString(text, "${1}[REDACTED]@")
 }
 
 func sensitiveAccessLogField(key string) bool {
@@ -141,6 +199,9 @@ func sensitiveAccessLogField(key string) bool {
 	return strings.Contains(normalized, "password") ||
 		strings.Contains(normalized, "secret") ||
 		strings.Contains(normalized, "private_key") ||
+		// An SSH key given to install an agent is a private key under
+		// another name (ssh_key_pem).
+		strings.Contains(normalized, "ssh_key") ||
 		strings.Contains(normalized, "api_key") ||
 		strings.Contains(normalized, "credential") ||
 		normalized == "token" || strings.HasSuffix(normalized, "_token")

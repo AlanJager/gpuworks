@@ -51,7 +51,7 @@ func TestMaterialEligibilityClosedSlowFailureRestsWithReadinessGuard(t *testing.
 	}, interval)
 	var closed sync.Once
 	e.setOnInvalidated(func() { closed.Do(func() { finished <- time.Now() }) })
-	gate, grants, reads := closedRetryReadiness(t, e)
+	gate, reads := closedRetryReadiness(t, e)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { defer close(done); e.Run(ctx) }()
@@ -78,8 +78,8 @@ func TestMaterialEligibilityClosedSlowFailureRestsWithReadinessGuard(t *testing.
 		t.Fatal("false,nil did not close original proof", deadline, epoch)
 	}
 	assertClosedRetryHTTP(t, gate, http.StatusServiceUnavailable)
-	if grants.Load() != 0 || reads.Load() != 0 {
-		t.Fatal("closed readiness reached SQL or grant", grants.Load(), reads.Load())
+	if reads.Load() != 0 {
+		t.Fatal("closed readiness reached SQL", reads.Load())
 	}
 	select {
 	case started := <-next:
@@ -101,12 +101,12 @@ func TestMaterialEligibilityClosedSlowFailureRestsWithReadinessGuard(t *testing.
 		}
 	}
 	assertClosedRetryHTTP(t, gate, http.StatusOK)
-	if grants.Load() != 2 || reads.Load() != 1 {
-		t.Fatal("readiness did not retain original two grants and one SQL", grants.Load(), reads.Load())
+	if reads.Load() != 1 {
+		t.Fatal("readiness did not make its one SQL read", reads.Load())
 	}
 }
 
-func closedRetryReadiness(t *testing.T, e *materialEligibility) (*businessHandlerGate, *atomic.Int32, *atomic.Int32) {
+func closedRetryReadiness(t *testing.T, e *materialEligibility) (*businessHandlerGate, *atomic.Int32) {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "closed-retry.db"), bus.New())
 	if err != nil {
@@ -117,7 +117,7 @@ func closedRetryReadiness(t *testing.T, e *materialEligibility) (*businessHandle
 	if err != nil {
 		t.Fatal(err)
 	}
-	grants, reads := new(atomic.Int32), new(atomic.Int32)
+	reads := new(atomic.Int32)
 	if err := st.DB().Callback().Query().After("gorm:query").Register("test:closed-retry-readyz", func(tx *gorm.DB) {
 		if tx.Error == nil && tx.Statement.Table == "settings" {
 			reads.Add(1)
@@ -128,20 +128,8 @@ func closedRetryReadiness(t *testing.T, e *materialEligibility) (*businessHandle
 	gate := newBusinessHandlerGate()
 	gate.requireMaterialEligibility()
 	gate.setMaterialEligibility(e)
-	gate.setBusinessRequestGuard(func(next http.Handler) http.Handler {
-		return guardBusinessRequests(next, store.ClusterIdentity{}, 7, "self", func(ctx context.Context, expected store.ClusterIdentity, key string) (uint64, []store.ClusterTransportMember, error) {
-			if err := ctx.Err(); err != nil {
-				return 0, nil, err
-			}
-			if expected != (store.ClusterIdentity{}) || key != "self" {
-				return 0, nil, store.ErrClusterIdentityConflict
-			}
-			grants.Add(1)
-			return 1, []store.ClusterTransportMember{{ID: 7, KeyFingerprint: "self"}, {ID: 8}}, nil
-		})
-	})
 	gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}))
-	return gate, grants, reads
+	return gate, reads
 }
 
 func assertClosedRetryHTTP(t *testing.T, gate *businessHandlerGate, status int) {
@@ -191,7 +179,7 @@ func TestMaterialEligibilityClosedFailureClassesRest(t *testing.T) {
 			}, interval)
 			var once sync.Once
 			e.setOnInvalidated(func() { once.Do(func() { completed <- time.Now() }) })
-			gate, grants, reads := closedRetryReadiness(t, e)
+			gate, reads := closedRetryReadiness(t, e)
 			ctx, cancel := context.WithCancel(t.Context())
 			done := make(chan struct{})
 			go func() { defer close(done); e.Run(ctx) }()
@@ -223,8 +211,8 @@ func TestMaterialEligibilityClosedFailureClassesRest(t *testing.T) {
 				t.Fatal("failed or expired proof retained authority", mode, deadline)
 			}
 			assertClosedRetryHTTP(t, gate, http.StatusServiceUnavailable)
-			if grants.Load() != 0 || reads.Load() != 0 {
-				t.Fatal("closed proof reached business SQL/grant")
+			if reads.Load() != 0 {
+				t.Fatal("closed proof reached business SQL")
 			}
 			select {
 			case started := <-next:
@@ -265,7 +253,7 @@ func TestMaterialEligibilityClosedRestCancellationJoinsWithoutExtraProof(t *test
 	}, interval)
 	var once sync.Once
 	e.setOnInvalidated(func() { once.Do(func() { completed <- struct{}{} }) })
-	gate, grants, reads := closedRetryReadiness(t, e)
+	gate, reads := closedRetryReadiness(t, e)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() { defer close(done); e.Run(ctx) }()
@@ -289,8 +277,8 @@ func TestMaterialEligibilityClosedRestCancellationJoinsWithoutExtraProof(t *test
 	case <-time.After(interval / 2):
 		t.Fatal("closed rest ignored cancellation")
 	}
-	if calls.Load() != 1 || grants.Load() != 0 || reads.Load() != 0 {
-		t.Fatal("closed cancellation started extra proof or SQL", calls.Load(), grants.Load(), reads.Load())
+	if calls.Load() != 1 || reads.Load() != 0 {
+		t.Fatal("closed cancellation started extra proof or SQL", calls.Load(), reads.Load())
 	}
 }
 
@@ -334,7 +322,7 @@ func TestMaterialEligibilityLiveEarlierProofRetainsFastDeadlineRenewal(t *testin
 			} else {
 				clock.Advance(time.Second)
 			}
-			gate, grants, reads := closedRetryReadiness(t, e)
+			gate, reads := closedRetryReadiness(t, e)
 			ctx, cancel := context.WithCancel(t.Context())
 			done := make(chan struct{})
 			go func() { defer close(done); e.Run(ctx) }()
@@ -382,8 +370,8 @@ func TestMaterialEligibilityLiveEarlierProofRetainsFastDeadlineRenewal(t *testin
 			} else {
 				assertClosedRetryHTTP(t, gate, http.StatusOK)
 			}
-			if grants.Load() != 2 || reads.Load() != 1 {
-				t.Fatal("request grant/SQL chain changed", grants.Load(), reads.Load())
+			if reads.Load() != 1 {
+				t.Fatal("request SQL chain changed", reads.Load())
 			}
 			e.mu.Lock()
 			unchanged := e.deadline == deadline && e.epoch == epoch

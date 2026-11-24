@@ -24,7 +24,8 @@ import (
 
 // This listener exposes a leader's fixed quorum observation. It neither grants
 // material authorization nor proves that every voter process is closed.
-func newClosedFactsEnrollmentServer(bundle *enrollmentBundle, session joinedRaftSession, log *slog.Logger) (*enrollmentServer, error) {
+// local is this member's own configuration: where its database and log are.
+func newClosedFactsEnrollmentServer(bundle *enrollmentBundle, session joinedRaftSession, local Config, log *slog.Logger) (*enrollmentServer, error) {
 	requests := newMaterialRequestTracker()
 	handler, err := closedQuorumFactsHandler(bundle, session, requests)
 	if err != nil {
@@ -40,6 +41,7 @@ func newClosedFactsEnrollmentServer(bundle *enrollmentBundle, session joinedRaft
 	if upgrade, err := clusterUpgradeHandler(bundle, session, requests, nil); err == nil {
 		router.Post(enrollment.ClusterUpgradePath, upgrade)
 	}
+	registerClusterDiagnostics(router, bundle, requests, local, log)
 	registerClosedMaterialUnavailable(router, bundle, session, requests)
 	config := bundle.tls.Clone()
 	config.ClientAuth = tls.RequireAndVerifyClientCert

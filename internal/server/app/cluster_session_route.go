@@ -109,25 +109,34 @@ func (a *App) configureSecureSessionRoute(route store.ClusterSessionRoute, sessi
 		return err
 	}
 	expected := store.ClusterIdentity{ClusterID: bundle.info.ClusterID, CAFingerprint: bundle.info.CAFingerprint, Protocol: bundle.info.Protocol}
+	confirmed := a.store.ConfirmedClusterMembership
+	grant := func(ctx context.Context) ([]store.ClusterTransportMember, error) {
+		_, members, err := a.store.GrantClusterMembership(ctx, expected, localKey)
+		return members, err
+	}
 	authorize := func(ctx context.Context, cert *x509.Certificate) error {
 		key, err := bundle.trust.VerifyMember(cert, time.Now().UTC())
 		if err != nil {
 			return err
 		}
-		_, members, err := a.store.GrantClusterMembership(ctx, expected, localKey)
-		if err != nil {
+		pick := func(members []store.ClusterTransportMember) string {
+			local, peer := false, false
+			for _, member := range members {
+				if member.ID == route.ID && member.KeyFingerprint == localKey {
+					local = true
+				}
+				if member.KeyFingerprint == key {
+					peer = true
+				}
+			}
+			if !local || !peer {
+				return ""
+			}
+			return key
+		}
+		if admitted, err := memberRouteKey(ctx, confirmed, grant, pick); err != nil {
 			return err
-		}
-		local, peer := false, false
-		for _, member := range members {
-			if member.ID == route.ID && member.KeyFingerprint == localKey {
-				local = true
-			}
-			if member.KeyFingerprint == key {
-				peer = true
-			}
-		}
-		if !local || !peer {
+		} else if admitted == "" {
 			return errors.New("member session peer is not live and admitted")
 		}
 		return nil
@@ -137,25 +146,31 @@ func (a *App) configureSecureSessionRoute(route store.ClusterSessionRoute, sessi
 	server.ClientAuth = tls.RequireAndVerifyClientCert
 	server.SessionTicketsDisabled = true
 	peerTLS := func(ctx context.Context, id uint64, address string) (*tls.Config, error) {
-		_, members, err := a.store.GrantClusterMembership(ctx, expected, localKey)
+		pick := func(members []store.ClusterTransportMember) string {
+			var peerKey string
+			local := false
+			for _, member := range members {
+				if member.ID == route.ID && member.KeyFingerprint == localKey {
+					local = true
+				}
+				if member.ID == id && sessionMemberAddress(member.Address) == address {
+					peerKey = member.KeyFingerprint
+				}
+			}
+			if !local {
+				return ""
+			}
+			return peerKey
+		}
+		peerKey, err := memberRouteKey(ctx, confirmed, grant, pick)
 		if err != nil {
 			return nil, err
 		}
-		var peerKey string
-		local := false
-		for _, member := range members {
-			if member.ID == route.ID && member.KeyFingerprint == localKey {
-				local = true
-			}
-			if member.ID == id && sessionMemberAddress(member.Address) == address {
-				peerKey = member.KeyFingerprint
-			}
-		}
-		if !local || peerKey == "" {
+		if peerKey == "" {
 			return nil, errors.New("member session target is not live and admitted")
 		}
 		client := &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{bundle.tls.Certificates[0]}, SessionTicketsDisabled: true,
-			// The quorum grant pins the target address and public key. The
+			// The confirmed membership pins the target address and public key. The
 			// enrollment hostname can differ from the Raft address, so validate
 			// the pinned member certificate instead of a DNS name.
 			InsecureSkipVerify: true,
@@ -176,6 +191,51 @@ func (a *App) configureSecureSessionRoute(route store.ClusterSessionRoute, sessi
 		return client, nil
 	}
 	return sessions.SetMemberSecureTransport(route.ID, server, peerTLS, authorize)
+}
+
+// memberRouteMembershipAge is how old a confirmed member list may be and
+// still admit a connection between members: the lifetime of the proof that
+// keeps this member's own business open, and renewed by that proof.
+const memberRouteMembershipAge = materialEligibilityWindow
+
+// memberRouteUnansweredAge is how old that list may be when a fresh grant
+// brought no answer: as long as a member's own business stays open without
+// an answer, by the same constant.
+//
+// What it costs: a member revoked during a storage outage is accepted by its
+// peers for up to this long. The member that commits the revocation drops
+// its list at once, and so does a member whose own admission closes.
+const memberRouteUnansweredAge = materialUnconfirmedLimit
+
+// memberRouteKey picks a member key for one connection between members. It
+// answers from the membership this process last confirmed, so that opening a
+// connection does not wait for a replicated write. Only when there is no
+// confirmed list young enough, or that list does not name the member, does
+// it take a fresh grant: a member admitted since the last confirmation is
+// found that way, and one removed since then is still accepted until the
+// next confirmation.
+//
+// A grant that brings no answer (storage stalled, no leader) is not a
+// refusal: the last confirmed list then stands in for it up to
+// memberRouteUnansweredAge.
+func memberRouteKey(ctx context.Context, confirmed func(time.Duration) ([]store.ClusterTransportMember, bool), grant func(context.Context) ([]store.ClusterTransportMember, error), pick func([]store.ClusterTransportMember) string) (string, error) {
+	if members, ok := confirmed(memberRouteMembershipAge); ok {
+		if key := pick(members); key != "" {
+			return key, nil
+		}
+	}
+	members, err := grant(ctx)
+	if err != nil {
+		if store.ClusterGrantUndecided(err) {
+			if members, ok := confirmed(memberRouteUnansweredAge); ok {
+				if key := pick(members); key != "" {
+					return key, nil
+				}
+			}
+		}
+		return "", err
+	}
+	return pick(members), nil
 }
 
 func sessionMemberAddress(databaseAddress string) string {

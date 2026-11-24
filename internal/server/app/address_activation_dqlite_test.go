@@ -295,11 +295,31 @@ func TestRuntimeDqliteAddressActivationRecoversPublication(t *testing.T) {
 				} else if row.Address != wrongAddress {
 					t.Fatal("rejected retry replaced conflicting address")
 				}
-				if err := st.DB().Model(&store.ClusterAdmission{}).Where("key_fingerprint = ?", seedKey).Updates(map[string]any{"address": address, "revoked_at": nil}).Error; err != nil {
+			})
+			// Put the seed back for the next case. The member's own Store
+			// cannot: a member whose admission is revoked commits nothing, and
+			// so cannot clear its own revocation. A Store on the same database
+			// that is not bound to the member's key stands for a repair made
+			// outside the member.
+			func() {
+				db, err := cluster.OpenConfiguredDatabase(ctx, path+".dqlite", filepath.Base(path))
+				if err != nil {
 					t.Fatal(err)
 				}
-				assertSeed(t, st)
-			})
+				defer func() {
+					if err := db.Close(); err != nil {
+						t.Error(err)
+					}
+				}()
+				repair, err := store.OpenReplicated(ctx, db.SQL, db.Scheduling, bus.New(), store.ReplicatedBackend())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := repair.DB().Model(&store.ClusterAdmission{}).Where("key_fingerprint = ?", seedKey).Updates(map[string]any{"address": address, "revoked_at": nil}).Error; err != nil {
+					t.Fatal(err)
+				}
+			}()
+			withStore(t, func(st *store.Store) { assertSeed(t, st) })
 		})
 	}
 	// Even under the same CA, the SQL seed must identify the actual database

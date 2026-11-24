@@ -165,6 +165,12 @@ func (m *Manager) CollectNow(ctx context.Context, req BundleRequest) (Bundle, st
 	return done, m.bundleArchive(b.ID), nil
 }
 
+// ValidWindow reports a window a collection, or a member's part of one, can
+// be made for.
+func ValidWindow(from, to time.Time) bool {
+	return from.Before(to) && to.Sub(from) <= MaxBundleWindow
+}
+
 // beginBundle checks a request and records the collection as running.
 func (m *Manager) beginBundle(req BundleRequest) (Bundle, error) {
 	if m.sources == nil {
@@ -177,7 +183,7 @@ func (m *Manager) beginBundle(req BundleRequest) (Bundle, error) {
 	if req.From.IsZero() {
 		req.From = req.To.Add(-DefaultBundleWindow)
 	}
-	if !req.From.Before(req.To) || req.To.Sub(req.From) > MaxBundleWindow {
+	if !ValidWindow(req.From, req.To) {
 		return Bundle{}, messages.NewProductError(messages.ErrorDiagnosticsBundleInvalid, "the window must end after it starts and span at most 7 days",
 			map[string]any{"field": "window", "max": int(MaxBundleWindow.Seconds())})
 	}

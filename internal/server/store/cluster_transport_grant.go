@@ -39,7 +39,7 @@ func (s *Store) grantClusterTransportAdmissionKeys(ctx context.Context, expected
 	defer endWork()
 	var revision int64
 	var admissions []ClusterAdmission
-	err := s.clusterWriteTransaction(context.WithValue(ctx, clusterGrantPurposeKey{}, "transport_admissions"), func(tx *gorm.DB) error {
+	err := s.membershipWriteTransaction(context.WithValue(ctx, clusterGrantPurposeKey{}, "transport_admissions"), func(tx *gorm.DB) error {
 		var phase MaintenancePhaseState
 		granted := make([]ClusterAdmission, 0, len(ordered))
 		for i, key := range ordered {

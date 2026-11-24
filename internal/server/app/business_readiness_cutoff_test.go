@@ -28,7 +28,7 @@ func TestReadinessPreFinalCutoff(t *testing.T) {
 	// to close a proof still inside its window. A failed refresh keeps the
 	// unexpired earlier proof (material_eligibility.go), so that request is
 	// answered from the earlier proof instead.
-	for _, mode := range []string{"fast-final", "early-thin-proof", "costly-final", "grant-denied", "retire-at-cutoff", "epoch-at-cutoff", "cancel-at-cutoff", "proof-cancel-at-cutoff"} {
+	for _, mode := range []string{"fast-final", "early-thin-proof", "retire-at-cutoff", "epoch-at-cutoff", "cancel-at-cutoff", "proof-cancel-at-cutoff"} {
 		t.Run(mode, func(t *testing.T) {
 			st, err := store.Open(filepath.Join(t.TempDir(), "cutoff.db"), bus.New())
 			if err != nil {
@@ -59,7 +59,7 @@ func TestReadinessPreFinalCutoff(t *testing.T) {
 				atPublication = &d
 				clock.mu.Unlock()
 			}
-			var proofs, reads, grants atomic.Int32
+			var proofs, reads atomic.Int32
 			captured := make(chan time.Time, 1)
 			var captureOnce sync.Once
 			firstStarted, nextStarted := make(chan struct{}), make(chan struct{})
@@ -138,37 +138,6 @@ func TestReadinessPreFinalCutoff(t *testing.T) {
 			gate.requireMaterialEligibility()
 			gate.setMaterialEligibility(e)
 			e.setOnInvalidated(func() { st.SuspendBusinessWrites(); gate.setBusinessHandler(nil) })
-			gate.setBusinessRequestGuard(func(next http.Handler) http.Handler {
-				return guardBusinessRequests(next, store.ClusterIdentity{}, 7, "self", func(ctx context.Context, _ store.ClusterIdentity, _ string) (uint64, []store.ClusterTransportMember, error) {
-					n := grants.Add(1)
-					if err := ctx.Err(); err != nil {
-						return 0, nil, err
-					}
-					if n == 2 {
-						if reads.Load() != 1 || proofs.Load() < 3 || proofs.Load() > 4 {
-							t.Errorf("final grant before real SQL/renewal: reads%d proofs%d", reads.Load(), proofs.Load())
-						}
-						if mode == "grant-denied" {
-							return 0, nil, errors.New("actual injected final denial")
-						}
-						e.mu.Lock()
-						remaining := e.deadline.Sub(e.now())
-						e.mu.Unlock()
-						t.Logf("terminal pre-final headroom: %v", remaining)
-						if remaining < 6*time.Second || remaining >= 7*time.Second {
-							t.Errorf("positive cutoff did not retain6.x: %v", remaining)
-						}
-						cost := 100 * time.Millisecond
-						if mode == "costly-final" {
-							cost = 1800 * time.Millisecond
-						}
-						clock.mu.Lock()
-						clock.now = clock.now.Add(cost)
-						clock.mu.Unlock()
-					}
-					return 1, []store.ClusterTransportMember{{ID: 7, KeyFingerprint: "self"}, {ID: 8}}, nil
-				})
-			})
 			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}))
 			reqCtx, cancelRequest := context.WithCancel(t.Context())
 			rec := httptest.NewRecorder()
@@ -200,15 +169,15 @@ func TestReadinessPreFinalCutoff(t *testing.T) {
 			case <-time.After(time.Second):
 				t.Fatal("readiness did not capture its blocked renewal")
 			}
-			if reads.Load() != 1 || grants.Load() != 1 {
-				t.Fatalf("beforewait reads%d grants%d", reads.Load(), grants.Load())
+			if reads.Load() != 1 {
+				t.Fatalf("beforewait reads%d", reads.Load())
 			}
 			releaseFirst()
 			if mode == "failed-renewal" {
 				select {
 				case <-done:
-					if rec.Code != http.StatusServiceUnavailable || reads.Load() != 1 || grants.Load() != 1 || time.Since(started) > materialReproofInterval {
-						t.Fatal("definitive negative did not close the original request with one SQL/grant inside its budget")
+					if rec.Code != http.StatusServiceUnavailable || reads.Load() != 1 || time.Since(started) > materialReproofInterval {
+						t.Fatal("definitive negative did not close the original request with one SQL read inside its budget")
 					}
 				case <-time.After(time.Second):
 					t.Fatal("definitive negative did not finish the original request")
@@ -255,28 +224,26 @@ func TestReadinessPreFinalCutoff(t *testing.T) {
 			case <-time.After(materialReproofInterval + time.Second):
 				t.Fatal("original cutoff reset")
 			}
-			want, wantGrants := http.StatusServiceUnavailable, int32(1)
+			want := http.StatusServiceUnavailable
 			if mode == "fast-final" {
-				want, wantGrants = http.StatusOK, 2
+				want = http.StatusOK
 			}
-			if mode == "costly-final" || mode == "grant-denied" {
-				wantGrants = 2
+			if rec.Code != want || reads.Load() != 1 {
+				t.Fatalf("status%d want%d SQL%d proofs%d body%q", rec.Code, want, reads.Load(), proofs.Load(), rec.Body.String())
 			}
-			if rec.Code != want || reads.Load() != 1 || grants.Load() != wantGrants {
-				t.Fatalf("status%d want%d SQL%d grants%d want%d proofs%d body%q", rec.Code, want, reads.Load(), grants.Load(), wantGrants, proofs.Load(), rec.Body.String())
-			}
-			if mode == "fast-final" || mode == "costly-final" || mode == "grant-denied" {
+			if mode == "fast-final" {
 				elapsed := time.Since(started)
 				if elapsed < materialReproofInterval-100*time.Millisecond || elapsed > materialReproofInterval+400*time.Millisecond {
 					t.Fatalf("did not use original cumulative2s: %v", elapsed)
 				}
-			}
-			if mode == "fast-final" {
+				if proofs.Load() < 3 || proofs.Load() > 4 {
+					t.Fatalf("published without the following renewal: proofs%d", proofs.Load())
+				}
 				if rec.Body.String() != "{\"status\":\"ready\"}\n" || !e.EligibleFor(store.ClusterMembershipGrantTimeout) {
 					t.Fatal("missing final5 headroom")
 				}
-				if got := requestMemberEntry(gate, http.MethodGet, "/api/v1/engines", token); got.Code != http.StatusOK || grants.Load() != 3 {
-					t.Fatalf("following actual business status%d grants%d", got.Code, grants.Load())
+				if got := requestMemberEntry(gate, http.MethodGet, "/api/v1/engines", token); got.Code != http.StatusOK {
+					t.Fatalf("following actual business status%d", got.Code)
 				}
 			}
 		})

@@ -28,7 +28,7 @@ func TestBusinessReadinessFollowingBackgroundRenewal(t *testing.T) {
 	// answers not ready to retire the business generation while the earlier
 	// proof is still inside its window. A failed refresh keeps the unexpired
 	// earlier proof (material_eligibility.go), so the generation stays.
-	for _, mode := range []string{"slow-then-fast", "failed-first", "failed-following", "epoch-change", "epoch-ABA", "cancel-request", "cancel-proof", "stop", "missing", "new-pointer", "withdraw", "second-slow", "original-budget", "original-remaining", "client-deadline", "no-callback", "standalone", "expired-old", "final-grant-cost", "final-grant-failure"} {
+	for _, mode := range []string{"slow-then-fast", "failed-first", "failed-following", "epoch-change", "epoch-ABA", "cancel-request", "cancel-proof", "stop", "missing", "new-pointer", "withdraw", "second-slow", "original-budget", "original-remaining", "client-deadline", "no-callback", "standalone", "expired-old"} {
 		t.Run(mode, func(t *testing.T) {
 			st, err := store.Open(filepath.Join(t.TempDir(), "following.db"), bus.New())
 			if err != nil {
@@ -41,7 +41,7 @@ func TestBusinessReadinessFollowingBackgroundRenewal(t *testing.T) {
 			var age atomic.Int64
 			captured := make(chan time.Time, 1)
 			var captureOnce sync.Once
-			var proofs, reads, grants atomic.Int32
+			var proofs, reads atomic.Int32
 			firstStarted, followingStarted := make(chan context.Context, 1), make(chan context.Context, 1)
 			firstRelease, followingRelease, readDone := make(chan struct{}), make(chan struct{}), make(chan struct{})
 			var firstOnce, followingOnce, failedGenerationOnce sync.Once
@@ -164,26 +164,6 @@ func TestBusinessReadinessFollowingBackgroundRenewal(t *testing.T) {
 					gate.setBusinessHandler(nil)
 				})
 			}
-			gate.setBusinessRequestGuard(func(next http.Handler) http.Handler {
-				return guardBusinessRequests(next, store.ClusterIdentity{}, 7, "self", func(ctx context.Context, _ store.ClusterIdentity, _ string) (uint64, []store.ClusterTransportMember, error) {
-					n := grants.Add(1)
-					if err := ctx.Err(); err != nil {
-						return 0, nil, err
-					}
-					if n == 2 {
-						if reads.Load() != 1 {
-							t.Errorf("final grant before one SQL read: %d", reads.Load())
-						}
-						if mode == "final-grant-failure" {
-							return 0, nil, errors.New("injected final grant rejection")
-						}
-						if mode == "final-grant-cost" {
-							age.Add(int64(materialEligibilityWindow - store.ClusterMembershipGrantTimeout))
-						}
-					}
-					return 1, []store.ClusterTransportMember{{ID: 7, KeyFingerprint: "self"}, {ID: 8}}, nil
-				})
-			})
 			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}))
 			reqCtx, cancelRequest := context.WithCancel(t.Context())
 			if mode == "client-deadline" {
@@ -211,8 +191,8 @@ func TestBusinessReadinessFollowingBackgroundRenewal(t *testing.T) {
 				if mode == "client-deadline" {
 					// Race instrumentation can exhaust the same client budget
 					// inside the actual SQL read, before renewal waiting begins.
-					if rec.Code != http.StatusServiceUnavailable || !errors.Is(reqCtx.Err(), context.DeadlineExceeded) || reads.Load() > 1 || grants.Load() > 1 || proofs.Load() != 2 {
-						t.Fatalf("early client deadline changed work: status=%d err=%v reads=%d grants=%d proofs=%d", rec.Code, reqCtx.Err(), reads.Load(), grants.Load(), proofs.Load())
+					if rec.Code != http.StatusServiceUnavailable || !errors.Is(reqCtx.Err(), context.DeadlineExceeded) || reads.Load() > 1 || proofs.Load() != 2 {
+						t.Fatalf("early client deadline changed work: status=%d err=%v reads=%d proofs=%d", rec.Code, reqCtx.Err(), reads.Load(), proofs.Load())
 					}
 					t.Log("original client deadline expired before renewal wait; actual SQL was not replayed")
 					return
@@ -225,7 +205,7 @@ func TestBusinessReadinessFollowingBackgroundRenewal(t *testing.T) {
 			select {
 			case waitStarted = <-captured:
 			case <-done:
-				if mode == "client-deadline" && errors.Is(reqCtx.Err(), context.DeadlineExceeded) && rec.Code == http.StatusServiceUnavailable && reads.Load() == 1 && grants.Load() == 1 && proofs.Load() == 2 {
+				if mode == "client-deadline" && errors.Is(reqCtx.Err(), context.DeadlineExceeded) && rec.Code == http.StatusServiceUnavailable && reads.Load() == 1 && proofs.Load() == 2 {
 					t.Log("original client deadline expired after SQL before renewal capture; no replay")
 					return
 				}
@@ -233,8 +213,8 @@ func TestBusinessReadinessFollowingBackgroundRenewal(t *testing.T) {
 			case <-time.After(time.Second):
 				t.Fatal("readiness did not capture its blocked renewal")
 			}
-			if reads.Load() != 1 || grants.Load() != 1 {
-				t.Fatalf("boundary reads/grants=%d/%d", reads.Load(), grants.Load())
+			if reads.Load() != 1 {
+				t.Fatalf("boundary reads=%d", reads.Load())
 			}
 			switch mode {
 			case "epoch-change", "epoch-ABA":
@@ -270,7 +250,7 @@ func TestBusinessReadinessFollowingBackgroundRenewal(t *testing.T) {
 			if mode != "expired-old" {
 				releaseFirst()
 			}
-			if mode == "slow-then-fast" || mode == "failed-following" || mode == "second-slow" || mode == "final-grant-cost" || mode == "final-grant-failure" || mode == "original-budget" || mode == "original-remaining" || mode == "client-deadline" || mode == "new-pointer" || mode == "missing" || mode == "withdraw" {
+			if mode == "slow-then-fast" || mode == "failed-following" || mode == "second-slow" || mode == "original-budget" || mode == "original-remaining" || mode == "client-deadline" || mode == "new-pointer" || mode == "missing" || mode == "withdraw" {
 				select {
 				case <-followingStarted:
 				case <-time.After(time.Second):
@@ -291,7 +271,7 @@ func TestBusinessReadinessFollowingBackgroundRenewal(t *testing.T) {
 				want = http.StatusOK
 			}
 			if rec.Code != want || reads.Load() != 1 {
-				t.Fatalf("status=%d want%d SQLreads=%d grants=%d proofs=%d body=%q", rec.Code, want, reads.Load(), grants.Load(), proofs.Load(), rec.Body.String())
+				t.Fatalf("status=%d want%d SQLreads=%d proofs=%d body=%q", rec.Code, want, reads.Load(), proofs.Load(), rec.Body.String())
 			}
 			if mode == "original-budget" || mode == "original-remaining" || mode == "client-deadline" {
 				if elapsed := time.Since(waitStarted); elapsed > interval+100*time.Millisecond {
@@ -309,11 +289,6 @@ func TestBusinessReadinessFollowingBackgroundRenewal(t *testing.T) {
 					t.Fatalf("old remaining lifetime did not cap original wait: %v", elapsed)
 				}
 			}
-			if mode == "no-callback" || mode == "standalone" {
-				if grants.Load() != 2 {
-					t.Fatalf("changed one captured wait behavior: grants=%d", grants.Load())
-				}
-			}
 			if mode == "failed-first-then-fast" || mode == "epoch-ABA" {
 				// Epoch cancellation may reject before owner retirement finishes.
 				// Its held lock releases only after next genuine publication.
@@ -328,17 +303,12 @@ func TestBusinessReadinessFollowingBackgroundRenewal(t *testing.T) {
 				}
 			}
 			if mode == "slow-then-fast" {
-				if grants.Load() != 2 || proofs.Load() != 3 || rec.Body.String() != "{\"status\":\"ready\"}\n" {
-					t.Fatalf("changed chain grants=%d proofs=%d body=%q", grants.Load(), proofs.Load(), rec.Body.String())
+				if proofs.Load() != 3 || rec.Body.String() != "{\"status\":\"ready\"}\n" {
+					t.Fatalf("changed chain proofs=%d body=%q", proofs.Load(), rec.Body.String())
 				}
 				actual := requestMemberEntry(gate, http.MethodGet, "/api/v1/engines", token)
-				if actual.Code != http.StatusOK || grants.Load() != 3 || reads.Load() != 1 {
-					t.Fatalf("following business status=%d grants=%d SQL=%d", actual.Code, grants.Load(), reads.Load())
-				}
-			}
-			if mode == "final-grant-cost" || mode == "final-grant-failure" {
-				if grants.Load() != 2 {
-					t.Fatalf("final grant replayed/skipped: %d", grants.Load())
+				if actual.Code != http.StatusOK || reads.Load() != 1 {
+					t.Fatalf("following business status=%d SQL=%d", actual.Code, reads.Load())
 				}
 			}
 		})

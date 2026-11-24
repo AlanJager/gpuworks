@@ -19,6 +19,23 @@
 - **业务由数据库 leader 所在的成员提供**：其他成员收到业务请求（管理接口、控制台、`/v1` 推理、agent 接入）后，经成员之间的双向 TLS 通道原样转给它，所以经入口访问时落在哪个成员上结果都一样。`/healthz` 和 `/api/v1/readyz` 由收到请求的成员自己回答。暂时观察不到 leader 的成员对业务请求回 503，入口可以重试。
 - **向不能提交写入的成员发写请求**：返回 503，没有任何内容被提交，入口可以改发给别的成员。
 - **成员尚未开放业务**（刚启动、与多数失联，或材料尚未校验完成）：业务请求和 `/api/v1/readyz` 都返回 503，正文是 `member business service is not ready`。
+- **成员为什么拒绝了请求**：上面这种 503，以及 leader 对未被接纳的成员转来的请求所回的 403，都带响应头 `X-Gpuworks-Refusal`，值是下表中的一个代码。它在鉴权之前给出，只含代码，不含地址和身份。带令牌的 `GET /api/v1/healthz` 在出现过拒绝之后多一个 `business_refusals` 字段，按代码给出进程启动以来的次数。两者是给运维和采集工具看的诊断信息，代码可能随版本变化，不要让客户端依赖它们。
+
+  | 代码 | 含义 |
+  |---|---|
+  | `no_business_generation`、`generation_changed`、`no_business_handler` | 成员的业务处理还没装上，或在请求途中被撤下 |
+  | `cluster_upgrade` | 集群升级期间业务关闭 |
+  | `proof_missing`、`proof_expired`、`proof_stopped`、`proof_run_canceled`、`proof_canceled`、`proof_not_eligible` | 成员当前没有有效的资格确认 |
+  | `sessions_not_routable`、`target_not_current` | 成员不能接收会话调用，或它的目标版本不是当前版本 |
+  | `no_known_leader`、`not_the_leader`、`leader_unreachable` | 最近几秒没有观察到 leader；转来的请求到了不是 leader 的成员；转给 leader 失败 |
+  | `forward_peer_unidentified`、`forward_not_ready`、`forward_peer_undecided`、`forward_peer_not_admitted` | leader 一侧：转发方没有成员证书；成员通道未就绪；对转发方的资格得不到答复；转发方未被接纳（403） |
+  | `proof_headroom`、`proof_epoch_changed`、`proof_owner_changed`、`renewal_unavailable`、`request_canceled`、`request_deadline` | 只出现在 `/api/v1/readyz`：资格确认即将到期或在探测途中变化，探测被取消或超时 |
+  | `other` | 表中没有的原因 |
+- **存储短暂卡顿**：成员凭自己最近一次确认过的成员资格接纳请求。确认由后台每隔几秒续期，单个请求不等待它，所以几秒的存储卡顿不会因为授权拒绝或拖慢请求。续期得不到答复（存储卡顿、超时、找不到数据库 leader）时成员继续接纳请求，距上一次成功确认开始满 60 秒仍未续上才关闭业务。向其他成员同步关键文件的一轮如果超时、找不到数据库 leader，或者一时得不到多数成员的应答（例如一个成员停机、另一个暂时拒绝），同样不关闭成员；文件与已校验的内容不一致、缺失或读不出才关闭。
+- **成员被撤销或失联之后**：
+  - 写入：已被撤销的成员即使仍能连到数据库 leader，写入也在提交前被拒绝，随后它关闭自己的业务；与多数失联的成员本来就提交不了。检查本身失败（写入权被占用、找不到 leader、连接中断、超时）不算拒绝，原样返回给调用方。决定成员资格本身的写入、向空数据库载入备份或导入数据、以及 server 启动时自己的工作不经过这项检查。
+  - 读请求和推理请求：数据库答复该成员已被撤销时，成员立即关闭，通常在撤销后的下一次续期，即几秒之内。续期一直得不到答复时，最长到上一次成功确认开始后的 60 秒；这段时间里它按最后看到的数据应答。
+  - 成员之间的连接：凭 15 秒内确认过的成员名单接纳；确认不了时最长沿用到 60 秒，与成员自己接纳请求的上限相同；因此存储卡顿期间被撤销的成员，最长 60 秒内仍会被其他成员接受。提交撤销的那个成员立即丢弃名单。已经建立的连接只在建立时核对一次。
 
 ## 边界
 
@@ -47,7 +64,7 @@
 
 ## 数据库 leader 为什么换了：角色记录
 
-数据库 leader 每换一次，在途的业务请求、终端和日志跟随会被切断，agent 的会话要向新的 leader 重新登记。每个成员的 server 日志（`logs/gpuworks-server.log`，随[收集诊断信息](../how-to/troubleshooting.md#无法登录现场时调试采集与收集诊断信息)带走）都记下本成员的数据库进程在 Raft 里做了什么、为什么，一直开着，不需要调试构建：
+数据库 leader 每换一次，在途的业务请求、终端和日志跟随会被切断，agent 的会话要向新的 leader 重新登记。每个成员的 server 日志（集群安装的成员是 `<安装目录>/logs/server.log`；[收集诊断信息](../how-to/troubleshooting.md#控制面集群诊断包里有三个成员的记录)把三个成员的都带走，放在 `members/<成员>/` 下，角色记录另抽出为 `role-events.log`）都记下本成员的数据库进程在 Raft 里做了什么、为什么，一直开着，不需要调试构建：
 
 - `cluster database role event`：数据库进程的一条角色记录。`observed_at` 是事情发生的时间（数据库进程的时钟，纳秒），日志行自己的时间晚不到一秒。
 - `cluster database leader changed`：本成员认到了新的 leader。写明原来的 leader（`old_leader`）、新的 leader（`new_leader`，成员 id）、任期（`term`）、本成员是不是新的 leader（`leads`）、本成员看到的原因（`reason`）和本成员没有 leader 的时长（`without_leader_ms`）。

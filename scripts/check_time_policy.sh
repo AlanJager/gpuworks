@@ -4,11 +4,16 @@ set -eu
 # Persistence and API serialization must start from UTC. Keeping this check
 # mechanical prevents a future local-time write from reintroducing mixed
 # SQLite DATETIME offsets or a non-Z RFC3339 response.
+#
+# One file is exempt: internal/server/store/elapsed_clock.go holds the only
+# reading of the monotonic clock, for ages measured in memory that are never
+# persisted or serialized (time.Now().UTC() drops the monotonic reading).
+elapsed_clock=internal/server/store/elapsed_clock.go
 if command -v rg >/dev/null 2>&1; then
   violations="$(rg -n --pcre2 'time\.Now\(\)(?!\.UTC\(\))' internal/server/store internal/server/api \
-    --glob '*.go' --glob '!**/*_test.go' || true)"
+    --glob '*.go' --glob '!**/*_test.go' --glob "!$elapsed_clock" || true)"
 else
-  violations="$(find internal/server/store internal/server/api -type f -name '*.go' ! -name '*_test.go' \
+  violations="$(find internal/server/store internal/server/api -type f -name '*.go' ! -name '*_test.go' ! -path "$elapsed_clock" \
     -exec awk '{
       remainder = $0
       while (match(remainder, /time\.Now\(\)/)) {
