@@ -164,9 +164,13 @@ func clusterMemberSupportBundle(ctx context.Context, log *slog.Logger, dataDir, 
 	}
 	missing := 0
 	for _, item := range bundle.Items {
-		if item.ID() == diagnostics.BundleItemMember {
+		switch item.ID() {
+		case diagnostics.BundleItemMember:
 			missing++
 			fmt.Fprintf(os.Stderr, "support-bundle: %s is missing (%s); the collection does not show what that member saw\n", item.Path, item.Evidence)
+		case diagnostics.BundleItemMembers:
+			missing++
+			fmt.Fprintf(os.Stderr, "support-bundle: the other members were not asked (%s); the collection holds this member's own log and stall reports only\n", item.Evidence)
 		}
 	}
 	if missing > 0 {

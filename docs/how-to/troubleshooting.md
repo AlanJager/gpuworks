@@ -1478,6 +1478,7 @@ server 起不来时，在 server 主机上执行 [`gpuworks support-bundle`](../
 - **有成员没应答**：收集照常完成。列表和 `manifest.json` 里对应一项 `members/<成员>` 为 `fail`（`DIAGNOSTICS_MEMBER_UNAVAILABLE`），`members/index.json` 的 `complete` 为 `false`。这个包看不到那个成员的记录：待它恢复后重新收集，或到那个成员上执行 `gpuworks support-bundle`。
 - **集群没有 leader，或控制台打不开**：在任意一个成员的主机上执行 `gpuworks support-bundle`。它不打开集群数据库，读本成员的文件并照样去要其他成员的部分；`db/` 那几项（节点、部署、设置等只在数据库里的记录）标为 `fail` 并写明原因。只要本成员的部分时加 `--local`。
 - **从控制台收集**：请求由当前的 leader 处理，`server/` 下是 leader 的日志，其余成员在 `members/` 下。出问题的正是 leader（卡住、磁盘慢）时，控制台的收集可能一直不完成或失败：到一个健康成员的主机上执行 `gpuworks support-bundle`，它不经过 leader，leader 的部分收得到就收，收不到就在 `index.json` 里写明。
+- **本成员的集群文件读不出来**：收集照常完成，但包里没有 `members/`，只有本成员的日志和卡顿报告；列表和 `manifest.json` 里有一项 `members` 为 `fail`，`evidence` 写明读不出来的是哪个文件，`gpuworks support-bundle` 也会在终端提示其他成员没有被询问。这时到另一个成员上收集。
 - **升级过程中**：还没升级的成员没有这个功能，记为 `unsupported`，不算故障；升级完成后重新收集。反过来，leader 还没升级而其他成员已升级时，从控制台收集到的包里没有 `members/`，和单机 server 的包一样：这时到一个已升级的成员上执行 `gpuworks support-bundle`。已升级的成员也记为 `unsupported` 时，是它没能挂上这个功能，原因在它自己的 server 日志里（`cluster diagnostics route is not served`）。
 
 ### 在三个成员的日志里读一次 leader 变化

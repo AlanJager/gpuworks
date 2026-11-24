@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -291,5 +292,45 @@ func TestAMemberCannotNameItemsThroughItsCutList(t *testing.T) {
 	}
 	if it := itemsByPath(b)["members/10.0.0.2_9001/role-events.log"]; it.Status != proto.CheckWarn {
 		t.Fatalf("role records item = %+v", it)
+	}
+}
+
+// A cluster member whose membership cannot be read: the collection is made
+// all the same, of this member's files, and says with a failed item that the
+// members are not in it. Without the item it would read as a single
+// server's. This is the collection a running member's console starts
+// (StartBundle), and what the list it serves then shows.
+func TestAMembershipThatCannotBeReadIsReportedAndTheCollectionStands(t *testing.T) {
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	m, c := clusterFixture(t, now)
+	c.members, c.membersErr = nil, errors.New("this member's cluster membership could not be read: open /data/gpuworks.db.dqlite/info.yaml: no such file or directory")
+	started, err := m.StartBundle(context.Background(), BundleRequest{RequestedBy: "admin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := waitBundle(t, m, started.ID)
+	if done.State != "ready" {
+		t.Fatalf("state = %q (%s): an unreadable membership must not fail the collection", done.State, done.Error)
+	}
+	it := itemsByPath(done)["members"]
+	if it.Status != proto.CheckFail || it.Code != messages.CheckDiagnosticsItemReadFailed || it.ID() != BundleItemMembers ||
+		!strings.Contains(it.Evidence, "gpuworks.db.dqlite/info.yaml: no such file or directory") || it.Message() != "members could not be read" {
+		t.Fatalf("item = %+v (%s, %q)", it, it.ID(), it.Message())
+	}
+	listed := m.Bundles()
+	if len(listed) != 1 || itemsByPath(listed[0])["members"].Status != proto.CheckFail {
+		t.Fatalf("the list does not show the failed item: %+v", listed)
+	}
+	files := readArchive(t, m.bundleArchive(started.ID))
+	for path := range files {
+		if strings.HasPrefix(path, "members/") {
+			t.Fatalf("the collection holds %s without a membership", path)
+		}
+	}
+	if !strings.Contains(files["server/gpuworks-server.log"], "event=step_down") || !strings.Contains(files["manifest.json"], `"path": "members"`) {
+		t.Fatalf("this member's log or the manifest's item is missing:\n%s", files["manifest.json"])
+	}
+	if c.asked["10.0.0.2:9001"] != 0 {
+		t.Fatal("a member was asked without a membership")
 	}
 }

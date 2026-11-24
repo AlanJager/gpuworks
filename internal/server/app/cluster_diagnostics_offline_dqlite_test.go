@@ -154,3 +154,39 @@ func TestOfflineMemberCollectionRefusesADirectoryThatIsNoMembers(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// A member directory whose raft identity cannot be read is still a member's:
+// its membership is an error naming what could not be read, never an empty
+// list, which would make its collection read as a single server's.
+func TestAMemberWhoseMembershipCannotBeReadSaysSo(t *testing.T) {
+	cfg, _ := offlineMember(t, time.Now().UTC())
+	info := filepath.Join(cfg.DataDir, "gpuworks.db.dqlite", "info.yaml")
+	if err := os.Remove(info); err != nil {
+		t.Fatal(err)
+	}
+	cluster := newClusterDiagnostics(cfg)
+	if cluster == nil {
+		t.Fatal("the directory is no longer taken for a member's")
+	}
+	members, err := cluster.Members(t.Context())
+	if err == nil || len(members) != 0 || !strings.Contains(err.Error(), "this member's cluster membership could not be read: ") {
+		t.Fatalf("members = %v, err = %v", members, err)
+	}
+	bundle, archive, err := CollectClusterMemberDiagnostics(t.Context(), ClusterMemberDiagnosticsRequest{DataDir: cfg.DataDir, LogFile: cfg.LogFile, WorkDir: t.TempDir(),
+		Request: diagnostics.BundleRequest{RequestedBy: "support-bundle"}}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil || bundle.State != "ready" {
+		t.Fatalf("collection = %q, %v", bundle.State, err)
+	}
+	var item diagnostics.BundleItem
+	for _, it := range bundle.Items {
+		if it.Path == "members" {
+			item = it
+		}
+	}
+	if item.Status != proto.CheckFail || item.ID() != diagnostics.BundleItemMembers || !strings.Contains(item.Evidence, "could not be read") {
+		t.Fatalf("members item = %+v", item)
+	}
+	if _, ok := archiveFiles(t, archive)["members/index.json"]; ok {
+		t.Fatal("an index was written without a membership")
+	}
+}

@@ -25,8 +25,10 @@ import (
 // missing; it never fails the collection.
 type Cluster interface {
 	// Members are the cluster's members as this one knows them, itself
-	// included. Empty means this server is not a cluster member.
-	Members(ctx context.Context) []ClusterMember
+	// included. Empty without an error means this server is not a cluster
+	// member. An error means it is one whose membership could not be read:
+	// the collection then says so, and holds this member's files alone.
+	Members(ctx context.Context) ([]ClusterMember, error)
 	// Self is where this member's own part is read from.
 	Self() MemberSource
 	// OpenMemberPart asks another member for its part of the window.
@@ -155,13 +157,21 @@ func missingReason(err error) string {
 }
 
 // collectMembers stages the cluster members' parts under members/. A member
-// whose part is missing leaves a failed item members/<name>: a collection
-// with none of those holds every member's part.
+// whose part is missing leaves a failed item members/<name>, and a
+// membership that could not be read a failed item members: a collection
+// with neither holds every member's part.
 func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add func(BundleItem, *stagedEntry)) {
 	if m.cluster == nil {
 		return
 	}
-	members := m.cluster.Members(ctx)
+	members, err := m.cluster.Members(ctx)
+	if err != nil {
+		// Like a member that does not answer, this does not fail the
+		// collection; without the item it would read as a single server's.
+		add(failedItem("members", messages.CheckDiagnosticsItemReadFailed, err, 0), nil)
+		m.log.Warn("diagnostics collection could not read the cluster's members", "bundle", b.ID, "err", err)
+		return
+	}
 	if len(members) == 0 {
 		return
 	}

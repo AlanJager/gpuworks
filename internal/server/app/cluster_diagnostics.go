@@ -83,17 +83,22 @@ func (c *clusterDiagnostics) observe(ctx context.Context) (clusterStatus, error)
 }
 
 // Members lists the members from the persisted membership, and from the
-// leader's when one answers.
-func (c *clusterDiagnostics) Members(ctx context.Context) []diagnostics.ClusterMember {
+// leader's when one answers. This installation is a cluster member: a
+// membership that cannot be read, or that lists nobody, is an error, never
+// an empty list.
+func (c *clusterDiagnostics) Members(ctx context.Context) ([]diagnostics.ClusterMember, error) {
 	report, err := c.observe(ctx)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("this member's cluster membership could not be read: %w", err)
+	}
+	if len(report.members) == 0 {
+		return nil, errors.New("this member's cluster membership lists no member")
 	}
 	out := make([]diagnostics.ClusterMember, 0, len(report.members))
 	for _, member := range report.members {
 		out = append(out, diagnostics.ClusterMember{ID: member.id, Address: member.address, Role: member.role, Self: member.id == report.id})
 	}
-	return out
+	return out, nil
 }
 
 // OpenMemberPart asks the member's enrollment listener. Its origin is the

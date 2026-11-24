@@ -81,12 +81,16 @@ func (noRecordsScope) UnknownNode(uuids []string) (string, bool) {
 // localMember narrows a cluster to the member that collects.
 type localMember struct{ diagnostics.Cluster }
 
-func (l localMember) Members(ctx context.Context) []diagnostics.ClusterMember {
+func (l localMember) Members(ctx context.Context) ([]diagnostics.ClusterMember, error) {
+	members, err := l.Cluster.Members(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var out []diagnostics.ClusterMember
-	for _, member := range l.Cluster.Members(ctx) {
+	for _, member := range members {
 		if member.Self {
 			out = append(out, member)
 		}
 	}
-	return out
+	return out, nil
 }

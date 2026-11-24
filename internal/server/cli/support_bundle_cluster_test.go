@@ -160,3 +160,42 @@ func TestSupportBundleLocalCollectsThisMemberAlone(t *testing.T) {
 		t.Fatalf("index = %+v, want this member alone", index)
 	}
 }
+
+// A member whose cluster files cannot be read is still a member: the
+// command collects its own log, tells the operator that the other members
+// were not asked and why, and the manifest carries a failed item. Without
+// them the archive would read as a single server's.
+func TestSupportBundleSaysWhenAMembersClusterIdentityCannotBeRead(t *testing.T) {
+	data := clusterMemberLayout(t)
+	if err := os.Remove(filepath.Join(data, "gpuworks.db.dqlite", "info.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "bundle.tar.gz")
+	code, logged, printed := operatorOutput(t, "--data", data, "--out", out)
+	if code != 0 {
+		t.Fatalf("exit %d: an unreadable membership must not fail the collection\n%s", code, logged)
+	}
+	if strings.Count(printed, "\n") != 2 || !strings.Contains(printed, "the other members were not asked (this member's cluster membership could not be read: ") ||
+		!strings.Contains(printed, "the collection is incomplete") {
+		t.Fatalf("the operator is not told:\n%s\nlogged:\n%s", printed, logged)
+	}
+	files := bundleFiles(t, out)
+	for path := range files {
+		if strings.HasPrefix(path, "members/") {
+			t.Fatalf("the collection holds %s without a membership", path)
+		}
+	}
+	var manifest diagnostics.Bundle
+	if err := json.Unmarshal([]byte(files["manifest.json"]), &manifest); err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, item := range manifest.Items {
+		if item.Path == "members" {
+			found = item.Status == "fail" && item.Code == "DIAGNOSTICS_ITEM_READ_FAILED" && strings.Contains(item.Evidence, "cluster membership could not be read")
+		}
+	}
+	if !found || !strings.Contains(files["server/gpuworks-server.log"], "event=step_down") {
+		t.Fatalf("the manifest has no failed members item, or this member's log is missing:\n%s", files["manifest.json"])
+	}
+}

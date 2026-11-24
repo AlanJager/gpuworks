@@ -22,6 +22,7 @@ const (
 	BundleItemNodeDebugFile = "node_debug_file"
 	BundleItemInstanceLog   = "instance_log"
 	BundleItemRecords       = "records"
+	BundleItemMembers       = "members"
 	BundleItemMember        = "member"
 	BundleItemMemberIndex   = "member_index"
 	BundleItemMemberFile    = "member_file"
@@ -52,6 +53,8 @@ func (it BundleItem) ID() string {
 		return BundleItemNodeDebugFile
 	case parts[0] == "instances":
 		return BundleItemInstanceLog
+	case it.Path == "members":
+		return BundleItemMembers
 	case it.Path == "members/index.json":
 		return BundleItemMemberIndex
 	case parts[0] == "members" && len(parts) == 2:
