@@ -758,6 +758,12 @@ func (s *Store) ApplyImageNodeStatus(imageID, nodeID uint, st proto.ImageNodeSta
 	}
 	if st.TransferredBytes > 0 {
 		updates["transferred_bytes"] = st.TransferredBytes
+	} else if st.State == ImageStatePresent && current.State == ImageStateSyncing && current.Source == "peer" && current.SizeBytes > 0 {
+		// The receiving node's report of a loaded archive carries no count, and
+		// progress is recorded only while the row is syncing, so the relay's
+		// last progress write is dropped when this report arrives first. A
+		// loaded archive was transferred whole.
+		updates["transferred_bytes"] = current.SizeBytes
 	}
 	if st.RateBPS > 0 {
 		updates["rate_bps"] = st.RateBPS

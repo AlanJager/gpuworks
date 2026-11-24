@@ -173,3 +173,32 @@ func TestApplyImageNodeStatusIgnoresLateProgressForFinishedTransfer(t *testing.T
 		t.Fatalf("terminal report after finish was dropped: %+v", row)
 	}
 }
+
+// The receiving node's report of a loaded archive can arrive before the
+// relay's last progress write, which is then dropped because the row is no
+// longer syncing. The finished row must not keep an earlier progress sample
+// as its byte count.
+func TestApplyImageNodeStatusFinishesAPeerSyncWithTheWholeArchiveCounted(t *testing.T) {
+	st, err := Open("file:store_image_final_count?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, _ := st.UpsertImage(&Image{ImageRef: "example/image:count", Engine: "vllm", Enabled: true})
+	node, _ := st.RegisterNode("node-count", HashToken("t"), "count")
+	if _, err := st.UpsertImageNode(&ImageNode{ImageID: image.ID, NodeID: node.ID, State: ImageStateSyncing, TransferID: "relay", Source: "peer"}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := st.UpdateImageSyncProgressIfActive(image.ID, node.ID, "relay", 8388608, 5545984, 1000); err != nil || !ok {
+		t.Fatalf("progress = %v, %v", ok, err)
+	}
+	if err := st.ApplyImageNodeStatus(image.ID, node.ID, proto.ImageNodeStatus{State: ImageStatePresent, TransferID: "relay", Message: "image archive loaded"}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := st.UpdateImageSyncProgressIfActive(image.ID, node.ID, "relay", 8388608, 8388608, 0); err != nil || ok {
+		t.Fatalf("progress after the load report = %v, %v, want it dropped", ok, err)
+	}
+	row, _ := st.ImageNode(image.ID, node.ID)
+	if row.State != ImageStatePresent || row.SizeBytes != 8388608 || row.TransferredBytes != 8388608 {
+		t.Fatalf("finished row = %+v, want present with 8388608 of 8388608 transferred", row)
+	}
+}
