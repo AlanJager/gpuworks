@@ -63,6 +63,12 @@ export default function NodesPage() {
     else next.set("agent_upgrade", group);
     return next.toString();
   };
+  // A started batch reserves its nodes, and a version filter lists only the nodes a batch may
+  // still take: staying on it would show them gone, so the list returns to every node.
+  const onUpgradeStarted = () => {
+    setSelectedNodeUUIDs([]);
+    if (fleetGroup !== "all" && fleetGroup !== "check") navigate({ search: fleetSearch("all") }, { replace: true });
+  };
   const [upgradeRunID, setUpgradeRunID] = useState<number>(() => Number(params.get("agent_run")) || 0);
   const incoming = location.state as {
     nodeUUID?: string;
@@ -91,6 +97,8 @@ export default function NodesPage() {
     pageSize: storedPageSize(NODE_TABLE_ID, NODE_PAGE_SIZE),
     intervalMs: 8000,
   });
+  // The batch whose reserved nodes left a version filter with nothing to list, whatever else is filtered.
+  const reservingRunID = fleetGroup !== "all" && fleetGroup !== "check" && !data?.agent_fleet?.[fleetGroup] ? data?.agent_fleet?.run_id : undefined;
   const filtering = fleetGroup !== "all" || search !== "" || labelFilter.length > 0 || states.length > 0 || sources.length > 0;
   const serverHealth = usePolling(api.health, 30000);
   const upgradeErrors = usePolling(api.agentUpgradeErrors, 8000);
@@ -264,7 +272,7 @@ export default function NodesPage() {
               <Typography.Text>{t("batchUpgrade.selectedCount", { count: selectedNodeUUIDs.length })}</Typography.Text>
               <Button type="link" onClick={() => setSelectedNodeUUIDs([])}>{t("batchUpgrade.clearSelection")}</Button>
             </Space>}
-            <AgentUpgradeManager isAdmin={isAdmin} requestedRunID={upgradeRunID} selectedNodeUUIDs={selectedNodeUUIDs} upgradeAllRequest={upgradeAllRequest} onStarted={() => setSelectedNodeUUIDs([])} />
+            <AgentUpgradeManager isAdmin={isAdmin} requestedRunID={upgradeRunID} selectedNodeUUIDs={selectedNodeUUIDs} upgradeAllRequest={upgradeAllRequest} onStarted={onUpgradeStarted} />
           </>}
           sort={sort}
           onSortChange={setSort}
@@ -304,11 +312,11 @@ export default function NodesPage() {
               />
             </>
           }
-          emptyDescription={t(filtering ? "empty.filtered" : "empty.all")}
+          emptyDescription={t(reservingRunID ? "empty.inBatch" : filtering ? "empty.filtered" : "empty.all")}
           emptyKind="nodes"
           emptyAction={
-            <Button type="primary" onClick={() => setAddOpen(true)}>
-              {t("action.add")}
+            <Button type="primary" {...(reservingRunID ? { href: `/nodes?agent_run=${reservingRunID}` } : { onClick: () => setAddOpen(true) })}>
+              {t(reservingRunID ? "fleet.progress" : "action.add")}
             </Button>
           }
         />

@@ -86,6 +86,51 @@ func TestHAMiHoldPodNamesTheCardAndGoesThroughHAMisScheduler(t *testing.T) {
 	}
 }
 
+// zakuAdmission is the admission seen on a Zaku cluster: a GPU pod that does
+// not state its memory as an amount is refused before HAMi's scheduler sees it.
+func zakuAdmission(p *kubeapi.Pod) (string, string) {
+	limits := p.Spec.Containers[0].Resources.Limits
+	if _, gpu := limits["nvidia.com/gpu"]; gpu && limits["nvidia.com/gpumem"] == "" {
+		return "nvidia.webhook.zsedge.io", "pod has no gpu mem resource"
+	}
+	return "", ""
+}
+
+// Refused for stating only a percentage, the hold pod is created again with
+// the amount HAMi registered for the card, and the card is borrowed whole.
+func TestHAMiHoldPodStatesTheMemoryAmountWhereAdmissionRefusesThePercentage(t *testing.T) {
+	r, s := newHAMiRig(t, 2)
+	r.srv.Admission = zakuAdmission
+	if _, err := r.d.Run(context.Background(), spec("gpuworks-aaaaaaaaaaaa", 1)); err != nil {
+		t.Fatal(err)
+	}
+	holds := s.holdCreated()
+	if len(holds) != 1 {
+		t.Fatalf("hold pods created = %d", len(holds))
+	}
+	if limits := holds[0].Spec.Containers[0].Resources.Limits; !maps.Equal(limits, map[string]string{"nvidia.com/gpu": "1", "nvidia.com/gpucores": "100", "nvidia.com/gpumem": "46068"}) {
+		t.Fatalf("limits = %v", limits)
+	}
+	if got := r.srv.Pod(testNS, holds[0].Metadata.Name).Metadata.Annotations["hami.io/vgpu-devices-allocated"]; got != "GPU-b,NVIDIA,46068,100:;" {
+		t.Fatalf("allocation = %q, want the whole card", got)
+	}
+}
+
+// An admission that refuses both forms fails the launch with both refusals,
+// and leaves no hold pod behind.
+func TestHAMiHoldPodRefusedInBothFormsFailsWithTheAdmissionsWords(t *testing.T) {
+	r, s := newHAMiRig(t, 2)
+	r.srv.Admission = func(*kubeapi.Pod) (string, string) { return "quota.example.io", "gpu pods are not allowed here" }
+	_, err := r.d.Run(context.Background(), spec("gpuworks-aaaaaaaaaaaa", 1))
+	want := `kubernetes API 403 Forbidden: admission webhook "quota.example.io" denied the request: gpu pods are not allowed here`
+	if err == nil || strings.Count(err.Error(), want) != 2 || !strings.Contains(err.Error(), "stating the card's memory as an amount") {
+		t.Fatalf("err = %v, want both refusals", err)
+	}
+	if holds := s.holdCreated(); len(holds) != 0 {
+		t.Fatalf("hold pods left = %d", len(holds))
+	}
+}
+
 // A device ID of HAMi's plugin is the card's UUID and a share number; ACK's
 // names the card number.
 func TestCardOfReadsEveryDevicePluginsIDs(t *testing.T) {
@@ -372,7 +417,7 @@ func TestHAMiAscendHoldPodAndWholeCardCheck(t *testing.T) {
 	if err != nil || v.mode != modeHAMi || v.resource != "huawei.com/Ascend910B4" || v.hami.vendor != accelerator.VendorAscend {
 		t.Fatalf("view = %+v, %v", v, err)
 	}
-	pod := r.d.cards.hamiHoldPod(v, "gpuworks-hold-x", "Ascend910B4-1")
+	pod := r.d.cards.hamiHoldPod(v, "gpuworks-hold-x", "Ascend910B4-1", false)
 	res := pod.Spec.Containers[0].Resources
 	if !maps.Equal(res.Limits, map[string]string{"huawei.com/Ascend910B4": "1"}) ||
 		!maps.Equal(pod.Metadata.Annotations, map[string]string{"hami.io/use-Ascend910B4-uuid": "Ascend910B4-1"}) ||

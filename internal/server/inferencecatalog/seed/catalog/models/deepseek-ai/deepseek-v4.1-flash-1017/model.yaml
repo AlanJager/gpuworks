@@ -735,6 +735,178 @@ specs:
     - type: openai.chat
       endpoint: /v1/chat/completions
       mode: stream
+# Ascend 910B (A2), eight 64 GiB cards, TP8 with expert parallelism, W4A8.
+# Engram stays in host memory (--engram-config cpu_offload), so the checkpoint
+# does not have to fit on the cards: admission charges runtime_weight_bytes,
+# not weight_bytes. The host copy is read on every decode step, so place this
+# profile on a node whose container runtime is docker or containerd, where the
+# engine runs directly on the host's device nodes.
+# Both profiles were measured on two A2 machines, one 910B2 and one 910B3.
+# Speculative decoding (DSpark) was tried and is deliberately absent: it
+# accepted 2.2 to 2.7 tokens per iteration but lowered throughput on this
+# checkpoint, because the extra draft forwards cost more than the accepted
+# tokens save.
+- name: w4a8-vllm-ascend-910b-tp8
+  display_name_zh_cn: 910B (A2) · W4A8 · 8 卡 · Engram 卸载
+  display_name_en: 910B (A2) · W4A8 · 8 cards · Engram offload
+  scenario: balanced
+  engine: vllm
+  image: quay.io/ascend/vllm-ascend@sha256:28351d337b7f9367073344240fa4e28d99794d549d577eaf317689950064150a
+  image_sources:
+  - quay.nju.edu.cn/ascend/vllm-ascend@sha256:28351d337b7f9367073344240fa4e28d99794d549d577eaf317689950064150a
+  weights:
+    quantization: w4a8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/DeepSeek-V4.1-Flash-1017-w4a8
+        revision: 2701ad74996ab465759ea37e2e7df132709716e9
+  weight_bytes: 528700435206
+  runtime_weight_bytes: 325313092174
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+  shm_bytes: 34359738368
+  memlock_unlimited: true
+  start_timeout_sec: 10800
+  # 16 concurrent sequences is the largest value that still fits every request
+  # at the full 32768-token context: the engine reports a maximum concurrency
+  # of 17.95x for that length, and going above it makes long requests preempt
+  # one another.
+  args:
+  - --trust-remote-code
+  - --quantization
+  - ascend
+  - --tensor-parallel-size
+  - ${TP_SIZE}
+  - --enable-expert-parallel
+  - --max-model-len
+  - '32768'
+  - --max-num-batched-tokens
+  - '8192'
+  - --max-num-seqs
+  - '16'
+  - --gpu-memory-utilization
+  - '0.92'
+  - --enable-prefix-caching
+  - --enable-prompt-tokens-details
+  - --block-size
+  - '128'
+  - --safetensors-load-strategy
+  - lazy
+  - --tokenizer-mode
+  - deepseek_v41
+  - --reasoning-parser
+  - deepseek_v41
+  - --tool-call-parser
+  - deepseek_v41
+  - --enable-auto-tool-choice
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --async-scheduling
+  - --engram-config
+  - '{"cpu_offload":true}'
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '0'
+    VLLM_PLE_CPU_OFFLOAD: '1'
+    VLLM_ENGINE_READY_TIMEOUT_S: '36000'
+    HCCL_BUFFSIZE: '1024'
+    HCCL_CONNECT_TIMEOUT: '1200'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("this recipe requires exactly 8 NPUs")
+          if gpu.min_memory_gib < 60:
+              return reject("each NPU requires at least 64 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
+# The same cards with a 512K context, for agentic and other long-context work.
+# Eight sequences keeps the KV pool able to hold one full-length request per
+# sequence; a 400K-token session was measured to complete at this setting.
+- name: w4a8-vllm-ascend-910b-tp8-512k
+  display_name_zh_cn: 910B (A2) · W4A8 · 8 卡 · 512K 上下文
+  display_name_en: 910B (A2) · W4A8 · 8 cards · 512K context
+  scenario: balanced
+  engine: vllm
+  image: quay.io/ascend/vllm-ascend@sha256:28351d337b7f9367073344240fa4e28d99794d549d577eaf317689950064150a
+  image_sources:
+  - quay.nju.edu.cn/ascend/vllm-ascend@sha256:28351d337b7f9367073344240fa4e28d99794d549d577eaf317689950064150a
+  weights:
+    quantization: w4a8
+    sources:
+    - modelscope:
+        repo_id: Eco-Tech/DeepSeek-V4.1-Flash-1017-w4a8
+        revision: 2701ad74996ab465759ea37e2e7df132709716e9
+  weight_bytes: 528700435206
+  runtime_weight_bytes: 325313092174
+  gpus:
+    vendor: ascend
+    name: (^|[^A-Za-z0-9])910B[A-Za-z0-9]*([^A-Za-z0-9]|$)
+  shm_bytes: 34359738368
+  memlock_unlimited: true
+  start_timeout_sec: 10800
+  args:
+  - --trust-remote-code
+  - --quantization
+  - ascend
+  - --tensor-parallel-size
+  - ${TP_SIZE}
+  - --enable-expert-parallel
+  - --max-model-len
+  - '524288'
+  - --max-num-batched-tokens
+  - '4096'
+  - --max-num-seqs
+  - '8'
+  - --gpu-memory-utilization
+  - '0.92'
+  - --enable-prefix-caching
+  - --enable-prompt-tokens-details
+  - --block-size
+  - '128'
+  - --safetensors-load-strategy
+  - lazy
+  - --tokenizer-mode
+  - deepseek_v41
+  - --reasoning-parser
+  - deepseek_v41
+  - --tool-call-parser
+  - deepseek_v41
+  - --enable-auto-tool-choice
+  - --compilation-config
+  - '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+  - --async-scheduling
+  - --engram-config
+  - '{"cpu_offload":true}'
+  env:
+    VLLM_USE_V2_MODEL_RUNNER: '0'
+    VLLM_PLE_CPU_OFFLOAD: '1'
+    VLLM_ENGINE_READY_TIMEOUT_S: '36000'
+    HCCL_BUFFSIZE: '1024'
+    HCCL_CONNECT_TIMEOUT: '1200'
+    PYTORCH_NPU_ALLOC_CONF: expandable_segments:True
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.count != 8:
+              return reject("this recipe requires exactly 8 NPUs")
+          if gpu.min_memory_gib < 60:
+              return reject("each NPU requires at least 64 GiB")
+          return {"GPU_COUNT": gpu.count, "TP_SIZE": 8, "SP_DEGREE": 1}
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.chat
+      endpoint: /v1/chat/completions
+      mode: stream
 - name: fp8-pico-nvidia-gb10-tp4
   display_name_zh_cn: DGX Spark (GB10) ×4 · FP8 · pico TP4 · 交换机组网
   display_name_en: DGX Spark (GB10) ×4 · FP8 · pico TP4 · RoCE switch

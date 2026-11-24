@@ -16,7 +16,7 @@ var memlockUnlimitedArgs = [2]string{"--ulimit", "memlock=-1:-1"}
 // memory would have asked for; a template that states one wins over the
 // platform the same way, but not over the deployment's own.
 func launchDockerArgs(template, own []string, p Params, memlockUnlimited bool) []string {
-	args := append(append([]string(nil), template...), own...)
+	args := splitDockerArgRows(append(append([]string(nil), template...), own...))
 	args = withComputeNetworkDockerArgs(args, p)
 	if memlockUnlimited && !hasMemlockUlimit(args) {
 		args = append(args, memlockUnlimitedArgs[0], memlockUnlimitedArgs[1])

@@ -46,6 +46,10 @@ var (
 	torchCapacityRE = regexp.MustCompile(`total capacity of ` + sizeRE + `|` + sizeRE + ` total capacity`)
 	torchTriedRE    = regexp.MustCompile(`Tried to allocate ` + sizeRE)
 	torchFreeRE     = regexp.MustCompile(`of which ` + sizeRE + ` is free|` + sizeRE + ` free;`)
+	// vLLM's KV cache check: "(0.44 GiB KV cache is needed, which is larger
+	// than the available KV cache memory (0.09 GiB)". It names no device and
+	// no capacity.
+	kvCacheRE = regexp.MustCompile(`\(([0-9.]+) GiB KV cache is needed, which is larger than the available KV cache memory \(([0-9.]+) GiB\)`)
 	// torch_npu's error codes are not here. On Ascend the interposer prints
 	// its own refusal (the table's signature), so an allocator error without
 	// it (error code 300000) was not refused by the limit; and a device that
@@ -81,6 +85,14 @@ var limitShapes = []limitShape{
 			c.NeededBytes = capacity - free + tried
 		}
 		return true
+	}},
+	// The limit sized the device the KV cache did not fit, so it is a cause;
+	// whether a larger limit or a shorter context is the fix the line cannot
+	// say, so the KV cache cause stays beside it and no amount is stated.
+	{match: kvCacheRE, read: func(_ string, m []string, limitBytes int64, _ *Cause) bool {
+		// More left for the KV cache than the whole limit: the engine saw a
+		// larger device, which the limit did not size.
+		return gibBytes(m[2]) <= limitBytes+limitTolerance(limitBytes)
 	}},
 }
 
@@ -131,6 +143,7 @@ func firstSize(re *regexp.Regexp, line string) (int64, bool) {
 // engine's report of running out of memory on a device as large as the limit
 // is the limit too: it is reported as CodeDGPUMemoryLimit, with the numbers
 // the line gives, in place of the out-of-memory cause the same lines show.
+// A KV cache that did not fit keeps its own cause after the limit.
 func MatchWithLimit(lines []string, limitBytes int64) []Cause {
 	causes := Match(lines)
 	if limitBytes <= 0 {

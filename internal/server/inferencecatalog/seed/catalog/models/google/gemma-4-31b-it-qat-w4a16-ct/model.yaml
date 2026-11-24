@@ -82,7 +82,7 @@ specs:
   - --tool-call-parser
   - gemma4
   - --chat-template
-  - /models/google/gemma-4-31B-it-qat-w4a16-ct/chat_template.jinja
+  - /model/chat_template.jinja
   - --reasoning-parser
   - gemma4
   api:

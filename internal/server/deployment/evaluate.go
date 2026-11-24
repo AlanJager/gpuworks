@@ -9,6 +9,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/netplan"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -180,6 +181,15 @@ func (r *evaluateState) finish() bool {
 	// Checked once the ranks are previewed, so the form shows the refusal
 	// beside the launches and the draft that would satisfy it.
 	r.errs.add(fieldContainerCmd, checkManualCommandRanks(r.req))
+	// A headless rank binds no API port; which ranks are headless is the
+	// rule the ranks were previewed with (planning.PreviewRankTopology), of
+	// which only the role is read here.
+	for rank, node := range r.rankNodes {
+		if r.req.NNodes > 1 && planning.PreviewRankTopology(r.req.NNodes, rank, netplan.Resolved{}).Headless {
+			continue
+		}
+		r.resp.Warnings = append(r.resp.Warnings, r.s.manualCommandPortTaken(r.requestOverrides, node, r.excludeDeployment)...)
+	}
 	// The create resolves its launch on the per-node card count the request
 	// states, where the plan above used the cards the scheduler assigned; a
 	// memory-limited draft can get fewer cards than it states. The same
