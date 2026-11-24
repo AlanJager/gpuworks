@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"reflect"
 	"strings"
@@ -251,16 +252,25 @@ func TestTunnelsOpenThroughTheHub(t *testing.T) {
 	}
 }
 
-// A detached data lane reads as the gateway's error and as the hub's, with
-// the hub's text; any other failure passes through as it is.
+// A detached data lane reads as the gateway's error and as the hub's, at open
+// and mid-stream; every failure passes through as it is.
 func TestTunnelsNameADetachedDataLane(t *testing.T) {
 	lane := fmt.Errorf("%w: node n1 did not reattach within 5s", hub.ErrDataLaneUnavailable)
 	_, err := Tunnels(&fakeHub{err: lane}).OpenTunnel(context.Background(), "n1", "127.0.0.1:1")
 	if !errors.Is(err, plane.ErrDataLaneUnavailable) || !errors.Is(err, hub.ErrDataLaneUnavailable) {
 		t.Fatalf("error %v is not both the plane's and the hub's", err)
 	}
-	if err.Error() != lane.Error() {
-		t.Fatalf("text %q, want the hub's %q", err.Error(), lane.Error())
+	if err != lane {
+		t.Fatalf("error %v, want the hub's own value %v", err, lane)
+	}
+	// One value, so an error the hub raises later, on a read or write of an
+	// open stream, is recognised as well without the adapter seeing it.
+	if plane.ErrDataLaneUnavailable != hub.ErrDataLaneUnavailable {
+		t.Fatal("the gateway's and the hub's data lane errors are two values")
+	}
+	midStream := fmt.Errorf("%w: node n1 data lane closed under an open stream: %w", hub.ErrDataLaneUnavailable, io.ErrClosedPipe)
+	if !errors.Is(midStream, plane.ErrDataLaneUnavailable) {
+		t.Fatalf("mid-stream error %v is not the gateway's", midStream)
 	}
 	other := errors.New("dial refused")
 	_, err = Tunnels(&fakeHub{err: other}).OpenTunnel(context.Background(), "n1", "127.0.0.1:1")

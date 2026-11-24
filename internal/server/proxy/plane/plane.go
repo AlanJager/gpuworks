@@ -10,12 +10,11 @@
 package plane
 
 import (
-	"errors"
-
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/priority"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/tunnelerr"
 )
 
 // Topics and reasons of a Change the gateway tells apart. They equal the
@@ -42,7 +41,7 @@ var ErrNotFound = store.ErrNotFound
 // ErrDataLaneUnavailable is what opening a tunnel returns when the node's
 // data lane was detached and did not reattach within the wait the tunnel
 // provider allows.
-var ErrDataLaneUnavailable = errors.New("data lane unavailable")
+var ErrDataLaneUnavailable = tunnelerr.ErrDataLaneUnavailable
 
 // Change is one announced change. It carries no payload: the gateway reads
 // the current state again.
