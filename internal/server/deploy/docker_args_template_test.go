@@ -40,7 +40,7 @@ func TestResolveLaunchSplitsAnOptionAndValueRow(t *testing.T) {
 		Engine: launchTestEngine{}, Params: Params{ModelPath: DefaultModelMount, APIPort: 8000},
 		TemplateDockerArgs: []string{"--ulimit memlock=4096"},
 		ContainerOverrides: ContainerOverrides{DockerArgs: []string{
-			" --group-add video ", "-u 1000:1000", "--label=owner=a team", "--cap-add", "SYS_NICE", "--init",
+			" --group-add video ", "-u 1000:1000", "--label=owner=a team", "--cap-add", "SYS_NICE", " --init ", "--device=/dev/dri ",
 		}},
 		TemplateMemlockUnlimited: true,
 	})
@@ -49,7 +49,7 @@ func TestResolveLaunchSplitsAnOptionAndValueRow(t *testing.T) {
 	}
 	want := []string{
 		"--ulimit", "memlock=4096",
-		"--group-add", "video", "-u", "1000:1000", "--label=owner=a team", "--cap-add", "SYS_NICE", "--init",
+		"--group-add", "video", "-u", "1000:1000", "--label=owner=a team", "--cap-add", "SYS_NICE", "--init", "--device=/dev/dri",
 	}
 	if !reflect.DeepEqual(launch.DockerArgs, want) {
 		t.Fatalf("docker args = %q, want %q", launch.DockerArgs, want)

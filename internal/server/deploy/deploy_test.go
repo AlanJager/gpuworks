@@ -832,7 +832,7 @@ func TestQuirkDeepSeekKV(t *testing.T) {
 // DeepSeek-OCR's checkpoints are vision-language models named after DeepSeek,
 // not MLA models: an fp8 KV cache forced on them failed to compile on a PPU.
 func TestQuirkDeepSeekKVLeavesVisionLanguageModelsAlone(t *testing.T) {
-	for _, modelType := range []string{"deepseek_vl_v2", "DeepseekOCRForCausalLM", "DeepseekOCR2ForCausalLM"} {
+	for _, modelType := range []string{"deepseek_vl_v2", "DeepseekVLV2ForCausalLM", "DeepseekOCRForCausalLM", "DeepseekOCR2ForCausalLM"} {
 		for _, vendor := range []string{"ppu", "nvidia"} {
 			r := BuildVLLM(Params{ModelPath: "/m", APIPort: 30000, ModelType: modelType, Vendor: vendor})
 			if argvHas(r.Argv, "--kv-cache-dtype", "fp8") {
@@ -840,8 +840,8 @@ func TestQuirkDeepSeekKVLeavesVisionLanguageModelsAlone(t *testing.T) {
 			}
 		}
 	}
-	for _, modelType := range []string{"deepseek_v2", "deepseek_v32", "deepseek_v41_text", "DeepseekV3ForCausalLM"} {
-		r := BuildVLLM(Params{ModelPath: "/m", APIPort: 30000, ModelType: modelType, Vendor: "ppu"})
+	for _, modelType := range []string{"deepseek_v2", "deepseek_v32", "deepseek_v41_text", "DeepseekV3ForCausalLM", "DeepseekV32ForCausalLM"} {
+		r := BuildVLLM(Params{ModelPath: "/m", APIPort: 30000, ModelType: modelType, Vendor: "nvidia"})
 		if !argvHas(r.Argv, "--kv-cache-dtype", "fp8") {
 			t.Errorf("%s lost its fp8 kv cache: %v", modelType, r.Argv)
 		}

@@ -184,15 +184,20 @@ func dockerOptionName(token string) string {
 
 // splitDockerArgRows turns each "option value" row the deploy form's editor
 // allows into the two arguments docker run reads, so the launch runs what the
-// checks above judged. A space after "=" belongs to the value, and a row that
-// names no option is passed as written.
+// checks above judged: they trim a row, so an option's row loses the spaces
+// around it here. A space after "=" belongs to the value, and a row that
+// names no option is passed as written. Nothing is unquoted.
 func splitDockerArgRows(args []string) []string {
 	var out []string // nil for no args, as the launch had before
 	for _, arg := range args {
 		token := strings.TrimSpace(arg)
 		at := strings.IndexAny(token, " =")
-		if !strings.HasPrefix(token, "-") || at < 0 || token[at] == '=' {
+		switch {
+		case !strings.HasPrefix(token, "-"):
 			out = append(out, arg)
+			continue
+		case at < 0 || token[at] == '=':
+			out = append(out, token)
 			continue
 		}
 		out = append(out, token[:at], strings.TrimSpace(token[at+1:]))
