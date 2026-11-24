@@ -168,9 +168,15 @@ var platformReadingPosts = map[string]bool{
 	"POST /api/v1/evaluate":             true,
 	"POST /api/v1/benchmarks/models":    true,
 	// Checks of something not saved: unsaved cloud credentials, a storage
-	// definition, the network between the nodes of a planned deployment.
+	// definition, an assistant model, a benchmark's target address, the
+	// SSH address of a machine that is not a node yet, the network between
+	// the nodes of a planned deployment. Each asks and answers; none
+	// stores what it found.
 	"POST /api/v1/providers/test":        true,
 	"POST /api/v1/storages/probe":        true,
+	"POST /api/v1/ai/configs/test":       true,
+	"POST /api/v1/benchmarks/probe":      true,
+	"POST /api/v1/nodes/precheck":        true,
 	"POST /api/v1/deployments/preflight": true,
 	// Which notices this user has read: the user's own view, no resource.
 	"POST /api/v1/notices/read": true,

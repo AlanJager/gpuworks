@@ -167,12 +167,15 @@ read GET /api/v1/usage-report
 read GET /api/v1/usage-report/preview
 read GET /api/v1/x/sample/things
 read POST /api/v1/ai/ask
+read POST /api/v1/ai/configs/test
 read POST /api/v1/benchmarks/models
+read POST /api/v1/benchmarks/probe
 read POST /api/v1/deployments/preflight
 read POST /api/v1/evaluate
 read POST /api/v1/mcp
 read POST /api/v1/models/local/preview
 read POST /api/v1/models/preview-url
+read POST /api/v1/nodes/precheck
 read POST /api/v1/notices/read
 read POST /api/v1/providers/test
 read POST /api/v1/storages/probe
