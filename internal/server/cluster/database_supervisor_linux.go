@@ -45,6 +45,9 @@ const (
 	// before it (requests draining, the member withdrawing) 15 and 5 seconds.
 	helperStopWait    = 15 * time.Second
 	helperStderrLimit = 2048
+	// roleRecordsEnv is set in the database process' environment by a server
+	// that files role records. The process writes them only when it is set.
+	roleRecordsEnv = "GPUWORKS_RAFT_RECORDS"
 )
 
 // helperDied runs when the child exits while a Database still depends on it.

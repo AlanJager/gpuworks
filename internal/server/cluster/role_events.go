@@ -17,10 +17,6 @@ import (
 // both fine.
 const roleLinePrefix = "gpuworks-raft: "
 
-// roleRecordsEnv is set in the database process' environment by a server that
-// files role records. The process writes them only when it is set.
-const roleRecordsEnv = "GPUWORKS_RAFT_RECORDS"
-
 // roleRecordsPerMinute bounds the records filed from one database process in a
 // minute; the rest are counted and the count is filed once the minute is over.
 // The process limits its own repeats; this is the server's own guard against
