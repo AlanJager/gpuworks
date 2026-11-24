@@ -91,7 +91,9 @@ func (s *Store) IssueClusterInvitationWithOrigin(ctx context.Context, clusterID 
 		return ClusterInvitation{}, "", errors.New("generate cluster invitation")
 	}
 	var invitation ClusterInvitation
-	err := s.membershipWriteTransaction(ctx, func(tx *gorm.DB) error {
+	// Issuing is an administrator's request served by a member: its
+	// statements check the administrator, so the member is checked here.
+	err := s.clusterWriteTransaction(ctx, func(tx *gorm.DB) error {
 		if err := requireClusterIdentity(tx, clusterID); err != nil {
 			return err
 		}
@@ -297,12 +299,14 @@ func (s *Store) clusterTransaction(ctx context.Context, fn func(*gorm.DB) error)
 	return s.db.WithContext(ctx).Transaction(fn)
 }
 
-// membershipTransaction and membershipWriteTransaction run the writes that
-// decide membership: claiming an invitation, the seed, revocation, and the
-// membership, transport and material grants. The writer guard does not check
-// them: their own statements require the named keys to be admitted, and a
-// member asks about itself through them. Nothing else may use them; the
-// inventory test counts their callers.
+// membershipTransaction and membershipWriteTransaction run what establishes
+// or decides membership, where the writer guard cannot apply: the cluster
+// identity and the seed admission (no admission exists yet), claiming an
+// invitation and revocation (their statements check the named key), the
+// membership, transport and material grants (a member asks about itself
+// through them and is refused by them), the reads of admissions those grants
+// rest on, and revoking the other admissions after a restore. Nothing else
+// may use them; the inventory test counts their callers.
 func (s *Store) membershipTransaction(ctx context.Context, fn func(*gorm.DB) error) error {
 	return s.clusterTransaction(withoutWriterGuard(ctx), fn)
 }

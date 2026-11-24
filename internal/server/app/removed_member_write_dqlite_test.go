@@ -124,6 +124,26 @@ func TestNativeRevokedMemberCannotCommitOnAnyWritePath(t *testing.T) {
 	if got := refusedHook.Load(); got != int32(len(paths)) {
 		t.Errorf("refusal reported %d times, want %d", got, len(paths))
 	}
+	// An invitation is an administrator's request served by a member: the
+	// leader issues one, the revoked member cannot.
+	var admin store.User
+	if err := leader.DB().Where("role = ?", "admin").First(&admin).Error; err != nil {
+		t.Fatal(err)
+	}
+	invitations := func() (n int64) {
+		if err := leader.DB().Model(&store.ClusterInvitation{}).Count(&n).Error; err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before := invitations()
+	if _, token, err := revoked.IssueClusterInvitation(ctx, expected.ClusterID, admin.ID, time.Minute); token != "" ||
+		!errors.Is(err, store.ErrBusinessWritesClosed) || !errors.Is(err, store.ErrClusterAdmissionRejected) || invitations() != before {
+		t.Errorf("revoked member's invitation: token returned=%t err=%v invitations %d -> %d", token != "", err, before, invitations())
+	}
+	if _, token, err := leader.IssueClusterInvitation(ctx, expected.ClusterID, admin.ID, time.Minute); err != nil || token == "" || invitations() != before+1 {
+		t.Errorf("admitted member's invitation: token returned=%t err=%v invitations %d -> %d", token != "", err, before, invitations())
+	}
 	// The member's own cluster writes stay possible: it must be able to ask.
 	if _, _, err := revoked.GrantClusterMembership(ctx, expected, f.keys[1]); !errors.Is(err, store.ErrClusterAdmissionRejected) || errors.Is(err, store.ErrBusinessWritesClosed) {
 		t.Errorf("revoked member's own grant was not answered by the grant: %v", err)

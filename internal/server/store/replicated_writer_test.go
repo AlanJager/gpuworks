@@ -197,7 +197,7 @@ func TestStoreHasNoUnreviewedWayAroundTheGuardedPool(t *testing.T) {
 		`withoutWriterGuard\(`: {"store/cluster_admission.go": 2, "store/replicated_writer_guard.go": 1, "store/restore_image.go": 1, "store/import_sqlite.go": 1},
 		// The writes that decide membership, through the one exempt pair of
 		// helpers. Any other write of a member goes through a checked one.
-		`\.membership(Write)?Transaction\(`: {"store/cluster_admission.go": 4, "store/cluster_authorizations.go": 1, "store/cluster_material_grant_read.go": 1,
+		`\.membership(Write)?Transaction\(`: {"store/cluster_admission.go": 3, "store/cluster_authorizations.go": 1, "store/cluster_material_grant_read.go": 1,
 			"store/cluster_transport_grant.go": 1, "store/cluster_seed.go": 2, "store/restore_image.go": 1},
 		// A held connection: a consistent read of the schema for a backup, and
 		// the read-only discovery of a closed cluster.
