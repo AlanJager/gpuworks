@@ -138,9 +138,11 @@ func (m *askingModule) Init(_ context.Context, h *app.Host) error {
 }
 
 // On a limited server a machine of a cluster that already joined gets its
-// identity again when it asks without one (its pod was replaced and the
-// saved identity is gone), and a machine that is new is refused by the
-// module's insert guard, with the refusal the agent reads as final.
+// identity again when it asks without one (its pod or its state directory
+// was replaced and the saved identity is gone), and a machine that is new
+// is refused by the module's insert guard, with the refusal the agent reads
+// as about itself: it does not fall back to a saved identity and asks again
+// later. Kubernetes and Slurm clusters alike.
 func TestAJoinedClusterNodeEnrollsAgainOnALimitedServer(t *testing.T) {
 	limiter := newFakeLimiter(featuregate.Full)
 	guard := func(store.FleetCapacity) *messages.ProductError {
@@ -151,38 +153,58 @@ func TestAJoinedClusterNodeEnrollsAgainOnALimitedServer(t *testing.T) {
 	}
 	e := testenv.NewWithExtensions(t, app.Extensions{Modules: []app.Module{&fakeModule{name: "fake", limiter: limiter, guard: guard}}}, nil)
 	client := e.API(t)
-	cluster, err := e.Store().CreateKubeCluster(store.KubeCluster{Name: "joined"})
+	kube, err := e.Store().CreateKubeCluster(store.KubeCluster{Name: "joined-kube"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	enroll := func(node string) (int, string, map[string]any) {
-		status, body := send(t, client, http.MethodPost, "/api/v1/kube/enroll", `{"token":"`+cluster.Token+`","cluster_uid":"uid-1","node_name":"`+node+`"}`)
-		var out struct {
-			NodeUUID  string `json:"node_uuid"`
-			NodeToken string `json:"node_token"`
-		}
-		_ = json.Unmarshal(body, &out)
-		_, params := productError(body)
-		if status == http.StatusOK && out.NodeToken == "" {
-			t.Fatalf("enrolled %s without a node token: %s", node, body)
-		}
-		return status, out.NodeUUID, params
+	slurm, err := e.Store().CreateSlurmCluster(store.SlurmCluster{Name: "joined-slurm"})
+	if err != nil {
+		t.Fatal(err)
 	}
-	status, first, _ := enroll("worker-1")
-	if status != http.StatusOK || first == "" {
-		t.Fatalf("enroll while unlimited = %d", status)
-	}
-	for _, access := range []featuregate.Access{featuregate.ReadOnly, featuregate.Locked} {
-		limiter.set(api.PlatformLimit{Access: access})
-		if status, again, _ := enroll("worker-1"); status != http.StatusOK || again != first {
-			t.Fatalf("%s: the joined node enrolling again = %d as %q, want 200 as %q", access, status, again, first)
-		}
-		status, _, params := enroll("worker-2")
-		if status != http.StatusForbidden || params["reason"] != "enrollment_refused" || params["refusal_code"] != "FAKE_LAPSED" {
-			t.Fatalf("%s: a new node = %d %v, want the insert guard's refusal", access, status, params)
-		}
-	}
-	if nodes, err := e.Store().ListNodes(); err != nil || len(nodes) != 1 {
-		t.Fatalf("nodes = %d, %v; want the one that joined", len(nodes), err)
+	for _, entry := range []struct {
+		name, path, code string
+		body             func(node string) string
+	}{
+		{"kubernetes", "/api/v1/kube/enroll", "KUBE_ENROLL_REFUSED", func(node string) string {
+			return `{"token":"` + kube.Token + `","cluster_uid":"uid-1","node_name":"` + node + `"}`
+		}},
+		{"slurm", "/api/v1/slurm/enroll", "SLURM_ENROLL_REFUSED", func(node string) string {
+			return `{"token":"` + slurm.Token + `","slurm_cluster_name":"demo","node_name":"` + node + `"}`
+		}},
+	} {
+		t.Run(entry.name, func(t *testing.T) {
+			limiter.set(api.PlatformLimit{Access: featuregate.Full})
+			before, err := e.Store().ListNodes()
+			if err != nil {
+				t.Fatal(err)
+			}
+			enroll := func(node string) (status int, uuid, token, code string, params map[string]any) {
+				status, body := send(t, client, http.MethodPost, entry.path, entry.body(node))
+				var out struct {
+					NodeUUID  string `json:"node_uuid"`
+					NodeToken string `json:"node_token"`
+				}
+				_ = json.Unmarshal(body, &out)
+				code, params = productError(body)
+				return status, out.NodeUUID, out.NodeToken, code, params
+			}
+			status, first, token, _, _ := enroll("worker-1")
+			if status != http.StatusOK || first == "" || token == "" {
+				t.Fatalf("enroll while unlimited = %d", status)
+			}
+			for _, access := range []featuregate.Access{featuregate.ReadOnly, featuregate.Locked} {
+				limiter.set(api.PlatformLimit{Access: access})
+				if status, again, sameToken, _, _ := enroll("worker-1"); status != http.StatusOK || again != first || sameToken != token {
+					t.Fatalf("%s: the joined node enrolling again = %d as %q, want 200 with the identity it had", access, status, again)
+				}
+				status, _, _, code, params := enroll("worker-2")
+				if status != http.StatusForbidden || code != entry.code || params["reason"] != "enrollment_refused" || params["refusal_code"] != "FAKE_LAPSED" {
+					t.Fatalf("%s: a new node = %d %s %v, want the insert guard's refusal", access, status, code, params)
+				}
+			}
+			if nodes, err := e.Store().ListNodes(); err != nil || len(nodes) != len(before)+1 {
+				t.Fatalf("nodes = %d, %v; want the one that joined beside the %d before", len(nodes), err, len(before))
+			}
+		})
 	}
 }

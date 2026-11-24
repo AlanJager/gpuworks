@@ -155,6 +155,9 @@ func TestEnrollNodeTakenAndForeignRefusals(t *testing.T) {
 		falls       bool
 	}{
 		{"node taken", `{"error":"x","code":"SLURM_ENROLL_REFUSED","params":{"reason":"node_taken","entry":"hpc-a"}}`, 403, "node_taken", "hpc-a", true, false},
+		// The fleet takes no new node now: the server has no row for this node,
+		// so an identity saved earlier is not one it would accept either.
+		{"the fleet takes no new node", `{"error":"x","code":"SLURM_ENROLL_REFUSED","params":{"reason":"enrollment_refused","refusal_code":"SITE_NODE_CAP"}}`, 403, "enrollment_refused", "", true, false},
 		{"unknown token", `{"error":"x","code":"SLURM_ENROLL_REFUSED","params":{"reason":"unknown_token"}}`, 403, "unknown_token", "", true, true},
 		{"no reason (older server)", `{"error":"x","code":"SLURM_ENROLL_REFUSED"}`, 403, "", "", true, true},
 		// A proxy's own 403 says nothing about this node's identity: a plain failure.

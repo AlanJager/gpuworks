@@ -3,7 +3,9 @@ package store
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -88,7 +90,7 @@ func TestNodeInsertsWithoutAGuardAreNeverRefused(t *testing.T) {
 	}
 }
 
-// Each of the three insert paths asks the guard inside its transaction and
+// Each of the four insert paths asks the guard inside its transaction and
 // creates nothing when refused; the refusal carries the guard's code.
 func TestEveryNodeInsertPathAsksTheGuard(t *testing.T) {
 	st := openKubeStore(t)
@@ -110,10 +112,17 @@ func TestEveryNodeInsertPathAsksTheGuard(t *testing.T) {
 	assertRefused(t, err, "SITE_NODE_CAP")
 	_, _, err = st.EnrollKubeNode(kube.Token, "uid", "gpu-1")
 	assertRefused(t, err, "SITE_NODE_CAP")
+	slurm := newSlurmCluster(t, st, "hpc")
+	_, _, err = st.EnrollSlurmNode(slurm.Token, "demo", "gpu-1")
+	assertRefused(t, err, "SITE_NODE_CAP")
 	assertRefused(t, st.CheckNodeEnrollment(), "SITE_NODE_CAP")
 
 	if got := countNodes(t, st); got != 1 {
-		t.Fatalf("nodes = %d after three refusals, want 1", got)
+		t.Fatalf("nodes = %d after four refusals, want 1", got)
+	}
+	// The refused Slurm enrollment did not bind the token to the cluster.
+	if again, err := st.SlurmClusterByUUID(slurm.UUID); err != nil || again.SlurmClusterName != "" {
+		t.Fatalf("slurm cluster after a refused enrollment = %+v err=%v", again, err)
 	}
 	select {
 	case ev := <-sub.C():
@@ -155,6 +164,86 @@ func TestReEnrollingAKubeNodeIsNeverRefused(t *testing.T) {
 	}
 	_, _, err = st.EnrollKubeNode(kube.Token, "uid", "gpu-2")
 	assertRefused(t, err, "SITE_NODE_CAP")
+}
+
+// A Slurm node that enrolled before is never refused: re-enrolling returns
+// its row before any insert is attempted. A new one is refused, and a
+// taken insert tells the fleet's watchers.
+func TestReEnrollingASlurmNodeIsNeverRefused(t *testing.T) {
+	st := openKubeStore(t)
+	slurm := newSlurmCluster(t, st, "hpc")
+	sub := st.Bus.Subscribe(16, NodeFleetTopic)
+	t.Cleanup(sub.Close)
+	first, _, err := st.EnrollSlurmNode(slurm.Token, "demo", "gpu-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case ev := <-sub.C():
+		if change, ok := NodeFleetChangeOf(ev); !ok || change.NodeID != first.ID || change.Kind != NodeInserted {
+			t.Fatalf("the insert was published as %+v", ev)
+		}
+	default:
+		t.Fatal("a Slurm node's insert was not published to the fleet's watchers")
+	}
+	g := &capGuard{max: 0}
+	st.AddNodeEnrollmentGuard(g.guard)
+	again, _, err := st.EnrollSlurmNode(slurm.Token, "demo", "gpu-1")
+	if err != nil || again.UUID != first.UUID || again.Token != first.Token {
+		t.Fatalf("re-enroll = %+v err=%v, want the same node back", again, err)
+	}
+	if g.seen.Load() != 0 {
+		t.Fatal("re-enrolling an existing node asked the guard")
+	}
+	_, _, err = st.EnrollSlurmNode(slurm.Token, "demo", "gpu-2")
+	assertRefused(t, err, "SITE_NODE_CAP")
+	if got := countNodes(t, st); got != 1 {
+		t.Fatalf("nodes = %d, want the one that enrolled", got)
+	}
+}
+
+// insertNodeTx is the only place in this package that creates a node row,
+// so no way of adding a node goes round the enrollment guards. A new
+// Create of a Node anywhere else fails this until it goes through it.
+func TestNoNodeIsCreatedBesideTheGuardedInsert(t *testing.T) {
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A create whose argument is a node: a variable or parameter the
+	// package names node, n or nodes, or a Node literal.
+	creates := regexp.MustCompile(`\.(Create|CreateInBatches|Save|FirstOrCreate)\(\s*&?(node|n|nodes|\[\]Node\{|Node\{)\b`)
+	insertsRow := regexp.MustCompile(`(?i)INSERT\s+(OR\s+\w+\s+)?INTO\s+nodes\b`)
+	var found []string
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(raw), "\n") {
+			if creates.MatchString(line) || insertsRow.MatchString(line) {
+				found = append(found, fmt.Sprintf("%s:%d: %s", file, i+1, strings.TrimSpace(line)))
+			}
+		}
+	}
+	// What the pattern finds that is not a node row, and the guarded insert.
+	allowed := map[string]bool{
+		"node_enrollment.go: return tx.Create(n).Error":                    true, // insertNodeTx itself
+		"network_objects.go: if err := s.db.Create(n).Error; err != nil {": true, // a Network named n
+	}
+	for _, hit := range found {
+		file, rest, _ := strings.Cut(hit, ":")
+		_, line, _ := strings.Cut(rest, ": ")
+		if !allowed[file+": "+line] {
+			t.Errorf("%s creates a node row outside insertNodeTx, so the enrollment guards are not asked", hit)
+		}
+	}
+	if len(found) < 2 {
+		t.Fatalf("the pattern found %d creates; it no longer sees insertNodeTx's own, so it proves nothing", len(found))
+	}
 }
 
 // Guards run in registration order, the first refusal wins, and a refusal

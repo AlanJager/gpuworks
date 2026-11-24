@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -37,10 +38,11 @@ func (a *apiHandlers) nodeEnrollmentOpen(w http.ResponseWriter) bool {
 	return false
 }
 
-// kubeEnrollRefusalParams are KUBE_ENROLL_REFUSED's params for a node an
-// enrollment guard refused: reason enrollment_refused, the guard's code as
-// refusal_code, and the guard's own params beside them.
-func kubeEnrollRefusalParams(err error) map[string]any {
+// enrollRefusalParams are the params of KUBE_ENROLL_REFUSED and
+// SLURM_ENROLL_REFUSED for a node an enrollment guard refused: reason
+// enrollment_refused, the guard's code as refusal_code, and the guard's
+// own params beside them.
+func enrollRefusalParams(err error) map[string]any {
 	params := map[string]any{}
 	var refusal *messages.ProductError
 	if errors.As(err, &refusal) {
@@ -49,6 +51,6 @@ func kubeEnrollRefusalParams(err error) map[string]any {
 		}
 		params["refusal_code"] = refusal.Code()
 	}
-	params["reason"] = "enrollment_refused"
+	params["reason"] = proto.SlurmEnrollRefused
 	return params
 }
