@@ -45,6 +45,69 @@ Every commit in the cluster waits for a majority of members to finish one synchr
 
 The recovery targets come from a small measured sample and are no guarantee for other storage. When the storage of all three members stalls for seconds at once, requests fail in both tiers.
 
+## Why the Database Leader Changed: Role Records
+
+Each change of the database leader cuts business requests in flight, terminals and log tails, and the agents' sessions are registered again with the new leader. Every member's server log (`logs/gpuworks-server.log`, taken along by [collecting diagnostics](../how-to/troubleshooting.md#无法登录现场时调试采集与收集诊断信息)) records what this member's database process did in Raft and why. It is always on and needs no debug build:
+
+- `cluster database role event`: one role record of the database process. `observed_at` is when it happened (the database process's clock, in nanoseconds); the log line's own time is less than a second later.
+- `cluster database leader changed`: this member has recognized a new leader. It states the leader before (`old_leader`), the new leader (`new_leader`, a member id), the term (`term`), whether this member is the new leader (`leads`), the reason as this member saw it (`reason`), and how long this member had no leader (`without_leader_ms`).
+- `cluster database leader kept after a campaign`: this member started an election, but the leader it then follows is the one it had (`leader`), in the same term. This is not a change of leader; when looking for leader changes, read only the line above. One member losing the leadership and winning it again is a change: the line above then has the same `old_leader` and `new_leader`, and `old_term` differs from `term`.
+- `business follows a new database leader`: the member's business layer has started to send requests to another leader. `agent_sessions_closed` is the number of agent sessions it closed so that they register with the new leader.
+
+Values of `event`:
+
+| `event` | Written by | Meaning and the fields to read |
+|---|---|---|
+| `state` | every member | A role change, `old` → `new` (`FOLLOWER`, `CANDIDATE`, `LEADER`; `UNAVAILABLE` is before start and after stop); `id` and `address` are this member |
+| `election_start` | the member that starts an election | `reason=election_timeout`: it had not heard the leader for this long (`since_leader_contact_ms`, not less than the election timeout `timeout_ms`); `reason=transfer_requested`: the leader before (`from`) asked it to take over |
+| `election_retry` | a candidate | A round ended without a majority of votes; another round starts |
+| `pre_vote_won`, `election_won` | a candidate | The pre-vote passed; elected, where `votes`/`voters` are the votes received and the number of voting members, and `term` is the new term |
+| `vote_reply` | the member asked for its vote | `candidate` is who asked, `granted=1/0`; when refused, `reason` is `has_leader` (it still hears a leader), `local_term_higher`, `log_or_earlier_vote` or `installing_snapshot`; `disrupt_leader=1` means this is a handover |
+| `step_down` | the leader before | `reason=no_majority_contact`: no answer from a majority within one election timeout, and `peer_ack_age_ms` lists each other member as `id:role:milliseconds since its last answer` (`-1` for never); `reason=higher_term`: the member `from` has entered a higher term |
+| `term_bump` | a following member | It heard a higher term from `from` |
+| `following` | a following member | It started to follow `leader` (`leader_address`) |
+| `transfer_start`, `transfer_end`, `transfer_timeout` | the leader before | Handing the leadership to `to`; `result=leadership_left` means it was handed over, `still_leader` that it was not |
+| `membership_request`, `configuration` | the leader; every member | A request to change the membership or a role (`op=add/assign/remove`); the new member table received, `members=id:role,…` |
+| `snapshot_take`, `snapshot_install` | every member | A snapshot taken, or one sent by the leader installed; `took_ms` is how long it took and `status` is `ok`, `failed` (with `code`) or `unfinished`. One that took less than 250 milliseconds is written once in 10 minutes |
+| `slow_step` | every member | One step of the database process's main loop took `took_ms` milliseconds (written from 100 milliseconds): `step` is `recv` (handling one message), `tick`, `apply` (applying committed log entries, `entries` of them), `fsm_apply` (one of them), `snapshot_begin` or `snapshot_restore`. While the step runs this member neither sends heartbeats nor answers the leader |
+| `loop_late` | every member | The database process's main loop ran `late_ms` late (the process was not scheduled, or a step in the loop took too long); written from 250 milliseconds |
+| `slow_log_write` | every member | One write of the Raft log to disk took `ms` milliseconds; written from 500 milliseconds |
+| `peer_connect_failed`, `peer_send_failed`, `peer_connected` | every member | The connection to another member (`peer`, `peer_address`) failed, a send failed, the connection was made again |
+| `health` | every member | The largest delays measured in a period: the main loop running late (`loop_late_max_ms`), log writes (`log_write_max_ms`), the interval between two answers of a following member (`ack_gap_max_ms`, `ack_gap_peer_<id>_max_ms`), the interval between two messages of the leader (`leader_gap_max_ms`); `*_over=a/b/c/d` counts those of at least 100, 250, 750 and 3000 milliseconds. One is always written after a role change (`trigger=role_change`); otherwise one per minute only when a delay passes a share of the election timeout (`trigger=interval`) |
+| `app` | every member | The database process's own warnings (adjusting roles, joining the cluster) |
+| `proxy_closed` | every member | A connection through this member to its own database node ended without a goodbye; a healthy cluster has several a second, so one is written in 10 minutes with the number left out |
+| `dropped` | every member | Records were not written: `reason=reader_behind` means the server did not read in time, `library_queue_full` that the queue inside the database process was full |
+
+A condition that repeats (`loop_late`, `slow_log_write`, `slow_step`, the connection to one member failing, one `app` warning) is written once in 10 seconds, and `suppressed` is the number left out in between. A member cut off from the others starts an election once per election timeout: of `election_start`, `election_retry`, `pre_vote_won`, `vote_reply` to one candidate, `state` between candidate and follower, and `health` after a role change, the first 6 of each kind are written as they come and after that one in 10 seconds likewise; the count starts again after a quiet minute. The server has a limit of its own: at most 240 records from one database process are filed in a minute, the rest are only counted, and the next minute has one line `cluster database role events suppressed suppressed=…`. `step_down`, `election_won`, `following`, `dropped`, a `state` into or out of `LEADER`, and the summary of a leader change are not subject to this limit. The database process hands over the records it has collected every 0.2 seconds, so neighbouring lines may appear in the log a fraction of a second out of the order in which they happened; sort by `observed_at` when the order matters. The database process puts records into a fixed in-memory queue and another thread writes them; when they cannot be written they are dropped and counted, and the Raft main loop does not wait.
+
+**How to read one leader change**: first find `cluster database leader changed` of the same moment in the three members' logs. `reason` is what that member saw itself; where it says `not seen by this member`, read the other two members' logs. Then compare:
+
+| Records found | Conclusion |
+|---|---|
+| The leader before: `step_down reason=no_majority_contact`, with both members in `peer_ack_age_ms` past the election timeout | The leader before got no answer within one election timeout. Read its `health`, `loop_late` and `slow_log_write` just before: a large `loop_late` means it was not scheduled itself; if all are normal the network or the other two members are the cause, so read `loop_late` and `slow_log_write` of the same moment in their logs |
+| A following member: `election_start reason=election_timeout`; the leader before has no `step_down` of its own but then `step_down reason=higher_term from=<that member>` | That following member started an election after not hearing the leader for this long. Read its `since_leader_contact_ms` and its `health` (`leader_gap_max_ms`) and `loop_late` just before: its own loop running late points at its side; a normal loop with a long interval between the leader's messages points at the leader's side or the network between the two |
+| The leader before: `transfer_start`; the target: `election_start reason=transfer_requested` | Someone asked for a handover (the upgrade command, or a member stopping normally) |
+| A member whose database process has just started: less than a second after `following` there is `slow_step step=apply entries=<N> took_ms=<thousands>`, then `loop_late` | On first hearing the leader, a restarted member applies every log entry since its last snapshot (up to about 1024) in one step of the main loop, and answers nothing for those seconds. The time grows with the number of entries, not with the size of the database. If another member is away at that moment, the leader gets no answer from a majority and steps down |
+| The leader before's log stops at that moment and starts again with `state old=UNAVAILABLE` | The leader before's process exited or was restarted |
+
+An example (three members; the database process of the leader before was frozen for 2 seconds). The following member's `health` shows its own loop on time (`loop_late_max_ms=23`), and the first record of the leader before after it ran again is `loop_late late_ms=1990`: the cause is on the side of the leader before.
+
+```text
+# member 13029695054750815211 (10.240.4.6), a follower: it stopped hearing the leader and won the election
+time=2026-11-23T22:50:56.000Z level=WARN msg="cluster database role event" observed_at=2026-11-23T22:50:55.994851832Z event=election_start reason=election_timeout term=2 leader=12341872649424584096 since_leader_contact_ms=1257 timeout_ms=1193
+time=2026-11-23T22:50:56.000Z level=INFO msg="cluster database role event" observed_at=2026-11-23T22:50:55.995559204Z event=pre_vote_won term=2 next_term=3
+time=2026-11-23T22:50:56.000Z level=WARN msg="cluster database role event" observed_at=2026-11-23T22:50:56.000035853Z event=health trigger=role_change election_timeout_ms=750 loop_late_max_ms=23 loop_late_n=565 loop_late_over=0/0/0/0 log_write_max_ms=32 log_write_n=330 log_write_over=0/0/0/0 leader_gap_max_ms=164 leader_gap_n=651 leader_gap_over=83/0/0/0 leader_gap_peer_12341872649424584096_max_ms=164
+time=2026-11-23T22:50:56.203Z level=INFO msg="cluster database role event" observed_at=2026-11-23T22:50:56.019313298Z event=election_won term=3 votes=2 voters=3
+time=2026-11-23T22:50:56.203Z level=INFO msg="cluster database leader changed" old_leader=12341872649424584096 new_leader=13029695054750815211 term=3 this_member=13029695054750815211 leads=true reason="this member started an election: election_timeout since_leader_contact_ms=1257 timeout_ms=1193" observed_at=2026-11-23T22:50:56.019320067Z without_leader_ms=24
+time=2026-11-23T22:50:56.819Z level=INFO msg="business follows a new database leader" new_leader=13029695054750815211 this_member=13029695054750815211 leads=true learned="leader observation" agent_sessions_closed=0 old_leader=12341872649424584096 since_last_observation_ms=2381
+
+# member 12341872649424584096 (10.240.4.7), the leader before: its own loop was 1990 ms late, then it met the higher term
+time=2026-11-23T22:50:56.828Z level=WARN msg="cluster database role event" observed_at=2026-11-23T22:50:56.751267272Z event=loop_late late_ms=1990 period_ms=75
+time=2026-11-23T22:50:56.829Z level=WARN msg="cluster database role event" observed_at=2026-11-23T22:50:56.754016735Z event=step_down reason=higher_term was=leader term=2 new_term=3 from=3297041220608546238 from_address=10.240.4.5:9061
+time=2026-11-23T22:50:56.829Z level=INFO msg="cluster database role event" observed_at=2026-11-23T22:50:56.765822683Z event=following leader=13029695054750815211 leader_address=10.240.4.6:9061 term=3
+time=2026-11-23T22:50:56.829Z level=INFO msg="cluster database leader changed" old_leader=12341872649424584096 new_leader=13029695054750815211 term=3 this_member=12341872649424584096 leads=false reason="this member stepped down: higher_term from=3297041220608546238 new_term=3" observed_at=2026-11-23T22:50:56.765822683Z without_leader_ms=11
+```
+
 ## Protocol Version of the Database Helper
 
 When the server starts the helper it reads the helper's one-line ready announcement, in which `protocol` is the protocol version the helper implements. The server accepts only the version it supports; with a different version, or with no version in the announcement, it refuses to start the database and the error names both versions. Install the helper and the server as a pair.
@@ -75,5 +138,6 @@ Current limits:
 <!-- translation-source-sha256: 142dbf736ea9e3307388d697bf8e3bc6404972ce7557916b76037348cea06640 ## Behaviour on Failure -->
 <!-- translation-source-sha256: 0c107885f72821f97efd1713f64d70cb0abf5ddbedd10e0a4dc63a4733bcaebb ## Limits -->
 <!-- translation-source-sha256: c56a989bc2555e6ad4a6cf5dd7ffe407203e6a9f32497c41ea4ce8ca3322cf66 ## Storage Tiers -->
+<!-- translation-source-sha256: 50ca0cf7b6be3fcd8143e960c183012100be607db333718f323571fabbaa7bd9 ## Why the Database Leader Changed: Role Records -->
 <!-- translation-source-sha256: 5b963d9b6cab0af7f80ccbda255cde725e9cbf149f23b48fa1e3bc2159cd2c1d ## Protocol Version of the Database Helper -->
 <!-- translation-source-sha256: b861fe35e2506d9b04c5a8a9cb23aee7633bb64c8d1ec6faf4eb5b3df157bae3 ## Upgrading the Cluster's Schema -->

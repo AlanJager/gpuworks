@@ -45,6 +45,9 @@ const (
 	// before it (requests draining, the member withdrawing) 15 and 5 seconds.
 	helperStopWait    = 15 * time.Second
 	helperStderrLimit = 2048
+	// roleRecordsEnv is set in the database process' environment by a server
+	// that files role records. The process writes them only when it is set.
+	roleRecordsEnv = "GPUWORKS_RAFT_RECORDS"
 )
 
 // helperDied runs when the child exits while a Database still depends on it.
@@ -204,6 +207,10 @@ func startHelper(ctx context.Context, args []string) (*helperProcess, helperIden
 	}
 	notes := &cappedStderr{}
 	cmd.Stderr = notes
+	// Tells the database process that this server files its role records.
+	// One that is not told keeps them to itself, so a server without this
+	// code still finds a start error at the head of standard error.
+	cmd.Env = append(os.Environ(), roleRecordsEnv+"=1")
 	process, err := spawnHelper(cmd)
 	if err != nil {
 		return nil, info, err
@@ -286,23 +293,40 @@ func (p *helperProcess) stop(wait time.Duration) error {
 }
 
 // cappedStderr keeps the start of the child's diagnostics for a startup error
-// and passes everything through to the server's own stderr.
+// and passes everything through to the server's own stderr, except the
+// child's role records, which go to the server's log.
 type cappedStderr struct {
-	mu sync.Mutex
-	b  bytes.Buffer
+	mu    sync.Mutex
+	b     bytes.Buffer
+	once  sync.Once
+	lines *roleLineWriter
 }
 
 func (c *cappedStderr) Write(p []byte) (int, error) {
-	c.mu.Lock()
-	if remain := helperStderrLimit - c.b.Len(); remain > 0 {
-		c.b.Write(p[:min(remain, len(p))])
+	c.once.Do(func() {
+		c.lines = &roleLineWriter{tracker: newRoleTracker(nil), rest: stderrNotes{c}}
+	})
+	return c.lines.Write(p)
+}
+
+// stderrNotes receives the lines that are not role records.
+type stderrNotes struct{ c *cappedStderr }
+
+func (n stderrNotes) Write(p []byte) (int, error) {
+	n.c.mu.Lock()
+	if remain := helperStderrLimit - n.c.b.Len(); remain > 0 {
+		n.c.b.Write(p[:min(remain, len(p))])
 	}
-	c.mu.Unlock()
+	n.c.mu.Unlock()
 	_, _ = os.Stderr.Write(p)
 	return len(p), nil
 }
 
 func (c *cappedStderr) String() string {
+	if c.lines != nil {
+		// A child that failed to start may have ended without a newline.
+		c.lines.flush()
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.b.String()
