@@ -19,6 +19,12 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/cluster/identity"
 )
 
+// imageRows opens a member's image and returns how many rows of the writer's
+// table it holds, after checking that they are whole transactions in order:
+// each transaction inserted two rows naming one pair, pairs counting up from
+// zero, so an image of committed writes holds pairs 0..n-1 with two rows
+// each. Anything else fails the test here. An image taken before the member
+// applied the table's creation holds no rows.
 func imageRows(t *testing.T, ctx context.Context, name string, image []byte) int64 {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
@@ -34,9 +40,23 @@ func imageRows(t *testing.T, ctx context.Context, name string, image []byte) int
 	if err := db.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&integrity); err != nil || integrity != "ok" {
 		t.Fatalf("image integrity = %q, %v", integrity, err)
 	}
-	var rows int64
-	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM image_fixture").Scan(&rows); err != nil {
+	var tables int
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'image_fixture'").Scan(&tables); err != nil {
 		t.Fatal(err)
+	}
+	if tables == 0 {
+		return 0
+	}
+	var rows, pairs, broken int64
+	var lowest, highest sql.NullInt64
+	if err := db.QueryRowContext(ctx, "SELECT count(*), count(DISTINCT pair), min(pair), max(pair) FROM image_fixture").Scan(&rows, &pairs, &lowest, &highest); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM (SELECT pair FROM image_fixture GROUP BY pair HAVING count(*) <> 2)").Scan(&broken); err != nil {
+		t.Fatal(err)
+	}
+	if broken != 0 || rows != 2*pairs || (rows > 0 && (lowest.Int64 != 0 || highest.Int64 != pairs-1)) {
+		t.Fatalf("image holds %d rows of %d pairs from %d to %d, %d of them not two rows: not the first whole transactions", rows, pairs, lowest.Int64, highest.Int64, broken)
 	}
 	return rows
 }
@@ -87,6 +107,19 @@ func TestReadDatabaseImageUnderWrites(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// A write is committed once a majority has it; the third member applies
+	// it a moment later. The bounds below take the 200 transactions written
+	// so far as every member's floor, so wait until every member holds them
+	// before the concurrent writer starts.
+	conversionWait(t, ctx, "every member holding the first 200 transactions", func() bool {
+		for i, member := range dbs {
+			image, err := ReadDatabaseImage(ctx, member.Address, fixtures[i].config.Name, materialQuorumTLS(t, trust, policy, fixtures[i]))
+			if err != nil || imageRows(t, ctx, fixtures[i].config.Name, image) < 400 {
+				return false
+			}
+		}
+		return true
+	})
 	var committed atomic.Int64
 	committed.Store(200)
 	stop := make(chan struct{})
