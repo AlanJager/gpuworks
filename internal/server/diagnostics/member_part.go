@@ -22,30 +22,33 @@ import (
 // database is asked, so a member answers while it has no leader, while its
 // business is closed and while its server is ahead of the schema.
 
-// Bounds of one member's part.
-const (
-	// MemberLogBytes bounds a member's log in a part.
-	MemberLogBytes = int64(64 << 20)
-	// MemberPartBytes bounds one member's part as it is unpacked, and
-	// MembersBytes every member's together.
-	MemberPartBytes = MemberLogBytes + 64<<20
-	MembersBytes    = int64(512 << 20)
-	// MemberPartTimeout bounds one member's answer.
-	MemberPartTimeout = 2 * time.Minute
-	// memberStallReports bounds the stall reports of one part, newest kept.
-	// and memberStallBytes their size together.
-	memberStallReports = 64
-	memberStallBytes   = int64(32 << 20)
-	memberSmallFile    = int64(8 << 20)
-)
+// memberBounds are the bounds of a member's part. Every side reads them
+// here: the member that reads its part, the member that unpacks it, the
+// asker's wait and the route's deadline. Tests lower them.
+var memberBounds = struct {
+	// log bounds a member's log in a part, small each of its other files.
+	log, small int64
+	// stalls and stallBytes bound the stall reports of a part; the newest
+	// are kept.
+	stalls     int
+	stallBytes int64
+	// part bounds one member's part as it is unpacked, all every member's
+	// together.
+	part, all int64
+	// wait bounds one member's answer. busyWait is how long a member that
+	// is giving its part to another collection is left before it is asked
+	// once more.
+	wait, busyWait time.Duration
+}{
+	log: 64 << 20, small: 8 << 20,
+	stalls: 64, stallBytes: 32 << 20,
+	part: 128 << 20, all: 512 << 20,
+	wait: 2 * time.Minute, busyWait: 3 * time.Second,
+}
 
-// The bounds a part is read and a collection unpacked with. Tests lower
-// them.
-var (
-	memberLogBound   = MemberLogBytes
-	membersBudget    = MembersBytes
-	memberAskTimeout = MemberPartTimeout
-)
+// MemberPartTimeout bounds one member's answer: the asker waits this long,
+// and the route that gives a part writes it within it.
+func MemberPartTimeout() time.Duration { return memberBounds.wait }
 
 // The files of a member's part, relative to its directory in a collection.
 const (
@@ -82,7 +85,7 @@ type MemberFacts struct {
 // MemberSource is what a member's part is read from (app wires it).
 type MemberSource interface {
 	// Facts are the member's identity and executables.
-	Facts() MemberFacts
+	Facts(ctx context.Context) MemberFacts
 	// LogFiles are the server's log file and its rotated generations.
 	LogFiles() []string
 	// StallDir is where the server keeps its stall reports.
@@ -134,7 +137,7 @@ type capped struct {
 
 func (c *capped) add(line []byte) {
 	c.data = append(c.data, line...)
-	for int64(len(c.data)) > memberSmallFile {
+	for int64(len(c.data)) > memberBounds.small {
 		c.truncated = true
 		end := bytes.IndexByte(c.data, '\n')
 		if end < 0 {
@@ -145,12 +148,9 @@ func (c *capped) add(line []byte) {
 	}
 }
 
-// recordSink is given a log's lines one Write at a time (filterLogWindow
-// does): it counts them, keeps the role records apart, and passes the lines
-// on when out is set.
+// recordSink keeps the role records of the log lines it is given, one Write
+// a line (filterLogWindow writes so).
 type recordSink struct {
-	out            io.Writer
-	n              int64
 	roles, leaders capped
 }
 
@@ -161,10 +161,6 @@ func (s *recordSink) Write(line []byte) (int, error) {
 	case leaderChangeLine(line):
 		s.leaders.add(line)
 	}
-	s.n += int64(len(line))
-	if s.out != nil {
-		return s.out.Write(line)
-	}
 	return len(line), nil
 }
 
@@ -173,9 +169,8 @@ func (s *recordSink) Write(line []byte) (int, error) {
 // pass that measures the window and the pass that writes it, so a rotation
 // in between changes nothing, and the small files are held in memory.
 type memberPart struct {
-	facts    MemberFacts
-	from, to time.Time
-	logs     []*os.File // oldest first
+	facts MemberFacts
+	logs  []*os.File // oldest first
 	// logBytes of the window's newest lines are given, after logSkip bytes
 	// of its oldest that did not fit.
 	logBytes, logSkip int64
@@ -184,8 +179,18 @@ type memberPart struct {
 	stalls            []memberFile
 }
 
-func (p *memberPart) close() {
-	for _, f := range p.logs {
+// newMemberPart opens the member's log for the window. The caller closes
+// the part.
+func newMemberPart(ctx context.Context, src MemberSource, from, to, now time.Time) *memberPart {
+	p := &memberPart{facts: src.Facts(ctx), logs: openLogWindow(src.LogFiles(), from)}
+	p.facts.CollectedAt, p.facts.From, p.facts.To, p.facts.Truncated = now, from, to, []string{}
+	return p
+}
+
+func (p *memberPart) close() { closeFiles(p.logs) }
+
+func closeFiles(files []*os.File) {
+	for _, f := range files {
 		_ = f.Close()
 	}
 }
@@ -272,11 +277,7 @@ func writeNewest(ctx context.Context, files []*os.File, w io.Writer, from, to ti
 // kept.
 func logWindow(ctx context.Context, files []string, w io.Writer, from, to time.Time, max int64) (int64, bool, error) {
 	opened := openLogWindow(files, from)
-	defer func() {
-		for _, f := range opened {
-			_ = f.Close()
-		}
-	}()
+	defer closeFiles(opened)
 	kept, skip, err := measureNewest(ctx, opened, io.Discard, from, to, max)
 	if err != nil {
 		return 0, false, err
@@ -298,10 +299,10 @@ func memberStalls(dir string, from, to time.Time) (kept []memberFile, truncated 
 		}
 		// Lstat: a link in the directory is not a report.
 		info, err := os.Lstat(report)
-		if err != nil || !info.Mode().IsRegular() || info.Size() > memberSmallFile {
+		if err != nil || !info.Mode().IsRegular() || info.Size() > memberBounds.small {
 			continue
 		}
-		if len(kept) == memberStallReports || total+info.Size() > memberStallBytes {
+		if len(kept) == memberBounds.stalls || total+info.Size() > memberBounds.stallBytes {
 			truncated = true
 			break
 		}
@@ -315,14 +316,12 @@ func memberStalls(dir string, from, to time.Time) (kept []memberFile, truncated 
 // readMemberOwnPart reads this member's part for the window. The caller
 // closes it.
 func readMemberOwnPart(ctx context.Context, src MemberSource, from, to, now time.Time) (*memberPart, error) {
-	p := &memberPart{facts: src.Facts(), from: from, to: to}
-	p.facts.CollectedAt, p.facts.From, p.facts.To, p.facts.Truncated = now, from, to, []string{}
-	p.logs = openLogWindow(src.LogFiles(), from)
+	p := newMemberPart(ctx, src, from, to, now)
 	sink := &recordSink{}
 	// The records are read from the whole window, also from the lines the
 	// log's bound leaves out.
 	var err error
-	if p.logBytes, p.logSkip, err = measureNewest(ctx, p.logs, sink, from, to, memberLogBound); err != nil {
+	if p.logBytes, p.logSkip, err = measureNewest(ctx, p.logs, sink, from, to, memberBounds.log); err != nil {
 		p.close()
 		return nil, err
 	}
@@ -351,26 +350,21 @@ func (p *memberPart) setRecords(sink *recordSink, logTruncated bool) {
 	}
 }
 
-// small are the part's files held in memory, member.json first.
-func (p *memberPart) small() ([]struct {
+// partFile is one of a part's files held in memory.
+type partFile struct {
 	name string
 	data []byte
-}, error) {
-	facts, err := json.MarshalIndent(p.facts, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	out := []struct {
-		name string
-		data []byte
-	}{{MemberFactsFile, facts}, {MemberRoleEventsFile, p.roles}, {MemberLeaderChangesFile, p.leaders}}
+}
+
+// small are the part's files held in memory, member.json first.
+func (p *memberPart) small() []partFile {
+	// MemberFacts is strings, numbers and times: it always marshals.
+	facts, _ := json.MarshalIndent(p.facts, "", "  ")
+	out := []partFile{{MemberFactsFile, facts}, {MemberRoleEventsFile, p.roles}, {MemberLeaderChangesFile, p.leaders}}
 	if p.status != "" {
-		out = append(out, struct {
-			name string
-			data []byte
-		}{MemberStatusFile, []byte(p.status)})
+		out = append(out, partFile{MemberStatusFile, []byte(p.status)})
 	}
-	return out, nil
+	return out
 }
 
 // stageMemberPart writes the collecting member's own part into dir. Its log
@@ -381,9 +375,7 @@ func stageMemberPart(ctx context.Context, dir string, src MemberSource, from, to
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	p := &memberPart{facts: src.Facts(), from: from, to: to}
-	p.facts.CollectedAt, p.facts.From, p.facts.To, p.facts.Truncated = now, from, to, []string{}
-	p.logs = openLogWindow(src.LogFiles(), from)
+	p := newMemberPart(ctx, src, from, to, now)
 	defer p.close()
 	sink := &recordSink{}
 	if _, _, err := filterFiles(ctx, p.logs, sink, from, to, math.MaxInt64); err != nil {
@@ -391,12 +383,8 @@ func stageMemberPart(ctx context.Context, dir string, src MemberSource, from, to
 	}
 	p.setRecords(sink, false)
 	p.status = src.Status(ctx)
-	small, err := p.small()
-	if err != nil {
-		return nil, err
-	}
 	var files []memberFile
-	for _, f := range small {
+	for _, f := range p.small() {
 		local := filepath.Join(dir, f.name)
 		if err := os.WriteFile(local, f.data, 0o600); err != nil {
 			return nil, err

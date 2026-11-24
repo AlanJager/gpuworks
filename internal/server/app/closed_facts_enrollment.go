@@ -41,9 +41,7 @@ func newClosedFactsEnrollmentServer(bundle *enrollmentBundle, session joinedRaft
 	if upgrade, err := clusterUpgradeHandler(bundle, session, requests, nil); err == nil {
 		router.Post(enrollment.ClusterUpgradePath, upgrade)
 	}
-	if part, err := clusterDiagnosticsHandler(bundle, requests, local, log); err == nil {
-		router.Post(enrollment.ClusterDiagnosticsPath, part)
-	}
+	registerClusterDiagnostics(router, bundle, requests, local, log)
 	registerClosedMaterialUnavailable(router, bundle, session, requests)
 	config := bundle.tls.Clone()
 	config.ClientAuth = tls.RequireAndVerifyClientCert

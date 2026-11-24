@@ -42,19 +42,21 @@ type ClusterMember struct {
 	Self    bool
 }
 
-// MemberAnswer is another member's part as it arrives.
+// MemberAnswer is another member's part as it arrives: what the member
+// route's client answers with.
 type MemberAnswer struct {
-	// Body is the part (WriteMemberPart's stream).
+	// Body is the part (WriteMemberPart's stream); the caller reads it
+	// within its own bounds and closes it.
 	Body io.ReadCloser
-	// Clock is the member's clock when it began to answer, Sent this
-	// member's clock when the request left and RoundTrip how long the
-	// answer's start then took to arrive: together they place the member's
-	// clock against this one's. Sent is taken when the request is sent, not
-	// when the member was first looked up.
+	// Clock is the member's clock when it began to answer (zero when it
+	// did not say), Sent this member's clock when the request left and
+	// RoundTrip how long the answer's start then took to arrive: together
+	// they place the member's clock against this one's.
 	Clock     time.Time
 	Sent      time.Time
 	RoundTrip time.Duration
-	// Key is the fingerprint of the member key that answered.
+	// Key is the fingerprint of the member key whose certificate answered
+	// (the SHA-256 of its public key, as admissions name it).
 	Key string
 }
 
@@ -71,9 +73,6 @@ var (
 	ErrMemberFailed = errors.New("the member failed to give its part")
 )
 
-// memberBusyWait is how long a busy member is given before the one retry.
-var memberBusyWait = 3 * time.Second
-
 // SetCluster makes collections cover the cluster's members.
 func (m *Manager) SetCluster(c Cluster) { m.cluster = c }
 
@@ -82,7 +81,8 @@ func (m *Manager) SetCluster(c Cluster) { m.cluster = c }
 // collecting member's.
 type MemberIndex struct {
 	// Complete is false when a member's part is missing: the collection then
-	// cannot show what that member saw.
+	// cannot show what that member saw. It says in one word what Members
+	// says entry by entry, for whoever opens the file.
 	Complete bool               `json:"complete"`
 	Members  []MemberIndexEntry `json:"members"`
 }
@@ -96,16 +96,17 @@ type MemberIndexEntry struct {
 	Role    string `json:"role,omitempty"`
 	// Self marks the member that made the collection; its log and stall
 	// reports are under server/.
-	Self      bool `json:"self"`
-	Collected bool `json:"collected"`
-	// Missing says why a part is not there: unreachable, timeout, refused
+	Self bool `json:"self"`
+	// Missing is empty when the member's part is in the collection.
+	// Otherwise it says why not: unreachable, timeout, refused
 	// (the member does not accept this member's key), unsupported (its
 	// release has no diagnostics route), busy, or failed (it answered with
 	// a failure, as another member, or its part ended early); Evidence is
 	// the error's own text.
 	Missing  string `json:"missing,omitempty"`
 	Evidence string `json:"evidence,omitempty"`
-	// Truncated names the files of the part cut at this side's size bounds.
+	// Truncated names what of the part was cut at a size bound, by the
+	// member or on this side.
 	Truncated []string `json:"truncated,omitempty"`
 	// AnsweredKey is the fingerprint of the member key that answered.
 	AnsweredKey string `json:"answered_key,omitempty"`
@@ -153,19 +154,19 @@ func missingReason(err error) string {
 	return "unreachable"
 }
 
-// collectMembers stages the cluster members' parts under members/. It
-// answers whether every member's part is there; nil on a server that is not
-// a cluster member.
-func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add func(BundleItem, *stagedEntry)) *bool {
+// collectMembers stages the cluster members' parts under members/. A member
+// whose part is missing leaves a failed item members/<name>: a collection
+// with none of those holds every member's part.
+func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add func(BundleItem, *stagedEntry)) {
 	if m.cluster == nil {
-		return nil
+		return
 	}
 	members := m.cluster.Members(ctx)
 	if len(members) == 0 {
-		return nil
+		return
 	}
 	var bundleBudget atomic.Int64
-	bundleBudget.Store(membersBudget)
+	bundleBudget.Store(memberBounds.all)
 	sort.Slice(members, func(i, j int) bool { return members[i].Address < members[j].Address })
 	entries := make([]MemberIndexEntry, len(members))
 	taken := map[string]bool{}
@@ -190,7 +191,7 @@ func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add
 					entry.Missing = "failed"
 				}
 			} else {
-				files, err = m.askMember(ctx, entry, member, dir, b.From, b.To, &partBudget{member: MemberPartBytes, bundle: &bundleBudget})
+				files, err = m.askMember(ctx, entry, member, dir, b.From, b.To, &partBudget{member: memberBounds.part, bundle: &bundleBudget})
 			}
 			// What the member itself cut (its member.json says) counts like
 			// what was cut on this side.
@@ -223,15 +224,13 @@ func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add
 				entry.Evidence = err.Error()
 				add(failedItem("members/"+entry.Name, messages.CheckDiagnosticsMemberUnavailable, fmt.Errorf("%s: %w", entry.Missing, err), 0), nil)
 				m.log.Warn("diagnostics collection misses a cluster member", "bundle", b.ID, "member", member.Address, "reason", entry.Missing, "err", err)
-				return
 			}
-			entry.Collected = true
 		}(&entries[i], member)
 	}
 	wg.Wait()
 	index := MemberIndex{Complete: true, Members: entries}
 	for _, entry := range entries {
-		index.Complete = index.Complete && entry.Collected
+		index.Complete = index.Complete && entry.Missing == ""
 	}
 	local := filepath.Join(work, "members", "index.json")
 	raw, err := json.MarshalIndent(index, "", "  ")
@@ -243,22 +242,21 @@ func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add
 	}
 	if err != nil {
 		add(failedItem("members/index.json", messages.CheckDiagnosticsItemStageFailed, err, 0), nil)
-		return &index.Complete
+		return
 	}
 	add(collectedItem("members/index.json", int64(len(raw)), false), &stagedEntry{name: "members/index.json", path: local})
-	return &index.Complete
 }
 
 // askMember reads another member's part into dir. A busy member is asked
 // once more after a short wait. What arrived before a part ended early is
 // kept and the member is still recorded as missing.
 func (m *Manager) askMember(ctx context.Context, entry *MemberIndexEntry, member ClusterMember, dir string, from, to time.Time, budget *partBudget) ([]memberFile, error) {
-	callCtx, cancel := context.WithTimeout(ctx, memberAskTimeout)
+	callCtx, cancel := context.WithTimeout(ctx, memberBounds.wait)
 	defer cancel()
 	answer, err := m.cluster.OpenMemberPart(callCtx, member, from, to)
 	if errors.Is(err, ErrMemberBusy) {
 		select {
-		case <-time.After(memberBusyWait):
+		case <-time.After(memberBounds.busyWait):
 			answer, err = m.cluster.OpenMemberPart(callCtx, member, from, to)
 		case <-callCtx.Done():
 		}

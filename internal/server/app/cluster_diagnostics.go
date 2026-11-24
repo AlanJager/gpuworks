@@ -30,14 +30,14 @@ import (
 // business, so the members' records can be collected from a cluster that is
 // not serving, by the server or by `gpuworks support-bundle` on any member.
 
-// clusterDiagnosticsObserve bounds each probe of the status observation a
-// part carries and a collection lists its members from.
+// clusterDiagnosticsObserve bounds each probe of the observation.
 const clusterDiagnosticsObserve = 3 * time.Second
 
 // clusterDiagnosticsObservationAge is how long one observation of the
-// cluster serves a collection: its members are listed and each is asked
-// from the same one, instead of probing again for every member (with no
-// leader each observation costs its timeouts).
+// cluster is used. A collection lists its members, asks each of them and
+// writes its own identity and status report from one observation, and so
+// does a part: with no leader every observation costs its probes' timeouts,
+// which would otherwise be paid once per member and again per part.
 const clusterDiagnosticsObservationAge = 30 * time.Second
 
 // clusterDiagnostics is this installation as a cluster member, read from its
@@ -63,19 +63,22 @@ func newClusterDiagnostics(cfg Config) diagnostics.Cluster {
 
 func (c *clusterDiagnostics) Self() diagnostics.MemberSource { return c }
 
-// observe reads the persisted membership and asks for the leader's view.
+// observe is the status observation, taken at most once in
+// clusterDiagnosticsObservationAge.
 func (c *clusterDiagnostics) observe(ctx context.Context) (clusterStatus, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.at.IsZero() && time.Since(c.at) < clusterDiagnosticsObservationAge {
 		return c.observed, nil
 	}
-	report, err := readClusterStatus(c.cfg)
+	report, err := observeClusterStatus(ctx, c.cfg, "", clusterDiagnosticsObserve)
 	if err != nil {
 		return clusterStatus{}, err
 	}
-	report.observeQuorum(ctx, c.cfg, clusterDiagnosticsObserve)
-	c.observed, c.at = report, time.Now()
+	// An observation cut short by its context is used once and not kept.
+	if ctx.Err() == nil {
+		c.observed, c.at = report, time.Now()
+	}
 	return report, nil
 }
 
@@ -129,11 +132,11 @@ func (c *clusterDiagnostics) OpenMemberPart(ctx context.Context, member diagnost
 	if err != nil {
 		return none, memberAnswerError(err)
 	}
-	if key != "" && answer.MemberKey != key {
+	if key != "" && answer.Key != key {
 		_ = answer.Body.Close()
-		return none, fmt.Errorf("%w: %s answered with member key %s, the cluster names %s for this member", diagnostics.ErrMemberFailed, origin, answer.MemberKey, key)
+		return none, fmt.Errorf("%w: %s answered with member key %s, the cluster names %s for this member", diagnostics.ErrMemberFailed, origin, answer.Key, key)
 	}
-	return diagnostics.MemberAnswer{Body: answer.Body, Clock: answer.Clock, Sent: answer.Sent, RoundTrip: answer.RoundTrip, Key: answer.MemberKey}, nil
+	return answer, nil
 }
 
 // memberAnswerError sorts a member's refusal by its status; an error that
@@ -173,9 +176,9 @@ func guessedEnrollmentOrigin(report clusterStatus, address string) string {
 	return "https://" + net.JoinHostPort(host, parsed.Port())
 }
 
-func (c *clusterDiagnostics) Facts() diagnostics.MemberFacts {
+func (c *clusterDiagnostics) Facts(ctx context.Context) diagnostics.MemberFacts {
 	facts := diagnostics.MemberFacts{Version: version.String(), LogFile: c.cfg.LogFile}
-	if report, err := readClusterStatus(c.cfg); err == nil {
+	if report, err := c.observe(ctx); err == nil {
 		facts.ID, facts.Address, facts.StorageTier = report.id, report.address, string(report.storageTier)
 	}
 	if exe, err := os.Executable(); err == nil {
@@ -229,9 +232,14 @@ func (c *clusterDiagnostics) StallDir() string {
 	return diagnostics.StallReportDir(c.cfg.DataDir)
 }
 
-// Status is the status report as this member takes it now. The report of a
-// member whose business is closed is still a report.
+// Status is the status report written from this member's observation, under
+// a first line saying when that was taken: it can be older than the part by
+// clusterDiagnosticsObservationAge. The report of a member whose business is
+// closed is still a report.
 func (c *clusterDiagnostics) Status(ctx context.Context) string {
-	text, _ := ObserveClusterStatus(ctx, c.cfg, "", clusterDiagnosticsObserve)
-	return text
+	report, err := c.observe(ctx)
+	if err != nil {
+		return ""
+	}
+	return "Observed: " + report.observedAt.UTC().Format(time.RFC3339) + "\n" + report.format()
 }

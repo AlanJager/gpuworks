@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -207,7 +208,7 @@ func collectedIndex(t *testing.T, req ClusterMemberDiagnosticsRequest) (map[stri
 	if err := json.Unmarshal([]byte(files["members/index.json"]), &index); err != nil {
 		t.Fatal(err)
 	}
-	if index.Complete || bundle.Complete == nil || *bundle.Complete {
+	if index.Complete {
 		t.Fatalf("member 11 does not answer, yet the collection says complete: %+v", index)
 	}
 	out := map[string]diagnostics.MemberIndexEntry{}
@@ -226,7 +227,7 @@ func TestAMemberCollectsAnotherMembersPartOverTheMemberRoute(t *testing.T) {
 	// clock, so the offset must come out near zero all the same.
 	members, files, _ := collectedIndex(t, collectingMember(t, f, "https://"+server.Addr(), f.serverKey, 1500*time.Millisecond))
 	got := members["127.0.0.1:9910"]
-	if !got.Collected || got.AnsweredKey != f.serverKey || got.ClockOffsetMs == nil || got.RoundTripMs == nil {
+	if got.Missing != "" || got.AnsweredKey != f.serverKey || got.ClockOffsetMs == nil || got.RoundTripMs == nil {
 		t.Fatalf("member 7 = %+v", got)
 	}
 	if offset := *got.ClockOffsetMs; offset < -*got.RoundTripMs-50 || offset > *got.RoundTripMs+50 {
@@ -238,10 +239,10 @@ func TestAMemberCollectsAnotherMembersPartOverTheMemberRoute(t *testing.T) {
 	if !strings.Contains(files["members/127.0.0.1_9910/role-events.log"], "reason=no_majority_contact") || !strings.Contains(files["members/127.0.0.1_9910/leader-changes.log"], "old_leader=7 new_leader=9") {
 		t.Fatal("member 7's role records are not in the collection")
 	}
-	if down := members["127.0.0.1:9912"]; down.Collected || down.Missing != "unreachable" || down.Evidence == "" {
+	if down := members["127.0.0.1:9912"]; down.Missing != "unreachable" || down.Evidence == "" {
 		t.Fatalf("member 11 = %+v, want unreachable", down)
 	}
-	if self := members["127.0.0.1:9911"]; !self.Self || !self.Collected {
+	if self := members["127.0.0.1:9911"]; !self.Self || self.Missing != "" {
 		t.Fatalf("own entry = %+v", self)
 	}
 }
@@ -253,10 +254,44 @@ func TestAPartFromAnotherMembersKeyIsNotTaken(t *testing.T) {
 	server, _ := diagnosticsMember(t, f, time.Now().UTC())
 	members, files, _ := collectedIndex(t, collectingMember(t, f, "https://"+server.Addr(), f.otherKey, 0))
 	got := members["127.0.0.1:9910"]
-	if got.Collected || got.Missing != "failed" || !strings.Contains(got.Evidence, "answered with member key "+f.serverKey) {
+	if got.Missing != "failed" || !strings.Contains(got.Evidence, "answered with member key "+f.serverKey) {
 		t.Fatalf("member 7 = %+v", got)
 	}
 	if _, ok := files["members/127.0.0.1_9910/server.log"]; ok {
 		t.Fatal("the part of the wrong key is in the collection")
+	}
+}
+
+// A collection lists its members, asks each of them and writes its own
+// identity and status from one observation of the cluster, and a member
+// gives its part from one: with no leader each observation costs its
+// probes' timeouts.
+func TestACollectionObservesTheClusterOncePerMember(t *testing.T) {
+	f := newClosedFactsTLSFixture(t)
+	server, _ := diagnosticsMember(t, f, time.Now().UTC())
+	req := collectingMember(t, f, "https://"+server.Addr(), f.serverKey, 0)
+	inner := statusQuorumFetch
+	var mu sync.Mutex
+	observed := map[uint64]int{}
+	statusQuorumFetch = func(ctx context.Context, s clusterStatus, timeout time.Duration) (enrollment.ClusterQuorumFacts, bool) {
+		mu.Lock()
+		observed[s.id]++
+		mu.Unlock()
+		return inner(ctx, s, timeout)
+	}
+	members, files, _ := collectedIndex(t, req)
+	if members["127.0.0.1:9910"].Missing != "" {
+		t.Fatalf("member 7 = %+v", members["127.0.0.1:9910"])
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if observed[9] != 1 || observed[7] != 1 {
+		t.Fatalf("observations per member = %v, want one by the collecting member 9 and one by the answering member 7", observed)
+	}
+	for _, name := range []string{"127.0.0.1_9910", "127.0.0.1_9911"} {
+		status := files["members/"+name+"/cluster-status.txt"]
+		if !strings.HasPrefix(status, "Observed: 20") || !strings.Contains(status, "\nMember: ") {
+			t.Fatalf("%s status does not say when it was observed:\n%.200s", name, status)
+		}
 	}
 }

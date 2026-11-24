@@ -22,24 +22,20 @@ import (
 // Nothing is written to this member's disk. It ends when ctx does, except
 // inside a read the disk does not answer.
 func WriteMemberPart(ctx context.Context, w io.Writer, src MemberSource, from, to time.Time) error {
-	if !from.Before(to) || to.Sub(from) > MaxBundleWindow {
-		return errors.New("the window must end after it starts and span at most 7 days")
+	if !ValidWindow(from, to) {
+		return errors.New("the window must end after it starts and be no longer than a collection's longest")
 	}
 	p, err := readMemberOwnPart(ctx, src, from, to, time.Now())
 	if err != nil {
 		return err
 	}
 	defer p.close()
-	small, err := p.small()
-	if err != nil {
-		return err
-	}
 	gz := gzip.NewWriter(w)
 	tw := tar.NewWriter(gz)
 	now := time.Now()
 	// member.json goes first: whatever is cut later, the asker knows who
 	// answered and what was cut on this side.
-	for _, f := range small {
+	for _, f := range p.small() {
 		if err := tw.WriteHeader(&tar.Header{Name: f.name, Mode: 0o600, Size: int64(len(f.data)), ModTime: now}); err != nil {
 			return err
 		}
@@ -139,7 +135,7 @@ var errPartBudget = errors.New("the size bound of the members' parts was reached
 // part that reaches the budget is kept as far as it went, its last file
 // marked truncated, and answered with errPartBudget: it is not whole.
 func readMemberPart(r io.Reader, dir string, budget *partBudget) ([]memberFile, error) {
-	gz, err := gzip.NewReader(io.LimitReader(r, MemberPartBytes))
+	gz, err := gzip.NewReader(io.LimitReader(r, memberBounds.part))
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +168,7 @@ func readMemberPart(r io.Reader, dir string, budget *partBudget) ([]memberFile, 
 			continue
 		}
 		if strings.HasPrefix(name, memberStallPrefix) {
-			if stalls == memberStallReports {
+			if stalls == memberBounds.stalls {
 				continue
 			}
 			stalls++
@@ -206,13 +202,13 @@ func readMemberPart(r io.Reader, dir string, budget *partBudget) ([]memberFile, 
 func memberFileBound(name string) (int64, bool) {
 	switch name {
 	case MemberLogFile:
-		return MemberLogBytes, true
+		return memberBounds.log, true
 	case MemberFactsFile, MemberRoleEventsFile, MemberLeaderChangesFile, MemberStatusFile:
-		return memberSmallFile, true
+		return memberBounds.small, true
 	}
 	if base, ok := strings.CutPrefix(name, memberStallPrefix); ok && base != "" && !strings.Contains(base, "/") &&
 		strings.HasPrefix(base, "stall-") && strings.HasSuffix(base, ".txt") {
-		return memberSmallFile, true
+		return memberBounds.small, true
 	}
 	return 0, false
 }

@@ -1454,13 +1454,13 @@ curl -s 'http://127.0.0.1:6060/debug/pprof/goroutine?debug=2' > goroutines.txt
 
 | 路径 | 内容 |
 |---|---|
-| `manifest.json` | 本次收集的范围、server 版本，控制面集群上还有 `complete`（有成员的部分没收到时为 `false`），以及每一项的检查结果：`pass` 完整收集、`warn` 达到大小上限只保留部分、`skip` 未读取（节点离线、agent 版本不支持）、`fail` 读取失败（附错误原文） |
+| `manifest.json` | 本次收集的范围、server 版本，以及每一项的检查结果：`pass` 完整收集、`warn` 达到大小上限只保留部分、`skip` 未读取（节点离线、agent 版本不支持）、`fail` 读取失败（附错误原文） |
 | `server/disk.json` | server 的数据、日志、备份目录与 SQLite 临时目录：所在文件系统的总量与剩余量，以及每个目录下各项的大小（从大到小） |
 | `server/host-identity.json` | server 所在机器的身份（系统 UUID、主板序列号、machine-id、根文件系统 UUID），每项只有加盐摘要 `h` 与原始值的最后 4 个字符 `tail`，读不到的项缺省；盐是固定的，同一台机器在每次收集里摘要相同，见[扩展点](../dev/extensions.md#管理-server-的主机身份) |
 | `server/gpuworks-server.log` | 时间范围内的 server 日志（含 info，日志页只有 warn 以上） |
 | `server/stalls/stall-<时间>.txt` | 时间范围内的[卡顿报告](#server-卡住或偶发变慢时卡顿报告与现场堆栈)，原样收入 |
-| `members/index.json` | 只在[控制面集群](../explanation/control-plane-cluster.md)上有：每个成员一项，收到没有（`collected`），没收到的原因（`missing`：`unreachable` 连不上、`timeout` 超时、`refused` 对方不认本成员的密钥、`unsupported` 对方的版本还没有这个功能（升级过程中未升级的成员）、`busy` 对方正在为另一次收集读取、`failed` 对方报错、应答的不是要找的成员或传到一半断了，错误原文在 `evidence`），应答的成员密钥指纹（`answered_key`），在收集一侧被截断的文件（`truncated`），以及该成员的时钟与收集成员相差多少毫秒（`clock_offset_ms`，按请求实际发出的时刻计算）。有成员没收到时 `complete` 为 `false` |
-| `members/<成员>/` | 每个成员一个目录，名字是成员的数据库地址（`:` 换成 `_`）。`server.log` 是该成员时间范围内的 server 日志，`role-events.log` 是其中的数据库角色记录，`leader-changes.log` 是其中的 leader 变化汇总，`stalls/` 是它的卡顿报告，`cluster-status.txt` 是它当时看到的集群状态，`member.json` 是它的版本、server 与数据库辅助程序的 SHA-256、存储档位和日志文件位置。发起收集的成员（`self: true`）的日志和卡顿报告在 `server/` 下，不重复放 |
+| `members/index.json` | 只在[控制面集群](../explanation/control-plane-cluster.md)上有：每个成员一项。成员的部分没收到时 `missing` 写明原因，收到了则没有这个字段（`unreachable` 连不上、`timeout` 超时、`refused` 对方不认本成员的密钥、`unsupported` 对方的版本还没有这个功能（升级过程中未升级的成员）、`busy` 对方正在为另一次收集读取、`failed` 对方报错、应答的不是要找的成员或传到一半断了，错误原文在 `evidence`），应答的成员密钥指纹（`answered_key`），被截断的内容（`truncated`），以及该成员的时钟与收集成员相差多少毫秒（`clock_offset_ms`，以请求发出的时刻为准）。有成员没收到时 `complete` 为 `false` |
+| `members/<成员>/` | 每个成员一个目录，名字是成员的数据库地址（`:` 换成 `_`）。`server.log` 是该成员时间范围内的 server 日志，`role-events.log` 是其中的数据库角色记录，`leader-changes.log` 是其中的 leader 变化汇总，`stalls/` 是它的卡顿报告，`cluster-status.txt` 是它看到的集群状态（第一行 `Observed:` 是观察的时刻，最多比收集早 30 秒），`member.json` 是它的版本、server 与数据库辅助程序的 SHA-256、存储档位和日志文件位置。发起收集的成员（`self: true`）的日志和卡顿报告在 `server/` 下，不重复放 |
 | `nodes/<uuid>/agent.log`、`doctor.json` | 所选节点（不选时为所选部署的实例所在节点）的 agent 日志与诊断报告 |
 | `instances/<uuid>.log` | 所选部署的实例日志 |
 | `debug/<会话>/`、`nodes/<uuid>/debug/` | 时间重叠的调试采集 |
@@ -1475,14 +1475,14 @@ server 起不来时，在 server 主机上执行 [`gpuworks support-bundle`](../
 
 安全上要知道三点。第一，三个成员的 server 日志经由发起收集的那个成员离开集群，拿到诊断包的人看到的是三台主机的日志。第二，日志行原样收入，不做二次脱敏；日志在写入时已不含密码、token、密钥（请求记录里的凭据字段、要 server 代发的请求头的值、地址里的用户名和密码写成 `[REDACTED]`，引导管理员密码只记文件路径），但其中有主机名、地址、用户名和模型名。第三，成员是否交出日志，由它本机的传输策略文件决定，这个文件在集群有 leader 时才会更新：集群没有 leader 期间，刚被移出集群的成员仍可能被其他成员接受，直到 leader 恢复、策略更新为止。
 
-- **有成员没应答**：收集照常完成。`members/index.json` 的 `complete` 为 `false`，列表里对应一项 `members/<成员>` 为 `fail`（`DIAGNOSTICS_MEMBER_UNAVAILABLE`）。这个包看不到那个成员的记录：待它恢复后重新收集，或到那个成员上执行 `gpuworks support-bundle`。
+- **有成员没应答**：收集照常完成。列表和 `manifest.json` 里对应一项 `members/<成员>` 为 `fail`（`DIAGNOSTICS_MEMBER_UNAVAILABLE`），`members/index.json` 的 `complete` 为 `false`。这个包看不到那个成员的记录：待它恢复后重新收集，或到那个成员上执行 `gpuworks support-bundle`。
 - **集群没有 leader，或控制台打不开**：在任意一个成员的主机上执行 `gpuworks support-bundle`。它不打开集群数据库，读本成员的文件并照样去要其他成员的部分；`db/` 那几项（节点、部署、设置等只在数据库里的记录）标为 `fail` 并写明原因。只要本成员的部分时加 `--local`。
 - **从控制台收集**：请求由当前的 leader 处理，`server/` 下是 leader 的日志，其余成员在 `members/` 下。出问题的正是 leader（卡住、磁盘慢）时，控制台的收集可能一直不完成或失败：到一个健康成员的主机上执行 `gpuworks support-bundle`，它不经过 leader，leader 的部分收得到就收，收不到就在 `index.json` 里写明。
-- **升级过程中**：还没升级的成员没有这个功能，记为 `unsupported`，不算故障；升级完成后重新收集。
+- **升级过程中**：还没升级的成员没有这个功能，记为 `unsupported`，不算故障；升级完成后重新收集。反过来，leader 还没升级而其他成员已升级时，从控制台收集到的包里没有 `members/`，和单机 server 的包一样：这时到一个已升级的成员上执行 `gpuworks support-bundle`。已升级的成员也记为 `unsupported` 时，是它没能挂上这个功能，原因在它自己的 server 日志里（`cluster diagnostics route is not served`）。
 
 ### 在三个成员的日志里读一次 leader 变化
 
-1. 解开诊断包，先看 `members/index.json`：三个成员是否都 `collected`，各自的 `clock_offset_ms` 是多少。各主机的时钟不一定一致，比较不同成员的时间前先减去各自的偏差（偏差的误差不超过 `round_trip_ms` 的一半）。
+1. 解开诊断包，先看 `members/index.json`：`complete` 是不是 `true`（三个成员都没有 `missing`），各自的 `clock_offset_ms` 是多少。各主机的时钟不一定一致，比较不同成员的时间前先减去各自的偏差（偏差的误差不超过 `round_trip_ms` 的一半）。
 2. 找这次变化：
 
    ```bash
@@ -1506,8 +1506,8 @@ server 起不来时，在 server 主机上执行 [`gpuworks support-bundle`](../
    time=2026-11-23T22:50:56.203Z level=INFO msg="cluster database role event" observed_at=2026-11-23T22:50:56.019313298Z event=election_won term=3 votes=2 voters=3
    ```
 
-4. 按[角色记录的对照表](../explanation/control-plane-cluster.md#数据库-leader-为什么换了角色记录)下结论：原 leader 有 `step_down reason=no_majority_contact` 是它收不到多数应答；跟随成员先有 `election_start reason=election_timeout` 是它听不到 leader；`transfer_start` 是有人要求交接。再看出问题那一侧此前的 `loop_late`、`slow_log_write`、`health`，以及同一时刻 `members/<成员>/stalls/` 下有没有卡顿报告，区分是进程没被调度、磁盘慢还是网络。
-5. 某个成员的日志里完全没有这段时间的记录、而 `index.json` 说它已收到：它的进程当时没在运行，看它 `server.log` 里重新开始的位置（`state old=UNAVAILABLE`）。
+4. 按[角色记录的对照表](../explanation/control-plane-cluster.md#数据库-leader-为什么换了角色记录)下结论：原 leader 有 `step_down reason=no_majority_contact` 是它收不到多数应答；跟随成员先有 `election_start reason=election_timeout` 是它听不到 leader；`transfer_start` 是有人要求交接。再看出问题那一侧此前的 `loop_late`、`slow_log_write`、`health`，以及同一时刻 `members/<成员>/stalls/` 下（发起收集的成员在 `server/stalls/` 下）有没有卡顿报告，区分是进程没被调度、磁盘慢还是网络。
+5. 某个成员的日志里完全没有这段时间的记录、而 `index.json` 里它没有 `missing`：它的进程当时没在运行，看它 `server.log` 里重新开始的位置（`state old=UNAVAILABLE`）。
 
 **调试采集**：现象要靠 debug 日志或请求原文才能看清时（例如客户端一直收不到流式结束），先开调试采集复现一次，再收集诊断信息：
 

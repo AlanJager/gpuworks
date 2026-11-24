@@ -4,6 +4,7 @@ package app
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/tls"
@@ -19,6 +20,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -172,8 +174,8 @@ func TestAMemberGivesItsDiagnosticsPartToAnAdmittedMember(t *testing.T) {
 	if d := answer.Clock.Sub(answer.Sent); answer.Clock.IsZero() || d < 0 || d > answer.RoundTrip {
 		t.Fatalf("member clock = %v, sent %v, round trip %v: on one host the clock lies inside the round trip", answer.Clock, answer.Sent, answer.RoundTrip)
 	}
-	if answer.MemberKey != f.serverKey {
-		t.Fatalf("answered by key %s, want the member's %s", answer.MemberKey, f.serverKey)
+	if answer.Key != f.serverKey {
+		t.Fatalf("answered by key %s, want the member's %s", answer.Key, f.serverKey)
 	}
 	files := partArchive(t, answer.Body)
 	if log := files[diagnostics.MemberLogFile]; strings.Count(log, "\n") != 2 || strings.Contains(log, "outside the window") {
@@ -296,5 +298,49 @@ func TestAMemberWithItsDatabaseElsewhereGivesItsPartAsItself(t *testing.T) {
 	var facts diagnostics.MemberFacts
 	if err := json.Unmarshal([]byte(partArchive(t, answer.Body)[diagnostics.MemberFactsFile]), &facts); err != nil || facts.ID != 7 || facts.Address != "127.0.0.1:9910" {
 		t.Fatalf("member.json = %+v, %v; want member 7", facts, err)
+	}
+}
+
+// loggedMember is a member whose server log is the file a test wrote.
+type loggedMember struct{ log string }
+
+func (m loggedMember) Facts(context.Context) diagnostics.MemberFacts {
+	return diagnostics.MemberFacts{}
+}
+func (m loggedMember) LogFiles() []string            { return []string{m.log} }
+func (m loggedMember) StallDir() string              { return filepath.Dir(m.log) }
+func (m loggedMember) Status(context.Context) string { return "" }
+
+// A collection picks the business layer's leader line out of the server log
+// by its message. This runs the code that writes it through the collection's
+// own part, so rewording the message without the collection following fails
+// here. The database process' records have the same guard beside their
+// tracker (internal/server/cluster).
+func TestTheDiagnosticsPartFindsTheBusinessLeaderLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "server.log")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var leader atomic.Uint64
+	forward := newMemberForward(slog.New(slog.NewTextHandler(file, nil)), func(context.Context) (uint64, error) { return leader.Load(), nil },
+		func() int { return 0 }, func() {})
+	forward.SetMemberIdentity(7, []byte("key"))
+	for _, id := range []uint64{7, 9} {
+		leader.Store(id)
+		forward.observeLeaderOnce(t.Context())
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var part bytes.Buffer
+	now := time.Now()
+	if err := diagnostics.WriteMemberPart(t.Context(), &part, loggedMember{path}, now.Add(-time.Hour), now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	written, _ := os.ReadFile(path)
+	leaders := partArchive(t, &part)[diagnostics.MemberLeaderChangesFile]
+	if strings.Count(leaders, "\n") != 2 || !strings.Contains(leaders, "new_leader=9 this_member=7 leads=false") {
+		t.Fatalf("leader-changes.log:\n%s\nthe business layer wrote:\n%s", leaders, written)
 	}
 }

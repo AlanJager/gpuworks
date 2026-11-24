@@ -46,9 +46,7 @@ func partFiles(t *testing.T, raw []byte) (names []string, files map[string]strin
 // asked once more, a member not yet upgraded is not "unreachable".
 func TestWhyAMemberGaveNoPartIsToldApart(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
-	previous := memberBusyWait
-	memberBusyWait = 10 * time.Millisecond
-	t.Cleanup(func() { memberBusyWait = previous })
+	lowerBound(t, &memberBounds.busyWait, 10*time.Millisecond)
 	const third = "10.0.0.3:9001"
 	for _, tc := range []struct {
 		name      string
@@ -72,19 +70,16 @@ func TestWhyAMemberGaveNoPartIsToldApart(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := index.Members[2]
-			if got.Collected != tc.collected || got.Missing != tc.missing || index.Complete != tc.collected {
+			if got.Missing != tc.missing || index.Complete != tc.collected {
 				t.Fatalf("member = %+v, complete = %v", got, index.Complete)
 			}
 			if c.asked[third] != tc.asked {
 				t.Fatalf("asked %d times, want %d", c.asked[third], tc.asked)
 			}
-			// The manifest says so too.
+			// The manifest says so with a failed item for the member.
 			var manifest Bundle
-			if err := json.Unmarshal([]byte(files["manifest.json"]), &manifest); err != nil || manifest.Complete == nil || *manifest.Complete != tc.collected {
-				t.Fatalf("manifest complete = %v (%v), want %v", manifest.Complete, err, tc.collected)
-			}
-			if b.Complete == nil || *b.Complete != tc.collected {
-				t.Fatalf("bundle complete = %v", b.Complete)
+			if err := json.Unmarshal([]byte(files["manifest.json"]), &manifest); err != nil || (missingMembers(manifest) == 0) != tc.collected || (missingMembers(b) == 0) != tc.collected {
+				t.Fatalf("manifest has %d missing members (%v), want collected = %v", missingMembers(manifest), err, tc.collected)
 			}
 			if tc.name == "answers as another member" && !strings.Contains(got.Evidence, "asked member 3 at 10.0.0.3:9001, the part is member 2's at 10.0.0.2:9001") {
 				t.Fatalf("evidence = %q", got.Evidence)
@@ -93,13 +88,15 @@ func TestWhyAMemberGaveNoPartIsToldApart(t *testing.T) {
 	}
 }
 
-func TestASingleServersManifestSaysNothingOfCompleteness(t *testing.T) {
-	m, c := clusterFixture(t, time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC))
-	c.members = nil
-	_, files := collect(t, m)
-	if strings.Contains(files["manifest.json"], `"complete"`) {
-		t.Fatalf("manifest = %s", files["manifest.json"])
+// missingMembers counts the members a collection says it has no part of.
+func missingMembers(b Bundle) int {
+	n := 0
+	for _, it := range b.Items {
+		if it.ID() == BundleItemMember {
+			n++
+		}
 	}
+	return n
 }
 
 // growingMember's log grows between the pass that measures the window and
@@ -227,15 +224,15 @@ func TestAMembersPartIsUnpackedWithinItsBounds(t *testing.T) {
 		return &partBudget{member: member, bundle: &b}
 	}
 	t.Run("stall reports beyond the count are left", func(t *testing.T) {
-		files, err := readMemberPart(bytes.NewReader(hostilePart(t, 500, 10)), t.TempDir(), budget(MemberPartBytes, MembersBytes))
-		if err != nil || len(files) != 1+memberStallReports {
-			t.Fatalf("%d files, %v; want member.json and %d stall reports", len(files), err, memberStallReports)
+		files, err := readMemberPart(bytes.NewReader(hostilePart(t, 500, 10)), t.TempDir(), budget(memberBounds.part, memberBounds.all))
+		if err != nil || len(files) != 1+memberBounds.stalls {
+			t.Fatalf("%d files, %v; want member.json and %d stall reports", len(files), err, memberBounds.stalls)
 		}
 	})
 	for _, tc := range []struct {
 		name           string
 		member, bundle int64
-	}{{"the member's budget", 1 << 20, MembersBytes}, {"the bundle's budget", MemberPartBytes, 1 << 20}} {
+	}{{"the member's budget", 1 << 20, memberBounds.all}, {"the bundle's budget", memberBounds.part, 1 << 20}} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			b := budget(tc.member, tc.bundle)
@@ -269,7 +266,7 @@ func TestAMembersPartIsUnpackedWithinItsBounds(t *testing.T) {
 		shared.Store(1 << 20)
 		var total int64
 		for i := 0; i < 2; i++ {
-			files, err := readMemberPart(bytes.NewReader(hostilePart(t, 40, 100<<10)), t.TempDir(), &partBudget{member: MemberPartBytes, bundle: &shared})
+			files, err := readMemberPart(bytes.NewReader(hostilePart(t, 40, 100<<10)), t.TempDir(), &partBudget{member: memberBounds.part, bundle: &shared})
 			if !errors.Is(err, errPartBudget) {
 				t.Fatalf("part %d: err = %v, want the budget's", i, err)
 			}

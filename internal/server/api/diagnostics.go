@@ -138,7 +138,7 @@ func bundleDTO(b diagnostics.Bundle) dto.DiagnosticsBundle {
 	out := dto.DiagnosticsBundle{ID: b.ID, RequestedBy: b.RequestedBy, CreatedAt: b.CreatedAt.UTC().Format(time.RFC3339),
 		From: b.From.UTC().Format(time.RFC3339), To: b.To.UTC().Format(time.RFC3339), DeploymentIDs: b.Deployments,
 		InstanceUUIDs: b.Instances, NodeUUIDs: b.Nodes, Doctor: b.Doctor, State: b.State, Error: b.Error, SizeBytes: b.SizeBytes,
-		Complete: b.Complete, Items: []dto.DiagnosticsBundleItem{}}
+		Items: []dto.DiagnosticsBundleItem{}}
 	if b.FinishedAt != nil {
 		out.FinishedAt = b.FinishedAt.UTC().Format(time.RFC3339)
 	}

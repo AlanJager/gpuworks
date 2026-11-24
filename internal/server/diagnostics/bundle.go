@@ -76,24 +76,21 @@ type BundleRequest struct {
 // Bundle is a collection as it stands; it is also the collection's
 // manifest.json.
 type Bundle struct {
-	ID          string     `json:"id"`
-	RequestedBy string     `json:"requested_by"`
-	CreatedAt   time.Time  `json:"created_at"`
-	FinishedAt  *time.Time `json:"finished_at,omitempty"`
-	From        time.Time  `json:"from"`
-	To          time.Time  `json:"to"`
-	Deployments []uint     `json:"deployment_ids"`
-	Instances   []string   `json:"instance_uuids"`
-	Nodes       []string   `json:"node_uuids"`
-	Doctor      bool       `json:"doctor"`
-	Version     string     `json:"server_version"`
-	State       string     `json:"state"` // running, ready, failed
-	Error       string     `json:"error,omitempty"`
-	SizeBytes   int64      `json:"size_bytes"`
-	// Complete is set on a control-plane cluster only: false when a
-	// member's part is missing (members/index.json says which and why).
-	Complete *bool        `json:"complete,omitempty"`
-	Items    []BundleItem `json:"items"`
+	ID          string       `json:"id"`
+	RequestedBy string       `json:"requested_by"`
+	CreatedAt   time.Time    `json:"created_at"`
+	FinishedAt  *time.Time   `json:"finished_at,omitempty"`
+	From        time.Time    `json:"from"`
+	To          time.Time    `json:"to"`
+	Deployments []uint       `json:"deployment_ids"`
+	Instances   []string     `json:"instance_uuids"`
+	Nodes       []string     `json:"node_uuids"`
+	Doctor      bool         `json:"doctor"`
+	Version     string       `json:"server_version"`
+	State       string       `json:"state"` // running, ready, failed
+	Error       string       `json:"error,omitempty"`
+	SizeBytes   int64        `json:"size_bytes"`
+	Items       []BundleItem `json:"items"`
 }
 
 // BundleItem is one part of a collection, reported as a check (ADR 0067):
@@ -168,6 +165,12 @@ func (m *Manager) CollectNow(ctx context.Context, req BundleRequest) (Bundle, st
 	return done, m.bundleArchive(b.ID), nil
 }
 
+// ValidWindow reports a window a collection, or a member's part of one, can
+// be made for.
+func ValidWindow(from, to time.Time) bool {
+	return from.Before(to) && to.Sub(from) <= MaxBundleWindow
+}
+
 // beginBundle checks a request and records the collection as running.
 func (m *Manager) beginBundle(req BundleRequest) (Bundle, error) {
 	if m.sources == nil {
@@ -180,7 +183,7 @@ func (m *Manager) beginBundle(req BundleRequest) (Bundle, error) {
 	if req.From.IsZero() {
 		req.From = req.To.Add(-DefaultBundleWindow)
 	}
-	if !req.From.Before(req.To) || req.To.Sub(req.From) > MaxBundleWindow {
+	if !ValidWindow(req.From, req.To) {
 		return Bundle{}, messages.NewProductError(messages.ErrorDiagnosticsBundleInvalid, "the window must end after it starts and span at most 7 days",
 			map[string]any{"field": "window", "max": int(MaxBundleWindow.Seconds())})
 	}

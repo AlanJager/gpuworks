@@ -35,10 +35,10 @@ type fakeMember struct {
 	status   string
 }
 
-func (f fakeMember) Facts() MemberFacts            { return f.facts }
-func (f fakeMember) LogFiles() []string            { return []string{f.logFile} }
-func (f fakeMember) StallDir() string              { return f.stallDir }
-func (f fakeMember) Status(context.Context) string { return f.status }
+func (f fakeMember) Facts(context.Context) MemberFacts { return f.facts }
+func (f fakeMember) LogFiles() []string                { return []string{f.logFile} }
+func (f fakeMember) StallDir() string                  { return f.stallDir }
+func (f fakeMember) Status(context.Context) string     { return f.status }
 
 // memberFixture is a member's directories: a log with lines inside and
 // outside the window, and one stall report on each side of it.
@@ -212,8 +212,7 @@ func TestClusterCollectionHoldsEveryMembersRecords(t *testing.T) {
       "id": "1",
       "address": "10.0.0.1:9001",
       "role": "voter",
-      "self": true,
-      "collected": true
+      "self": true
     },
     {
       "name": "10.0.0.2_9001",
@@ -221,7 +220,6 @@ func TestClusterCollectionHoldsEveryMembersRecords(t *testing.T) {
       "address": "10.0.0.2:9001",
       "role": "voter",
       "self": false,
-      "collected": true,
       "answered_key": "key-of-10.0.0.2:9001",
       "member_clock": "2026-11-02T11:57:56.005Z",
       "clock_offset_ms": -132000,
@@ -233,7 +231,6 @@ func TestClusterCollectionHoldsEveryMembersRecords(t *testing.T) {
       "address": "10.0.0.3:9001",
       "role": "voter",
       "self": false,
-      "collected": true,
       "answered_key": "key-of-10.0.0.3:9001",
       "member_clock": "2026-11-02T11:57:56.005Z",
       "clock_offset_ms": -132000,
@@ -283,10 +280,10 @@ func TestAMemberThatDoesNotAnswerIsRecordedAndTheCollectionStillStands(t *testin
 				t.Fatalf("index = %+v, want incomplete with three members", index)
 			}
 			gone := index.Members[2]
-			if gone.Collected || gone.Missing != tc.missing || !strings.Contains(gone.Evidence, tc.evidence) {
+			if gone.Missing != tc.missing || !strings.Contains(gone.Evidence, tc.evidence) {
 				t.Fatalf("missing member = %+v, want %s (%s)", gone, tc.missing, tc.evidence)
 			}
-			if !index.Members[0].Collected || !index.Members[1].Collected {
+			if index.Members[0].Missing != "" || index.Members[1].Missing != "" {
 				t.Fatalf("the other members were not collected: %+v", index.Members)
 			}
 			it := itemsByPath(b)["members/10.0.0.3_9001"]
@@ -325,11 +322,14 @@ func TestASingleServersCollectionHasNoMembers(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 	m, c := clusterFixture(t, now)
 	c.members = nil // a data directory that is not a cluster member's
-	_, files := collect(t, m)
+	b, files := collect(t, m)
 	for path := range files {
 		if strings.HasPrefix(path, "members/") {
 			t.Fatalf("a single server's collection holds %s", path)
 		}
+	}
+	if missingMembers(b) != 0 {
+		t.Fatalf("a single server's collection misses members: %+v", b.Items)
 	}
 }
 
@@ -367,8 +367,8 @@ func TestAMembersPartCannotPlaceFilesOutsideItsDirectory(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "members", "m2")
 	var bundle atomic.Int64
-	bundle.Store(MembersBytes)
-	files, err := readMemberPart(&buf, dir, &partBudget{member: MemberPartBytes, bundle: &bundle})
+	bundle.Store(memberBounds.all)
+	files, err := readMemberPart(&buf, dir, &partBudget{member: memberBounds.part, bundle: &bundle})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -395,10 +395,10 @@ func TestAMembersPartCannotPlaceFilesOutsideItsDirectory(t *testing.T) {
 	}
 }
 
-// A regression guard, not a proof: a part is made of named files, never of
-// a directory's contents, so nothing beside the log is read today. This
-// fails the day a part starts sweeping a directory. What a log line itself
-// may carry is a separate matter (see the log sources' own redaction).
+// A part is made of named files, never of a directory's contents: nothing
+// beside the log is read. This fails the day a part starts sweeping a
+// directory. What a log line itself may carry is the log sources' own
+// matter (the request record's redaction).
 func TestAMembersPartIsNamedFilesNotADirectorySweep(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 	member := memberFixture(t, 2, "10.0.0.2:9001", now)
@@ -461,7 +461,7 @@ func TestAMembersPartRefusesAWindowItCannotServe(t *testing.T) {
 	}
 }
 
-// The same regression guard for a whole cluster collection.
+// A whole cluster collection, likewise, holds named files only.
 func TestAClusterCollectionIsNamedFilesNotADirectorySweep(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 	m, c := clusterFixture(t, now)

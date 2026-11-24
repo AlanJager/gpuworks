@@ -46,7 +46,7 @@ func TestADiagnosticsPartIsNotCutByTheClientsRequestTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer answer.Body.Close()
-	if answer.Clock.IsZero() || answer.Sent.IsZero() || answer.MemberKey == "" || answer.RoundTrip <= 0 || answer.RoundTrip > timeout {
+	if answer.Clock.IsZero() || answer.Sent.IsZero() || answer.Key == "" || answer.RoundTrip <= 0 || answer.RoundTrip > timeout {
 		t.Fatalf("answer = %+v", answer)
 	}
 	raw, err := io.ReadAll(answer.Body)

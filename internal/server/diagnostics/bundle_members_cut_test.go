@@ -46,7 +46,7 @@ func busyLog(t *testing.T, member fakeMember, now time.Time) (first, last string
 // records are read from the whole window, also from the lines left out.
 func TestAPartCutAtItsBoundKeepsTheNewestLinesAndEveryRoleRecord(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
-	lowerBound(t, &memberLogBound, int64(2000))
+	lowerBound(t, &memberBounds.log, int64(2000))
 	member := memberFixture(t, 2, "10.0.0.2:9001", now)
 	first, last := busyLog(t, member, now)
 	var buf bytes.Buffer
@@ -110,11 +110,11 @@ func TestRoleRecordsBeyondTheirBoundKeepTheNewestAndAreFlagged(t *testing.T) {
 	line := func(i int) []byte {
 		return []byte(fmt.Sprintf("%s n=%07d %s\n", roleLoopLate, i, strings.Repeat("x", 100)))
 	}
-	count := int(memberSmallFile)/len(line(0)) + 500
+	count := int(memberBounds.small)/len(line(0)) + 500
 	for i := 0; i < count; i++ {
 		c.add(line(i))
 	}
-	if !c.truncated || int64(len(c.data)) > memberSmallFile || !bytes.HasSuffix(c.data, line(count-1)) || bytes.Contains(c.data, line(0)) || !bytes.HasPrefix(c.data, []byte("level=")) {
+	if !c.truncated || int64(len(c.data)) > memberBounds.small || !bytes.HasSuffix(c.data, line(count-1)) || bytes.Contains(c.data, line(0)) || !bytes.HasPrefix(c.data, []byte("level=")) {
 		t.Fatalf("truncated=%v, %d bytes", c.truncated, len(c.data))
 	}
 	sink := &recordSink{roles: c}
@@ -129,11 +129,11 @@ func TestRoleRecordsBeyondTheirBoundKeepTheNewestAndAreFlagged(t *testing.T) {
 // its member.json: a cut log is not a pass.
 func TestWhatAMemberCutItselfShowsInTheIndexAndTheManifest(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
-	lowerBound(t, &memberLogBound, int64(2000))
+	lowerBound(t, &memberBounds.log, int64(2000))
 	m, c := clusterFixture(t, now)
 	third := c.parts["10.0.0.3:9001"]
 	busyLog(t, third, now)
-	for i := 0; i < memberStallReports+5; i++ {
+	for i := 0; i < memberBounds.stalls+5; i++ {
 		name := "stall-" + now.Add(-time.Duration(i+1)*time.Second).Format("20060102T150405.000Z") + ".txt"
 		_ = os.WriteFile(filepath.Join(third.stallDir, name), []byte("gpuworks stall report\n"), 0o600)
 	}
@@ -143,7 +143,7 @@ func TestWhatAMemberCutItselfShowsInTheIndexAndTheManifest(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := index.Members[2]
-	if !got.Collected || strings.Join(got.Truncated, ",") != "server.log,stalls" {
+	if got.Missing != "" || strings.Join(got.Truncated, ",") != "server.log,stalls" {
 		t.Fatalf("member = %+v, want collected with its log and stall reports cut", got)
 	}
 	if other := index.Members[1]; len(other.Truncated) != 0 {
@@ -168,17 +168,17 @@ func TestWhatAMemberCutItselfShowsInTheIndexAndTheManifest(t *testing.T) {
 			stalls++
 		}
 	}
-	if stalls != memberStallReports {
-		t.Fatalf("%d stall reports, want the newest %d", stalls, memberStallReports)
+	if stalls != memberBounds.stalls {
+		t.Fatalf("%d stall reports, want the newest %d", stalls, memberBounds.stalls)
 	}
 }
 
 // Running out of the collection's budget in the middle of a part: what
 // arrived is kept, the member is not recorded as collected, and the
 // collection does not call itself complete.
-func TestAPartCutByTheCollectionsBudgetIsNotRecordedAsCollected(t *testing.T) {
+func TestAPartCutByTheCollectionsBudgetIsRecordedAsMissing(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
-	lowerBound(t, &membersBudget, int64(2500))
+	lowerBound(t, &memberBounds.all, int64(2500))
 	m, _ := clusterFixture(t, now)
 	b, files := collect(t, m)
 	var index MemberIndex
@@ -190,7 +190,7 @@ func TestAPartCutByTheCollectionsBudgetIsNotRecordedAsCollected(t *testing.T) {
 		if member.Self {
 			continue
 		}
-		if !member.Collected {
+		if member.Missing != "" {
 			cut++
 			if member.Missing != "failed" || !strings.Contains(member.Evidence, "size bound of the members' parts") {
 				t.Fatalf("member = %+v", member)
@@ -200,8 +200,8 @@ func TestAPartCutByTheCollectionsBudgetIsNotRecordedAsCollected(t *testing.T) {
 			}
 		}
 	}
-	if cut == 0 || index.Complete || b.Complete == nil || *b.Complete {
-		t.Fatalf("%d members cut, index complete %v, manifest complete %v", cut, index.Complete, b.Complete)
+	if cut == 0 || index.Complete || missingMembers(b) != cut {
+		t.Fatalf("%d members cut, index complete %v, %d missing in the manifest", cut, index.Complete, missingMembers(b))
 	}
 }
 
@@ -217,7 +217,7 @@ func TestMembersWhoseAddressesReadAlikeGetADirectoryEach(t *testing.T) {
 	_ = json.Unmarshal([]byte(files["members/index.json"]), &index)
 	names := map[string]bool{}
 	for _, member := range index.Members {
-		if names[member.Name] || !member.Collected {
+		if names[member.Name] || member.Missing != "" {
 			t.Fatalf("members = %+v", index.Members)
 		}
 		names[member.Name] = true
@@ -231,7 +231,7 @@ func TestMembersWhoseAddressesReadAlikeGetADirectoryEach(t *testing.T) {
 // answer, with the collection's own context still alive.
 func TestASilentMemberIsGivenUpOnAtTheMembersOwnBound(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
-	lowerBound(t, &memberAskTimeout, 150*time.Millisecond)
+	lowerBound(t, &memberBounds.wait, 150*time.Millisecond)
 	m, c := clusterFixture(t, now)
 	c.hang["10.0.0.3:9001"] = true
 	began := time.Now()
@@ -241,7 +241,7 @@ func TestASilentMemberIsGivenUpOnAtTheMembersOwnBound(t *testing.T) {
 	}
 	var index MemberIndex
 	_ = json.Unmarshal([]byte(files["members/index.json"]), &index)
-	if got := index.Members[2]; got.Collected || got.Missing != "timeout" || !index.Members[1].Collected || b.Complete == nil || *b.Complete {
+	if index.Members[2].Missing != "timeout" || index.Members[1].Missing != "" || missingMembers(b) != 1 {
 		t.Fatalf("index = %+v", index)
 	}
 }
@@ -258,7 +258,7 @@ func TestAMembersIndexThatCannotBeWrittenIsReported(t *testing.T) {
 	if it.Status != proto.CheckFail || it.Code != messages.CheckDiagnosticsItemStageFailed || it.Evidence == "" {
 		t.Fatalf("index item = %+v, want the failed write reported", it)
 	}
-	if _, ok := files["members/10.0.0.2_9001/server.log"]; !ok || b.Complete == nil {
+	if _, ok := files["members/10.0.0.2_9001/server.log"]; !ok {
 		t.Fatal("the collection lost its members with the index")
 	}
 }

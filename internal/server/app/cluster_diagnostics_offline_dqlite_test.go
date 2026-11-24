@@ -89,9 +89,6 @@ func TestAMemberCollectsWithoutItsDatabaseWhileTheClusterDoesNotServe(t *testing
 	if took := time.Since(began); took > 20*time.Second {
 		t.Fatalf("the collection took %v with no leader", took)
 	}
-	if bundle.Complete == nil || *bundle.Complete {
-		t.Fatalf("manifest complete = %v, want false", bundle.Complete)
-	}
 	files := archiveFiles(t, archive)
 	if !strings.Contains(files["server/gpuworks-server.log"], "event=loop_late") {
 		t.Fatalf("own log:\n%s", files["server/gpuworks-server.log"])
@@ -107,7 +104,7 @@ func TestAMemberCollectsWithoutItsDatabaseWhileTheClusterDoesNotServe(t *testing
 	for _, member := range index.Members {
 		switch {
 		case member.Self:
-			if !member.Collected || member.Address != self {
+			if member.Missing != "" || member.Address != self {
 				t.Fatalf("own entry = %+v", member)
 			}
 			if got := files["members/"+member.Name+"/role-events.log"]; !strings.Contains(got, "event=loop_late late_ms=1819") {
@@ -119,7 +116,7 @@ func TestAMemberCollectsWithoutItsDatabaseWhileTheClusterDoesNotServe(t *testing
 			if got := files["members/"+member.Name+"/cluster-status.txt"]; !strings.Contains(got, "Leader: not observed") {
 				t.Fatalf("own status:\n%s", got)
 			}
-		case member.Collected || member.Missing == "" || member.Evidence == "":
+		case member.Missing == "" || member.Evidence == "":
 			t.Fatalf("a member that did not answer = %+v", member)
 		default:
 			missing++

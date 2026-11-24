@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"gpuworks.ai/gpuworks/internal/logging"
 	"gpuworks.ai/gpuworks/internal/server/cluster/identity"
 	"gpuworks.ai/gpuworks/internal/server/diagnostics"
@@ -22,26 +23,10 @@ import (
 var clusterDiagnosticsSource = func(cfg Config) diagnostics.MemberSource { return &clusterDiagnostics{cfg: cfg} }
 
 // clusterDiagnosticsHandler gives this member's part to a caller that
-// proves a member key this member's transport policy admits. The policy is
-// the member's own file, refreshed from the database while it answers, so
-// the check needs no leader; a key it revokes or does not name is refused,
-// and so is every caller when the policy cannot be read. With no leader the
-// file is not refreshed: a member removed since is still admitted until it
-// is.
-//
-// The part is read by a goroutine of its own and handed over through a
-// pipe, and nothing is written to this member's disk. The handler itself
-// only copies to the connection, under its own write deadline (the
-// listener's 15 s would cut a part short), and ends as soon as the request
-// or the listener's request owner is cancelled: it then drops the pipe and
-// expires the write deadline. So the listener's close and the member's
-// withdrawal never wait for a disk. What can still block is the reading
-// goroutine, inside one read of a log file or an executable on a disk that
-// does not answer; it holds no request and ends at that read's return. One
-// part is given at a time; while one is being read, another asker is told
-// 429. The reading goroutine gives the slot back when it ends, so a member
-// whose disk does not answer keeps saying 429 until that read returns, and
-// is indexed as busy by whoever asks.
+// proves a member key this member's transport policy admits, one part at a
+// time. Nothing is written to this member's disk, and the listener's close
+// and the member's withdrawal never wait for the part: see the comments
+// below for how.
 //
 // local is this member's own configuration: its database path (which a
 // member that formed the cluster may have chosen) says where its raft
@@ -66,21 +51,23 @@ func clusterDiagnosticsHandler(bundle *enrollmentBundle, requests *materialReque
 		}
 		var request enrollment.ClusterDiagnosticsRequest
 		data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<10))
-		if err != nil || json.Unmarshal(data, &request) != nil || !request.From.Before(request.To) || request.To.Sub(request.From) > diagnostics.MaxBundleWindow {
+		// The window is checked here as well as by WriteMemberPart: after
+		// the status line is sent a refusal can only cut the stream.
+		if err != nil || json.Unmarshal(data, &request) != nil || !diagnostics.ValidWindow(request.From, request.To) {
 			http.Error(w, "invalid cluster diagnostics request", http.StatusBadRequest)
 			return
 		}
 		select {
 		case slot <- struct{}{}:
 		default:
-			w.Header().Set("Retry-After", "3")
 			http.Error(w, "a diagnostics part is being given", http.StatusTooManyRequests)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), diagnostics.MemberPartTimeout)
+		ctx, cancel := context.WithTimeout(r.Context(), diagnostics.MemberPartTimeout())
 		defer cancel()
 		connection := http.NewResponseController(w)
-		_ = connection.SetWriteDeadline(time.Now().Add(diagnostics.MemberPartTimeout))
+		// The listener's own write timeout would cut a part short.
+		_ = connection.SetWriteDeadline(time.Now().Add(diagnostics.MemberPartTimeout()))
 		// The clock goes out before the part is read, so the asker can place
 		// it against its own.
 		w.Header().Set(enrollment.ClusterDiagnosticsClockHeader, time.Now().UTC().Format(time.RFC3339Nano))
@@ -88,6 +75,12 @@ func clusterDiagnosticsHandler(bundle *enrollmentBundle, requests *materialReque
 		w.Header().Set("Cache-Control", "no-store")
 		w.WriteHeader(http.StatusOK)
 		_ = connection.Flush()
+		// The part is read by a goroutine of its own and handed over through
+		// a pipe; this handler only copies to the connection. What can block
+		// is that goroutine, inside one read of a log file or an executable
+		// on a disk that does not answer. It holds no request, and gives the
+		// slot back when that read returns: until then the member answers
+		// 429 and is indexed as busy by whoever asks.
 		reader, writer := io.Pipe()
 		go func() {
 			defer func() { <-slot }()
@@ -95,6 +88,9 @@ func clusterDiagnosticsHandler(bundle *enrollmentBundle, requests *materialReque
 			logging.Flush()
 			_ = writer.CloseWithError(diagnostics.WriteMemberPart(ctx, writer, source, request.From, request.To))
 		}()
+		// When the request or the listener's request owner is cancelled, the
+		// copy below ends at once: the pipe is dropped and the write
+		// deadline expired.
 		stop := context.AfterFunc(ctx, func() {
 			_ = reader.CloseWithError(ctx.Err())
 			_ = connection.SetWriteDeadline(time.Now())
@@ -111,8 +107,27 @@ func clusterDiagnosticsHandler(bundle *enrollmentBundle, requests *materialReque
 	}), nil
 }
 
+// registerClusterDiagnostics mounts the route. A member that cannot mount it
+// answers 404 there, which an asker reads as a release without the route:
+// the reason is logged here, so that is not its only trace.
+func registerClusterDiagnostics(router chi.Router, bundle *enrollmentBundle, requests *materialRequestTracker, local Config, log *slog.Logger) {
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
+	part, err := clusterDiagnosticsHandler(bundle, requests, local, log)
+	if err != nil {
+		log.Error("cluster diagnostics route is not served: other members cannot collect this member's part", "err", err)
+		return
+	}
+	router.Post(enrollment.ClusterDiagnosticsPath, part)
+}
+
 // clusterDiagnosticsAdmitted reports a key this member's transport policy
-// admits now.
+// admits now. The policy is the member's own file, refreshed from the
+// database while there is a leader, so the check needs none; a key it
+// revokes or does not name is refused, and so is every caller when the file
+// cannot be read. While there is no leader the file is not refreshed: a
+// member removed since is admitted until it is.
 func clusterDiagnosticsAdmitted(cfg Config, bundle *enrollmentBundle, key string) bool {
 	path, _, err := ClusterTransportPolicyPath(cfg)
 	if err != nil {

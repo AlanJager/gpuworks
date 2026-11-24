@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/diagnostics"
 )
 
 // ClusterDiagnosticsPath is the member-authenticated route on which a member
@@ -33,20 +35,6 @@ type ClusterDiagnosticsRequest struct {
 	To   time.Time `json:"to"`
 }
 
-// ClusterDiagnosticsAnswer is a member's part as it arrives: a gzipped tar.
-type ClusterDiagnosticsAnswer struct {
-	Body io.ReadCloser
-	// Clock is the member's clock when it began to answer (zero when it
-	// did not say), Sent this side's clock when the request was sent and
-	// RoundTrip how long the answer's start then took.
-	Clock     time.Time
-	Sent      time.Time
-	RoundTrip time.Duration
-	// MemberKey is the fingerprint of the member key whose certificate
-	// answered (the SHA-256 of its public key, as admissions name it).
-	MemberKey string
-}
-
 type diagnosticsBody struct {
 	io.ReadCloser
 	transport *http.Transport
@@ -61,9 +49,9 @@ func (b diagnosticsBody) Close() error {
 // OpenClusterDiagnostics asks the member behind this client for its part of
 // the window, authenticated with the caller's member certificate. The part
 // is streamed: the caller reads it within its own bounds and closes it. A
-// member that does not accept the caller's key answers with a StatusError.
-func (c *Client) OpenClusterDiagnostics(ctx context.Context, certificate, key []byte, from, to time.Time) (ClusterDiagnosticsAnswer, error) {
-	none := ClusterDiagnosticsAnswer{}
+// member that does not give its part answers with a StatusError.
+func (c *Client) OpenClusterDiagnostics(ctx context.Context, certificate, key []byte, from, to time.Time) (diagnostics.MemberAnswer, error) {
+	none := diagnostics.MemberAnswer{}
 	pair, err := tls.X509KeyPair(certificate, key)
 	if err != nil || len(pair.Certificate) != 1 {
 		return none, errors.New("member request requires one member certificate and its private key")
@@ -94,10 +82,10 @@ func (c *Client) OpenClusterDiagnostics(ctx context.Context, certificate, key []
 		transport.CloseIdleConnections()
 		return none, err
 	}
-	answer := ClusterDiagnosticsAnswer{Sent: asked, RoundTrip: time.Since(asked)}
+	answer := diagnostics.MemberAnswer{Sent: asked, RoundTrip: time.Since(asked)}
 	if response.TLS != nil && len(response.TLS.PeerCertificates) > 0 {
 		sum := sha256.Sum256(response.TLS.PeerCertificates[0].RawSubjectPublicKeyInfo)
-		answer.MemberKey = hex.EncodeToString(sum[:])
+		answer.Key = hex.EncodeToString(sum[:])
 	}
 	if response.StatusCode != http.StatusOK {
 		_ = response.Body.Close()

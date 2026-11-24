@@ -189,9 +189,7 @@ func (a *App) assembleClosedMemberMaterials(ctx context.Context, bundle *enrollm
 			router.Post(enrollment.ClusterUpgradePath, upgrade)
 		}
 	}
-	if part, err := clusterDiagnosticsHandler(bundle, requests, a.cfg, log); err == nil {
-		router.Post(enrollment.ClusterDiagnosticsPath, part)
-	}
+	registerClusterDiagnostics(router, bundle, requests, a.cfg, log)
 	registerEnrollmentMaterialReceiver(router, bundle, st, receiver, requests)
 	registerEnrollmentOriginWithChange(router, bundle, st, a.invalidateCandidateMaterialEligibility)
 	enrollment, err := newEnrollmentServer(bundle.info.ListenAddress, router, bundle.tls, log)
