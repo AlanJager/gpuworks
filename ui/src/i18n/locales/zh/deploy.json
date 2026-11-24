@@ -209,7 +209,8 @@
     "runtime_unreported": "{{vendor}} 需要 {{required_os}}/{{required_arch}} 和 {{required_runtime}}；此节点尚未上报完整的运行时信息。",
     "accelerator_feature_unsupported": "{{vendor}} 不支持{{feature}}。请调整启动选项或选择其他加速卡。",
     "accelerator_device_selection_required": "{{vendor}} 启动前必须明确分配 GPU。",
-    "launch_features_unknown": "无法检查 {{vendor}} 的启动命令功能，请提供可识别的引擎入口或结构化启动参数。"
+    "launch_features_unknown": "无法检查 {{vendor}} 的启动命令功能，请提供可识别的引擎入口或结构化启动参数。",
+    "dgpu_startup_memory": "$t(common:apiError.DGPU_STARTUP_MEMORY)"
   },
   "placementReason": {
     "node_cordoned": "该节点已停止调度。请恢复它的调度或选择其他节点。",

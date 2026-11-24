@@ -141,6 +141,9 @@ func (s *Service) checkEverFits(ctx context.Context, reqs map[string][]string, b
 	if err != nil || never == nil {
 		return err
 	}
+	if err := dgpuStartupMemoryError(never.Reason); err != nil {
+		return err
+	}
 	params := map[string]any{"pool": never.Pool, "shapes": never.Shapes}
 	if never.Node != "" {
 		params["node"], params["reason"], params["detail"], params["reason_params"] = never.Node, never.Reason.Code, never.Reason.Message, never.Reason.Params
