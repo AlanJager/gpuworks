@@ -250,11 +250,11 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 	}
 	plan.Params, plan.Profile, plan.LaunchInput = allocated.Params, allocated.Profile, allocated.LaunchInput
 	plan.Resolved, plan.Warnings = allocated.Resolved, allocated.Warnings
-	if !unresolved {
-		if refusal := dgpuStartupMemoryRefusal(req, plan); refusal != nil {
-			plan.Output.Result = scheduler.Result{OK: false, Message: *refusal, Explain: scheduler.Explain{Filters: []scheduler.Reason{*refusal}}}
-			return plan, nil
-		}
+	if refusal := dgpuStartupMemoryRefusal(req, plan); refusal != nil {
+		plan.Output.Result = scheduler.Result{OK: false, Message: *refusal, Explain: scheduler.Explain{Filters: []scheduler.Reason{*refusal}}}
+		// Freeing the card cannot resolve this refusal.
+		plan.Output.Yield, plan.Output.Reserved, plan.Output.Held, plan.Output.Eviction = nil, nil, nil, nil
+		return plan, nil
 	}
 	plan.Resolved.StartupEstimate = launchStartupEstimate(req, plan.Resolved)
 	if refusal := agentCapabilityRefusal(req.AgentCaps, req.Node, plan.Resolved); refusal != nil {

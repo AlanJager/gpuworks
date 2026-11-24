@@ -1,88 +1,138 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
-	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/chipmatch"
+	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
+	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/seed"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 func TestAscendDGPUStartupMemoryAdmission(t *testing.T) {
-	const image = "gpuworks/gpuworks-runner:cann9.0-910b-sglang0.5.18-r2"
-	const spec = "bf16-sglang-ascend-25218b07"
+	const repo = "Qwen/Qwen3-0.6B"
+	builtin, spec := builtinDGPUStartupSpec(t, strings.ToLower(repo))
 	for _, tc := range []struct {
-		name, placement, quick, extra string
-		quota                         int
-		refused                       bool
+		name, placement, quick, extra, command string
+		quota                                  int
+		busy, refused                          bool
 	}{
-		{"manual_quick", "manual", `{"gpu_memory_utilization":0.90}`, "", 8, true},
-		{"auto_extra", "auto", "{}", "--mem-fraction-static=0.90", 8, true},
-		{"manual_safe", "manual", `{"gpu_memory_utilization":0.88}`, "", 8, false},
-		{"auto_safe", "auto", `{"gpu_memory_utilization":0.88}`, "", 8, false},
-		{"whole_card", "manual", `{"gpu_memory_utilization":0.90}`, "", 0, false},
-		{"custom_graph", "manual", `{"gpu_memory_utilization":0.90}`, "--cuda-graph-max-bs 4", 8, false},
+		{name: "manual_quick", placement: "manual", quick: `{"gpu_memory_utilization":0.90}`, quota: 8, refused: true},
+		{name: "auto_extra", placement: "auto", quick: "{}", extra: "--mem-fraction-static=0.90", quota: 8, refused: true},
+		{name: "manual_safe", placement: "manual", quick: `{"gpu_memory_utilization":0.88}`, quota: 8},
+		{name: "auto_default", placement: "auto", quick: "{}", quota: 8},
+		{name: "whole_card", placement: "manual", quick: `{"gpu_memory_utilization":0.90}`},
+		{name: "custom_graph", placement: "manual", quick: `{"gpu_memory_utilization":0.90}`, extra: "--cuda-graph-max-bs=256", quota: 8, refused: true},
+		{name: "no_graph", placement: "manual", quick: `{"gpu_memory_utilization":0.90}`, extra: "--disable-cuda-graph", quota: 8},
+		{name: "manual_script", placement: "manual", quick: "{}", command: sglangOneCardScript + " --dtype bfloat16 --mem-fraction-static=0.90", quota: 8, refused: true},
+		{name: "busy_node", placement: "manual", quick: `{"gpu_memory_utilization":0.90}`, quota: 8, busy: true, refused: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			h, _ := partitionPoolFixture(t, map[string]string{"pool-ascend": accelerator.BackendAscendLogical})
+			h, holderModel := partitionPoolFixture(t, map[string]string{"pool-ascend": accelerator.BackendAscendLogical})
 			st := h.d.Store
-			const repo = "Qwen/Qwen3-0.6B"
-			const weightBytes = 1519209873
-			model, err := st.UpsertModel(&store.Model{Source: "huggingface", SourceID: repo, Name: repo, Arch: "qwen3", WeightBytes: weightBytes})
+			cardNode, err := st.NodeWithGPUs("pool-ascend")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := st.ReconcileInferenceCatalog([]store.InferenceModel{{
-				ModelID: strings.ToLower(repo), DisplayTitle: repo, Source: "upstream", Architecture: "qwen3",
-				Specs: []store.InferenceSpecRow{{
-					Name: spec, Engine: "sglang", Image: image, Quantization: "bf16", WeightBytes: weightBytes,
-					WeightSources: `[{"provider":"huggingface","repo_id":"Qwen/Qwen3-0.6B"}]`,
-					GPUs:          `{"vendor":"ascend"}`,
-					Args:          `["--device","npu","--attention-backend","ascend","--dtype","bfloat16"]`,
-				}},
-			}}); err != nil {
+			if err := st.DB().Model(&store.GPU{}).Where("node_id = ?", cardNode.ID).Update("name", "Ascend 910B4").Error; err != nil {
 				t.Fatal(err)
 			}
-			template, err := st.InferenceModelByModelID(strings.ToLower(repo))
+			model, err := st.UpsertModel(&store.Model{Source: "huggingface", SourceID: repo, Name: repo, Arch: "qwen3", WeightBytes: spec.WeightBytes})
 			if err != nil {
 				t.Fatal(err)
+			}
+			if err := st.ReconcileInferenceCatalog([]store.InferenceModel{builtin}); err != nil {
+				t.Fatal(err)
+			}
+			template, err := st.InferenceModelByModelID(builtin.ModelID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantDeployments := 0
+			if tc.busy {
+				holder, err := st.CreateDeployment(&store.Deployment{Name: "whole-card", ModelID: holderModel, NodeID: cardNode.ID, Engine: "sglang", Replicas: 1})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := st.CreateInstance(&store.Instance{UUID: "whole-card-0", DeploymentID: holder.ID, NodeID: cardNode.ID, State: proto.InstRunning, GPUIndexes: `[0]`}); err != nil {
+					t.Fatal(err)
+				}
+				wantDeployments++
 			}
 			node := ""
 			if tc.placement == "manual" {
 				node = "pool-ascend"
 			}
-			body := fmt.Sprintf(`{"name":%q,"model_id":%d,"template_id":%d,"template_spec_source":"upstream","template_spec_name":%q,"engine":"sglang","image":%q,"node_uuid":%q,"placement_mode":%q,"target_vendor":"ascend","placement":{"tp":1},"vram_limit_gib":%d,"quick_params":%s,"extra_args":%q}`,
-				tc.name, model.ID, template.ID, spec, image, node, tc.placement, tc.quota, tc.quick, tc.extra)
+			command := "{}"
+			if tc.command != "" {
+				command = fmt.Sprintf(`{"command_mode":"manual","cmd_display":%q}`, tc.command)
+			}
+			body := fmt.Sprintf(`{"name":%q,"model_id":%d,"template_id":%d,"template_spec_source":%q,"template_spec_name":%q,"engine":"sglang","image":%q,"node_uuid":%q,"placement_mode":%q,"target_vendor":"ascend","placement":{"tp":1},"vram_limit_gib":%d,"quick_params":%s,"extra_args":%q,"container_overrides":%s}`,
+				tc.name, model.ID, template.ID, spec.Source, spec.Name, spec.Image, node, tc.placement, tc.quota, tc.quick, tc.extra, command)
 
 			wire := evaluateWire(t, h, body)
-			var fields []dto.FieldError
-			if raw := wire["errors"]; raw != nil {
-				if err := json.Unmarshal(raw, &fields); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if tc.refused {
-				if string(wire["ok"]) != "false" || len(fields) != 1 || fields[0].Code != messages.ErrorDGPUStartupMemory ||
-					fields[0].Field != "gpu_memory_utilization" || fields[0].Params["max_utilization"] != 0.88 {
-					t.Fatalf("evaluate = %s, errors = %+v; want the startup memory error on the utilization field", wire["ok"], fields)
-				}
-				requireCreateRefusalWithoutDeployment(t, h, st, body, messages.ErrorDGPUStartupMemory)
-				return
-			}
-			if string(wire["ok"]) != "true" || len(fields) != 0 {
-				t.Fatalf("evaluate = %s, errors = %+v; want accepted", wire["ok"], fields)
-			}
 			created := httptest.NewRecorder()
 			h.createDeployment(created, httptest.NewRequest(http.MethodPost, "/api/v1/deployments", strings.NewReader(body)))
+			if tc.refused {
+				wantJSON(t, string(wire["ok"]), "false")
+				wantJSON(t, string(wire["errors"]), `[{"field":"gpu_memory_utilization","code":"DGPU_STARTUP_MEMORY","params":{"quota_gib":8,"utilization":0.9,"max_utilization":0.88}}]`)
+				if created.Code != http.StatusBadRequest || !strings.Contains(created.Body.String(), `"code":"`+messages.ErrorDGPUStartupMemory+`"`) {
+					t.Fatalf("create = %d %s, want startup memory refusal", created.Code, created.Body)
+				}
+				if rows, err := st.ListDeployments(); err != nil || len(rows) != wantDeployments {
+					t.Fatalf("refused request persisted deployments: %v %v", rows, err)
+				}
+				return
+			}
+			if string(wire["ok"]) != "true" || len(wire["errors"]) != 0 {
+				t.Fatalf("evaluate = %s, errors = %s, plan = %s; want accepted", wire["ok"], wire["errors"], wire["plan"])
+			}
 			if created.Code != http.StatusCreated {
 				t.Fatalf("create = %d %s, want accepted", created.Code, created.Body)
 			}
 		})
 	}
+}
+
+func builtinDGPUStartupSpec(t *testing.T, modelID string) (store.InferenceModel, store.InferenceSpecRow) {
+	t.Helper()
+	catalog, err := seed.Catalog()
+	if err != nil {
+		t.Fatal(err)
+	}
+	index := slices.IndexFunc(catalog.Models, func(model inferencecatalog.InferenceModel) bool { return model.ModelID == modelID })
+	if index < 0 {
+		t.Fatalf("built-in catalog has no model %s", modelID)
+	}
+	rows, err := inferencecatalog.ToFlatStoreModels(inferencecatalog.FlatCatalog{Models: catalog.Models[index : index+1]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := rows[0]
+	gpu := chipmatch.ReportedGPU("Ascend 910B4", "ascend", "910B4", "")
+	var matching []store.InferenceSpecRow
+	for _, spec := range model.Specs {
+		if spec.Engine != "sglang" || spec.Quantization != "bf16" || spec.Scenario != "balanced" {
+			continue
+		}
+		predicate, err := chipmatch.DecodePredicate(spec.GPUs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if chipmatch.ValidateSpec(gpu, chipmatch.Spec{Name: spec.Name, GPUs: predicate}, nil) == nil {
+			matching = append(matching, spec)
+		}
+	}
+	if len(matching) != 1 {
+		t.Fatalf("found %d built-in BF16 SGLang balanced specs for %s on 910B4", len(matching), modelID)
+	}
+	return model, matching[0]
 }
