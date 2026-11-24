@@ -199,19 +199,15 @@ func (a *App) configureSecureSessionRoute(route store.ClusterSessionRoute, sessi
 const memberRouteMembershipAge = materialEligibilityWindow
 
 // memberRouteUnansweredAge is how old that list may be when a fresh grant
-// brought no answer: two proof windows. A connection between members carries
-// more than a request of its own (the peer names the client it forwards for),
-// so this bound is half of what a member's own admission gets without an
-// answer; it still covers the stalls seen on slow storage several times over.
+// brought no answer: as long as a member's own business stays open without
+// an answer, by the same constant. With half of that, a storage outage of
+// about 30 s cut the members off from the leader while it went on serving:
+// requests that entered through a member that does not lead were refused.
 //
-// On hosts whose storage stood still for 28 to 33 s this was too short:
-// requests that entered through a member that does not lead were refused
-// while the leader went on serving. Setting this to materialUnconfirmedLimit
-// gives the member route the same bound as business; what that costs is that
-// a member revoked during such a stall is accepted by its peers for up to
-// that long instead of half of it (the member that commits the revocation
-// drops the list at once, and so does a member whose own admission closes).
-const memberRouteUnansweredAge = 2 * materialEligibilityWindow
+// What it costs: a member revoked during such an outage is accepted by its
+// peers for up to this long. The member that commits the revocation drops
+// its list at once, and so does a member whose own admission closes.
+const memberRouteUnansweredAge = materialUnconfirmedLimit
 
 // memberRouteKey picks a member key for one connection between members. It
 // answers from the membership this process last confirmed, so that opening a

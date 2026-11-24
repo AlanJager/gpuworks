@@ -37,6 +37,9 @@ type admissionAttempt struct {
 	took                   time.Duration
 }
 
+// admissionCallerCap bounds the places one closed period lists.
+const admissionCallerCap = 32
+
 // closed notes a close of admission that came from caller. byProof marks a
 // close the proof worker made itself: while the member is already closed
 // those are the failed proofs, which have their own line.
@@ -47,11 +50,15 @@ func (j *admissionJournal) closed(log *slog.Logger, caller string, byProof bool)
 		j.closedAt, j.callers = time.Now(), map[string]bool{}
 	}
 	seen := j.callers[caller]
-	if !seen && (first || !byProof) && len(j.callers) < 32 {
+	// Past the cap a further place is neither kept nor logged: the period
+	// already names admissionCallerCap places, and an unkept one would
+	// otherwise log at every close.
+	full := len(j.callers) >= admissionCallerCap
+	if !seen && !full && (first || !byProof) {
 		j.callers[caller] = true
 	}
 	j.mu.Unlock()
-	if log == nil || seen || (!first && byProof) {
+	if log == nil || seen || full || (!first && byProof) {
 		return
 	}
 	log.Info("closed business admission", "caller", caller, "first_of_period", first)

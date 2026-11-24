@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -185,5 +186,34 @@ func TestAdmissionJournalNamesEachPlaceAClosureCameFrom(t *testing.T) {
 	}
 	if strings.Contains(text, "invalidateCandidateMaterialEligibility") || strings.Contains(text, "closeBusinessAdmission:") || strings.Contains(text, "Invalidate:") {
 		t.Fatalf("a closing helper was named as the caller:\n%s", text)
+	}
+}
+
+// A closed period lists a bounded number of places: past the cap a further
+// place leaves no line, however often it closes, and the next period lists
+// from the start again.
+func TestAdmissionJournalBoundsThePlacesOfOnePeriod(t *testing.T) {
+	var out bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&out, nil))
+	var j admissionJournal
+	for i := range admissionCallerCap + 8 {
+		j.closed(log, fmt.Sprintf("app.place:%d", i), false)
+	}
+	if got := count(out.String(), journalClosed); got != admissionCallerCap {
+		t.Fatalf("%d places logged, want %d", got, admissionCallerCap)
+	}
+	out.Reset()
+	for range 50 {
+		j.closed(log, "app.onePlacePastTheCap:1", false)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("a place past the cap logged:\n%s", out.String())
+	}
+	j.attempted(true, "none", "", "", time.Second)
+	j.outcome(log, true)
+	out.Reset()
+	j.closed(log, "app.onePlacePastTheCap:1", false)
+	if text := out.String(); count(text, journalClosed) != 1 || !strings.Contains(text, "first_of_period=true") {
+		t.Fatalf("the next period began with:\n%s", text)
 	}
 }

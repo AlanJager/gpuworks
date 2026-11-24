@@ -300,6 +300,12 @@ func TestMemberRouteKeyAnswersFromConfirmedMembershipWithoutGrant(t *testing.T) 
 	// A list too old to answer by itself stands in for a grant that brought
 	// no answer, up to the unconfirmed limit and not beyond; it never stands
 	// in for a refusal, and it does not admit a key it does not name.
+	// The member route gives up exactly when a member's own business does:
+	// one constant, sixty seconds, four times the list's ordinary age.
+	routeAge, businessLimit := time.Duration(memberRouteUnansweredAge), time.Duration(materialUnconfirmedLimit)
+	if routeAge != businessLimit || businessLimit != 60*time.Second {
+		t.Fatalf("member route unanswered age %s, business limit %s, list age %s", memberRouteUnansweredAge, materialUnconfirmedLimit, memberRouteMembershipAge)
+	}
 	short := func(parent context.Context) (context.Context, context.CancelFunc) {
 		return context.WithTimeout(parent, 50*time.Millisecond)
 	}
@@ -310,6 +316,8 @@ func TestMemberRouteKeyAnswersFromConfirmedMembershipWithoutGrant(t *testing.T) 
 		want string
 	}{
 		{"inside the limit", memberRouteMembershipAge + time.Second, "peer", "peer"},
+		{"where half the limit used to end it", 2*memberRouteMembershipAge + 5*time.Second, "peer", "peer"},
+		{"just inside the limit", memberRouteUnansweredAge - time.Second, "peer", "peer"},
 		{"past the limit", memberRouteUnansweredAge + time.Second, "peer", ""},
 		{"key the list does not name", memberRouteMembershipAge + time.Second, "stranger", ""},
 	} {
