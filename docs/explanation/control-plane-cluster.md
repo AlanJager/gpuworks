@@ -49,7 +49,7 @@
 
 ## 数据库 leader 为什么换了：角色记录
 
-数据库 leader 每换一次，在途的业务请求、终端和日志跟随会被切断，agent 的会话要向新的 leader 重新登记。每个成员的 server 日志（`logs/gpuworks-server.log`，随[收集诊断信息](../how-to/troubleshooting.md#无法登录现场时调试采集与收集诊断信息)带走）都记下本成员的数据库进程在 Raft 里做了什么、为什么，一直开着，不需要调试构建：
+数据库 leader 每换一次，在途的业务请求、终端和日志跟随会被切断，agent 的会话要向新的 leader 重新登记。每个成员的 server 日志（集群安装的成员是 `<安装目录>/logs/server.log`；[收集诊断信息](../how-to/troubleshooting.md#控制面集群诊断包里有三个成员的记录)把三个成员的都带走，放在 `members/<成员>/` 下，角色记录另抽出为 `role-events.log`）都记下本成员的数据库进程在 Raft 里做了什么、为什么，一直开着，不需要调试构建：
 
 - `cluster database role event`：数据库进程的一条角色记录。`observed_at` 是事情发生的时间（数据库进程的时钟，纳秒），日志行自己的时间晚不到一秒。
 - `cluster database leader changed`：本成员认到了新的 leader。写明原来的 leader（`old_leader`）、新的 leader（`new_leader`，成员 id）、任期（`term`）、本成员是不是新的 leader（`leads`）、本成员看到的原因（`reason`）和本成员没有 leader 的时长（`without_leader_ms`，按数据库进程的单调时钟量，不受校时影响）。

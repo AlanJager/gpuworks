@@ -254,6 +254,10 @@ func TestDiagnosticsBundleItemWire(t *testing.T) {
 		`{"path":"server/host-identity.json","status":"pass","bytes":3},` +
 		`{"path":"nodes/n2","status":"skip","code":"DIAGNOSTICS_NODE_OFFLINE","bytes":0},` +
 		`{"path":"db","status":"fail","code":"DIAGNOSTICS_ITEM_READ_FAILED","evidence":"database is locked","bytes":0},` +
+		// A control-plane cluster: one member's records, the member index, a member that did not answer.
+		`{"path":"members/10.0.0.2_9001/role-events.log","status":"pass","bytes":212},` +
+		`{"path":"members/index.json","status":"pass","bytes":640},` +
+		`{"path":"members/10.0.0.3_9001","status":"fail","code":"DIAGNOSTICS_MEMBER_UNAVAILABLE","evidence":"unreachable: dial tcp 10.0.0.3:9443: connect: connection refused","bytes":0},` +
 		// An item from a manifest written before items were checks.
 		`{"name":"nodes/n1/agent.log","state":"collected","bytes":9,"truncated":true}]}`
 	if err := json.Unmarshal([]byte(manifest), &b); err != nil {
@@ -269,6 +273,11 @@ func TestDiagnosticsBundleItemWire(t *testing.T) {
 		`"message":"the node is offline; nodes/n2 was not collected","bytes":0},` +
 		`{"id":"records","path":"db","status":"fail","code":"DIAGNOSTICS_ITEM_READ_FAILED","params":{"path":"db"},` +
 		`"message":"db could not be read","evidence":"database is locked","bytes":0},` +
+		`{"id":"member_file","path":"members/10.0.0.2_9001/role-events.log","status":"pass","bytes":212},` +
+		`{"id":"member_index","path":"members/index.json","status":"pass","bytes":640},` +
+		`{"id":"member","path":"members/10.0.0.3_9001","status":"fail","code":"DIAGNOSTICS_MEMBER_UNAVAILABLE","params":{"path":"members/10.0.0.3_9001"},` +
+		`"message":"the control-plane member did not give its part; members/10.0.0.3_9001 is missing, so the collection does not show what that member saw",` +
+		`"evidence":"unreachable: dial tcp 10.0.0.3:9443: connect: connection refused","bytes":0},` +
 		`{"id":"node_agent_log","path":"nodes/n1/agent.log","status":"warn","code":"DIAGNOSTICS_ITEM_TRUNCATED",` +
 		`"params":{"path":"nodes/n1/agent.log","node":"n1"},"message":"nodes/n1/agent.log reached its size limit; only part was kept","bytes":9}]`
 	if string(raw) != want {
