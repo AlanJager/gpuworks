@@ -17,11 +17,11 @@ import (
 // an isolated member must refuse within.
 func TestEveryStorageTierElectsInsideTheMembershipRetryWindow(t *testing.T) {
 	for _, tier := range storagetier.All() {
-		if need := tier.GrantRetryNeed(); need > clusterMembershipRetryWindow || need > GrantRetryWindowFor(tier) {
-			t.Errorf("storage tier %s: longest election timer plus one commit is %s, beyond the retry window %s (%s for the tier); the retry window must grow with the tier", tier, need, clusterMembershipRetryWindow, GrantRetryWindowFor(tier))
+		if need := tier.GrantRetryNeed(); need > clusterMembershipRetryWindow() || need > GrantRetryWindowFor(tier) {
+			t.Errorf("storage tier %s: longest election timer plus one commit is %s, beyond the retry window %s (%s for the tier); the retry window must grow with the tier", tier, need, clusterMembershipRetryWindow(), GrantRetryWindowFor(tier))
 		}
 	}
-	if clusterMembershipRetryWindow >= ClusterMembershipGrantTimeout {
-		t.Fatalf("retry window %s must stay inside the grant timeout %s", clusterMembershipRetryWindow, ClusterMembershipGrantTimeout)
+	if window := clusterMembershipRetryWindow(); window >= ClusterMembershipGrantTimeout {
+		t.Fatalf("retry window %s must stay inside the grant timeout %s", window, ClusterMembershipGrantTimeout)
 	}
 }

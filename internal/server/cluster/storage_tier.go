@@ -18,10 +18,21 @@ func UseStorageTier(tier storagetier.Tier) {
 	processStorageTier.Store(&tier)
 }
 
-// ProcessStorageTier is the tier this process runs its database node with:
-// the one it was told at its start, which is what the member runs until it
-// is restarted, whatever its installation records by now.
+// runningStorageTier is the tier the database node this process started was
+// given: its configuration's own when it names one (a joining member's),
+// else the process's.
+var runningStorageTier atomic.Pointer[storagetier.Tier]
+
+// ProcessStorageTier is the tier this process runs its database node with,
+// whatever its installation records by now: the tier its node was started
+// with, and before a node is started the one the process was told. It is the
+// one source of the member's timing for everything outside the node: the
+// membership grant's retry window, how long a leader observation is acted
+// on, the liveness limit of the connections this process dials.
 func ProcessStorageTier() storagetier.Tier {
+	if tier := runningStorageTier.Load(); tier != nil {
+		return *tier
+	}
 	return DatabaseConfig{}.storageTier()
 }
 

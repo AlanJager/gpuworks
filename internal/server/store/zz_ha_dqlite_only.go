@@ -142,7 +142,8 @@ func (s *Store) observeAndGrantClusterMembership(ctx context.Context, bound Clus
 			return 0, nil, err
 		}
 		if (phase == "live_before" || phase == "live_after") && !errors.Is(err, errClusterMembershipChanged) {
-			remaining := clusterMembershipRetryWindow - time.Since(started)
+			window := clusterMembershipRetryWindow()
+			remaining := window - time.Since(started)
 			if remaining <= 0 {
 				return 0, nil, err
 			}
@@ -150,7 +151,7 @@ func (s *Store) observeAndGrantClusterMembership(ctx context.Context, bound Clus
 			// member that never finds a leader refuses at the window and not
 			// a whole observation later.
 			observeLimit = func() time.Duration {
-				return max(min(clusterMembershipObserveTimeout, clusterMembershipRetryWindow-time.Since(started)), time.Millisecond)
+				return max(min(clusterMembershipObserveTimeout, window-time.Since(started)), time.Millisecond)
 			}
 		}
 		lastErr = err
@@ -373,11 +374,11 @@ func (s *Store) checkLegacyExpandedCompatibility(ctx context.Context, expected C
 // The admission sequence only increases, so a grant that committed before
 // its interruption is harmless; no snapshot from a failed attempt is used.
 func (s *Store) grantTransportAdmissionsThroughInterruption(ctx context.Context, expected ClusterIdentity, key string) (uint64, []ClusterAdmission, error) {
-	started := time.Now().UTC()
+	started, window := time.Now().UTC(), clusterMembershipRetryWindow()
 	for attempt := 1; ; attempt++ {
 		revision, admissions, err := s.GrantClusterTransportAdmissions(ctx, expected, key)
 		if err == nil || !clusterMembershipAttemptInterrupted(err) || ctx.Err() != nil ||
-			time.Since(started) >= clusterMembershipRetryWindow {
+			time.Since(started) >= window {
 			return revision, admissions, err
 		}
 		timer := time.NewTimer(20 * time.Millisecond)

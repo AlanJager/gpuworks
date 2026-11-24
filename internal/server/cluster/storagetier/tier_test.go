@@ -210,3 +210,27 @@ func TestWindowsStretchWithALaterElection(t *testing.T) {
 		}
 	}
 }
+
+// A Tier comes from Parse. Text Parse refuses is no tier: read as a Tier it
+// is Standard, never the timing its digits might suggest and never another
+// tier's.
+func TestTextParseRefusesIsNoTier(t *testing.T) {
+	for _, text := range []string{
+		"slow-storage@100", "slow-storage@0100ms", "slow-storage@+100ms", "slow-storage@100ms ", "slow-storage@",
+		"slow-storage@201ms", "slow-storage@9ms", "slow-storage@1000ms", "glacial", "glacial@100ms",
+	} {
+		if tier, err := Parse(text); err == nil {
+			t.Errorf("Parse(%q) = %q, want it refused", text, tier)
+		}
+		tier := Tier(text)
+		if got := tier.NetworkLatency(); got != Standard.NetworkLatency() {
+			t.Errorf("Tier(%q).NetworkLatency() = %s, want Standard's", text, got)
+		}
+		if got := tier.ElectionTimeout(); got != Standard.ElectionTimeout() {
+			t.Errorf("Tier(%q).ElectionTimeout() = %s, want Standard's", text, got)
+		}
+	}
+	if Tier("").NetworkLatency() != Standard.NetworkLatency() || Tier("glacial").Base() != Standard {
+		t.Error("the empty and the unknown tier are not Standard")
+	}
+}

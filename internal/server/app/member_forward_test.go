@@ -488,33 +488,34 @@ func TestALeaderObservationStaysFreshThroughAnElectionOfTheTier(t *testing.T) {
 		}
 		return tier
 	}
-	for name, want := range map[string]time.Duration{
-		"standard": 3 * time.Second, "slow-storage": 3 * time.Second,
-		"slow-storage@100ms": 6 * time.Second, "slow-storage@200ms": 12 * time.Second,
+	previous := cluster.ProcessStorageTier()
+	t.Cleanup(func() { cluster.UseStorageTier(previous) })
+	// The member reads the tier of its own process once, when it first
+	// acts on an observation.
+	fresh := func(name string, age time.Duration) bool {
+		cluster.UseStorageTier(at(name))
+		f := &memberForward{}
+		f.observed.Store(&memberLeaderObservation{leader: 2, at: time.Now().Add(-age)})
+		leader, ok := f.observedLeader()
+		return ok && leader == 2
+	}
+	for _, tc := range []struct {
+		tier string
+		age  time.Duration
+		want bool
+	}{
+		{"standard", 2 * time.Second, true}, {"standard", 4 * time.Second, false},
+		{"slow-storage", 2 * time.Second, true}, {"slow-storage", 4 * time.Second, false},
+		{"slow-storage@100ms", 5 * time.Second, true}, {"slow-storage@100ms", 7 * time.Second, false},
+		{"slow-storage@200ms", 8 * time.Second, true}, {"slow-storage@200ms", 13 * time.Second, false},
 	} {
-		tier := at(name)
-		if got := memberLeaderFreshFor(tier); got != want {
-			t.Errorf("%s: fresh for %s, want %s", name, got, want)
+		if got := fresh(tc.tier, tc.age); got != tc.want {
+			t.Errorf("%s: an observation %s old is acted on: %v, want %v", tc.tier, tc.age, got, tc.want)
 		}
-		if _, longest := tier.ElectionTimer(); memberLeaderFreshFor(tier) < longest+memberLeaderObserveInterval {
-			t.Errorf("%s: an observation is fresh for %s, shorter than the tier's longest election timer %s and one observation", name, memberLeaderFreshFor(tier), longest)
+		// The window never ends before the tier's longest election can.
+		tier := at(tc.tier)
+		if _, longest := tier.ElectionTimer(); tier.Stretch(memberLeaderFresh) < longest+memberLeaderObserveInterval {
+			t.Errorf("%s: an observation is fresh for %s, shorter than the tier's longest election timer %s and one observation", tc.tier, tier.Stretch(memberLeaderFresh), longest)
 		}
-	}
-	// The member acts on what the tier of its own process allows.
-	cluster.UseStorageTier(at("slow-storage@200ms"))
-	t.Cleanup(func() { cluster.UseStorageTier(storagetier.Standard) })
-	f := &memberForward{}
-	f.observed.Store(&memberLeaderObservation{leader: 2, at: time.Now().Add(-8 * time.Second)})
-	if leader, ok := f.observedLeader(); !ok || leader != 2 {
-		t.Fatalf("an observation 8 s old is not acted on at an election timeout of 3 s: %d, %v", leader, ok)
-	}
-	f.observed.Store(&memberLeaderObservation{leader: 2, at: time.Now().Add(-13 * time.Second)})
-	if _, ok := f.observedLeader(); ok {
-		t.Fatal("an observation 13 s old is acted on")
-	}
-	cluster.UseStorageTier(storagetier.SlowStorage)
-	f.observed.Store(&memberLeaderObservation{leader: 2, at: time.Now().Add(-4 * time.Second)})
-	if _, ok := f.observedLeader(); ok {
-		t.Fatal("an observation 4 s old is acted on at slow-storage's timing")
 	}
 }

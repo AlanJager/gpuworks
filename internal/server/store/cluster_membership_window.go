@@ -3,6 +3,7 @@ package store
 import (
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/cluster"
 	"gpuworks.ai/gpuworks/internal/server/cluster/storagetier"
 )
 
@@ -20,8 +21,11 @@ const grantRetryHeadroom = 300 * time.Millisecond
 // same interruption every time and must still refuse a direct write shortly
 // after the window. At the tiers' own timing the window leaves room for one
 // repeat after a full observation timeout and no more, and that refusal comes
-// within three seconds.
-var clusterMembershipRetryWindow = baseGrantRetryWindow
+// within three seconds. It follows the tier this process runs its database
+// node with, read where the window is used.
+var clusterMembershipRetryWindow = func() time.Duration {
+	return GrantRetryWindowFor(cluster.ProcessStorageTier())
+}
 
 // GrantRetryWindowFor is the retry window of a cluster that runs this storage
 // tier. A tier run at a longer latency elects later, so the window grows to
@@ -32,11 +36,4 @@ var clusterMembershipRetryWindow = baseGrantRetryWindow
 // refused although a leader follows.
 func GrantRetryWindowFor(tier storagetier.Tier) time.Duration {
 	return min(max(baseGrantRetryWindow, tier.GrantRetryNeed()), ClusterMembershipGrantTimeout-grantRetryHeadroom)
-}
-
-// UseStorageTier sets the timing every membership grant of this process
-// follows. A command calls it once, with the tier its installation records,
-// before it opens the database.
-func UseStorageTier(tier storagetier.Tier) {
-	clusterMembershipRetryWindow = GrantRetryWindowFor(tier)
 }

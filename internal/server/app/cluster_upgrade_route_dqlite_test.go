@@ -10,6 +10,8 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -81,6 +83,23 @@ func TestClusterUpgradeStatusReportsHeldAgentConnections(t *testing.T) {
 	// may say by now.
 	if response.StorageTier != string(cluster.ProcessStorageTier()) || !strings.Contains(body, `"storage_tier":"`+string(cluster.ProcessStorageTier())+`"`) {
 		t.Fatalf("the member answered %s; want the tier it runs, %s", body, cluster.ProcessStorageTier())
+	}
+	// Beside it, the tier the installation records now: a record changed
+	// since the start shows as a different one, and a member that records
+	// none records the standard tier.
+	if response.RecordedStorageTier != "standard" {
+		t.Fatalf("a member without a record answered %s; want the standard tier recorded", body)
+	}
+	fixture.bundle.dataDir = t.TempDir()
+	if err := os.MkdirAll(filepath.Join(fixture.bundle.dataDir, "cluster-enrollment"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fixture.bundle.dataDir, "cluster-enrollment", "config.json"), []byte(`{"storage_tier":"slow-storage@100ms"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, response, body = upgradeStepCall(t, handler, fixture.requesterPair.Leaf, enrollment.ClusterUpgradeStatus); response.RecordedStorageTier != "slow-storage@100ms" ||
+		!strings.Contains(body, `"recorded_storage_tier":"slow-storage@100ms"`) || response.StorageTier != string(cluster.ProcessStorageTier()) {
+		t.Fatalf("after the record changed the member answered %s", body)
 	}
 	known = true
 	code, response, body = upgradeStepCall(t, handler, fixture.requesterPair.Leaf, enrollment.ClusterUpgradeStatus)

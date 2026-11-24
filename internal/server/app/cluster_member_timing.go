@@ -7,6 +7,9 @@ type ClusterMemberTiming struct {
 	Address string
 	// Tier is the tier the member started with, as storagetier writes it.
 	Tier string
+	// Recorded is the tier the member's installation records now, which
+	// it runs from its next start.
+	Recorded string
 	// Unread says why the member's timing is not known; empty when it is.
 	Unread string
 }

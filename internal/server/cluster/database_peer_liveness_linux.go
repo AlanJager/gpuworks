@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
-
-	"gpuworks.ai/gpuworks/internal/server/cluster/storagetier"
 )
 
 // Clear blackholed member sessions with headroom inside the initial
@@ -18,20 +16,16 @@ import (
 // the database process applies the same policy to the ones it accepts.
 const databasePeerLivenessTimeout = 3 * time.Second
 
-// peerLivenessFor is the limit in a cluster that runs this storage tier. At
-// a tier whose election timeout reaches the limit, a connection would be
-// closed at the very moment the leader steps down for want of answers; the
-// limit grows with the tier so that the election decides first.
-func peerLivenessFor(tier storagetier.Tier) time.Duration {
-	return tier.Stretch(databasePeerLivenessTimeout)
-}
-
 func configureDatabasePeerSocket(conn net.Conn) error {
 	tcp, ok := conn.(*net.TCPConn)
 	if !ok || tcp == nil {
 		return errors.New("database transport requires a TCP connection")
 	}
-	limit := peerLivenessFor(ProcessStorageTier())
+	// At a tier whose election timeout reaches the limit, a connection
+	// would be closed at the very moment the leader steps down for want of
+	// answers; the limit grows with the tier so that the election decides
+	// first.
+	limit := ProcessStorageTier().Stretch(databasePeerLivenessTimeout)
 	if err := tcp.SetKeepAliveConfig(net.KeepAliveConfig{Enable: true, Idle: time.Second, Interval: time.Second, Count: int(limit / time.Second)}); err != nil {
 		return err
 	}

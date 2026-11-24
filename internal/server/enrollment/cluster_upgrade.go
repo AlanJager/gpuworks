@@ -75,8 +75,12 @@ type ClusterUpgradeResponse struct {
 	// it started with, not the one it records by now); absent from a
 	// member whose program does not say.
 	StorageTier string `json:"storage_tier,omitempty"`
-	Refused     string `json:"refused,omitempty"`
-	Error       string `json:"error,omitempty"`
+	// RecordedStorageTier is the tier the answering member's installation
+	// records now, which it runs from its next start; absent when the
+	// member cannot read its record or its program does not say.
+	RecordedStorageTier string `json:"recorded_storage_tier,omitempty"`
+	Refused             string `json:"refused,omitempty"`
+	Error               string `json:"error,omitempty"`
 }
 
 // ValidClusterUpgradeAction reports a step this protocol knows.

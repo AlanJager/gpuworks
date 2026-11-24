@@ -80,19 +80,33 @@ func Parse(name string) (Tier, error) {
 	if name == "" {
 		return Standard, nil
 	}
-	base, latency, timed := strings.Cut(name, latencySeparator)
-	if _, ok := profiles[Tier(base)]; !ok {
-		return "", fmt.Errorf("unknown storage tier %q: want %s or %s, optionally with the latency it runs at (%s%s100ms)", name, Standard, SlowStorage, SlowStorage, latencySeparator)
+	base, latency, timed, err := split(name)
+	if err != nil {
+		return "", err
 	}
 	if !timed {
-		return Tier(base), nil
+		return base, nil
 	}
-	ms, ok := strings.CutSuffix(latency, "ms")
-	n, err := strconv.ParseUint(ms, 10, 16)
-	if !ok || err != nil || strconv.FormatUint(n, 10) != ms {
-		return "", fmt.Errorf("storage tier %q: the latency after %q must be whole milliseconds, as in %s%s100ms", name, latencySeparator, base, latencySeparator)
+	return base.WithLatency(latency)
+}
+
+// split is the one reading of a tier's text: its named tier and, when it
+// carries one, the latency after the separator, written as whole
+// milliseconds without a sign or leading zeros and with the unit.
+func split(name string) (base Tier, latency time.Duration, timed bool, err error) {
+	head, tail, timed := strings.Cut(name, latencySeparator)
+	if _, ok := profiles[Tier(head)]; !ok {
+		return "", 0, false, fmt.Errorf("unknown storage tier %q: want %s or %s, optionally with the latency it runs at (%s%s100ms)", name, Standard, SlowStorage, SlowStorage, latencySeparator)
 	}
-	return Tier(base).WithLatency(time.Duration(n) * time.Millisecond)
+	if !timed {
+		return Tier(head), 0, false, nil
+	}
+	ms, ok := strings.CutSuffix(tail, "ms")
+	n, parseErr := strconv.ParseUint(ms, 10, 16)
+	if !ok || parseErr != nil || strconv.FormatUint(n, 10) != ms {
+		return "", 0, false, fmt.Errorf("storage tier %q: the latency after %q must be whole milliseconds, as in %s%s100ms", name, latencySeparator, head, latencySeparator)
+	}
+	return Tier(head), time.Duration(n) * time.Millisecond, true, nil
 }
 
 // ValidLatency reports whether a database node may be run at this latency.
@@ -121,8 +135,11 @@ func (t Tier) WithLatency(latency time.Duration) (Tier, error) {
 
 // Base is the named tier without a latency of its own.
 func (t Tier) Base() Tier {
-	base, _, _ := strings.Cut(string(t), latencySeparator)
-	return Tier(base).known()
+	base, _, _, err := split(string(t))
+	if err != nil {
+		return Standard
+	}
+	return base
 }
 
 // ForNetworkLatency is the tier that runs the database at this latency.
@@ -144,14 +161,22 @@ func (t Tier) Recorded() string {
 	return string(t)
 }
 
-// NetworkLatency is the latency the database node is started with.
+// NetworkLatency is the latency the database node is started with. A Tier
+// comes from Parse or WithLatency; text that neither would produce (an
+// unknown name, a latency Parse refuses or one outside the range) is no tier
+// and reads as Standard, as the empty tier does. It never reads as another
+// timing than the text names.
 func (t Tier) NetworkLatency() time.Duration {
-	if _, latency, timed := strings.Cut(string(t), latencySeparator); timed {
-		if n, err := strconv.ParseUint(strings.TrimSuffix(latency, "ms"), 10, 16); err == nil && ValidLatency(time.Duration(n)*time.Millisecond) {
-			return time.Duration(n) * time.Millisecond
-		}
+	base, latency, timed, err := split(string(t))
+	switch {
+	case err != nil || t == "":
+		return profiles[Standard].latency
+	case !timed:
+		return profiles[base].latency
+	case !ValidLatency(latency):
+		return profiles[Standard].latency
 	}
-	return profiles[t.Base()].latency
+	return latency
 }
 
 // HeartbeatInterval is how often the leader's database sends to an idle
@@ -160,7 +185,7 @@ func (t Tier) HeartbeatInterval() time.Duration { return t.NetworkLatency() * 3 
 
 // ElectionTimeout is how long a leader goes without a majority before it
 // steps down, and the shortest a follower waits before it campaigns.
-func (t Tier) ElectionTimeout() time.Duration { return t.NetworkLatency() * electionFactor }
+func (t Tier) ElectionTimeout() time.Duration { return ElectionTimeoutFor(t.NetworkLatency()) }
 
 // ElectionTimer is the range a follower's randomized election timer is drawn
 // from.
@@ -225,11 +250,3 @@ func StretchFor(latency, window time.Duration) time.Duration {
 
 // Slower reports whether t waits longer than other before electing a leader.
 func (t Tier) Slower(other Tier) bool { return t.NetworkLatency() > other.NetworkLatency() }
-
-// known is t when it is a named tier, and Standard otherwise.
-func (t Tier) known() Tier {
-	if _, ok := profiles[t]; ok {
-		return t
-	}
-	return Standard
-}

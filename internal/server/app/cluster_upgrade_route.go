@@ -63,6 +63,9 @@ func clusterUpgradeHandler(bundle *enrollmentBundle, session joinedRaftSession, 
 			AppliedByExtension: status.AppliedExtensionMarkers(),
 			StorageTier:        string(cluster.ProcessStorageTier()),
 		}
+		if recorded, err := RecordedStorageTier(bundle.dataDir); err == nil {
+			response.RecordedStorageTier = string(recorded)
+		}
 		if agents != nil {
 			if held, known := agents(); known {
 				response.AgentConnections = &held

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/cluster"
 	"gpuworks.ai/gpuworks/internal/server/cluster/storagetier"
 )
 
@@ -37,14 +38,17 @@ func TestTheGrantRetryWindowFollowsTheStorageTier(t *testing.T) {
 			t.Errorf("%s: the window covers an election: %v", name, covered)
 		}
 	}
-	previous := clusterMembershipRetryWindow
-	t.Cleanup(func() { clusterMembershipRetryWindow = previous })
-	UseStorageTier("slow-storage@100ms")
-	if clusterMembershipRetryWindow != 3500*ms {
-		t.Fatalf("a process told its tier keeps a retry window of %s", clusterMembershipRetryWindow)
+	// The window has no setter of its own: it follows the tier the process
+	// was told for its database node, so a command that tells the cluster
+	// package (an installation, a restore) gets the window with it.
+	previous := cluster.ProcessStorageTier()
+	t.Cleanup(func() { cluster.UseStorageTier(previous) })
+	cluster.UseStorageTier("slow-storage@100ms")
+	if got := clusterMembershipRetryWindow(); got != 3500*ms {
+		t.Fatalf("a process told slow-storage@100ms has a retry window of %s, want 3.5s", got)
 	}
-	UseStorageTier(storagetier.SlowStorage)
-	if clusterMembershipRetryWindow != baseGrantRetryWindow {
-		t.Fatalf("back at the tier's own timing the window is %s", clusterMembershipRetryWindow)
+	cluster.UseStorageTier(storagetier.SlowStorage)
+	if got := clusterMembershipRetryWindow(); got != baseGrantRetryWindow {
+		t.Fatalf("back at the tier's own timing the window is %s", got)
 	}
 }
