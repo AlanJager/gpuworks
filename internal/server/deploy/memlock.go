@@ -14,9 +14,11 @@ var memlockUnlimitedArgs = [2]string{"--ulimit", "memlock=-1:-1"}
 // states a locked-memory limit has chosen it, whatever the template spec
 // (memlock_unlimited or its own docker_args), RDMA network or Engram shared
 // memory would have asked for; a template that states one wins over the
-// platform the same way, but not over the deployment's own.
+// platform the same way, but not over the deployment's own. A row that
+// holds an option and its value is split into the two arguments docker run
+// reads.
 func launchDockerArgs(template, own []string, p Params, memlockUnlimited bool) []string {
-	args := append(append([]string(nil), template...), own...)
+	args := splitDockerArgRows(append(append([]string(nil), template...), own...))
 	args = withComputeNetworkDockerArgs(args, p)
 	if memlockUnlimited && !hasMemlockUlimit(args) {
 		args = append(args, memlockUnlimitedArgs[0], memlockUnlimitedArgs[1])

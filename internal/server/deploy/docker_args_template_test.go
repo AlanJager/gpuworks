@@ -31,6 +31,31 @@ func TestResolveLaunchOrdersTemplateThenOwnThenPlatformDockerArgs(t *testing.T) 
 // A spec without docker_args leaves the launch exactly as it was before the
 // field existed: byte-identical docker args to a launch with no template
 // docker args stated at all.
+// The deploy form holds one docker arg per row, and a row may hold an option
+// with its value ("--group-add video"). The evaluation accepts such a row, so
+// the launch has to hand docker run two arguments: as one it is an unknown
+// flag.
+func TestResolveLaunchSplitsAnOptionAndValueRow(t *testing.T) {
+	launch, err := ResolveLaunch(ResolveLaunchInput{
+		Engine: launchTestEngine{}, Params: Params{ModelPath: DefaultModelMount, APIPort: 8000},
+		TemplateDockerArgs: []string{"--ulimit memlock=4096"},
+		ContainerOverrides: ContainerOverrides{DockerArgs: []string{
+			" --group-add video ", "-u 1000:1000", "--label=owner=a team", "--cap-add", "SYS_NICE", "--init",
+		}},
+		TemplateMemlockUnlimited: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"--ulimit", "memlock=4096",
+		"--group-add", "video", "-u", "1000:1000", "--label=owner=a team", "--cap-add", "SYS_NICE", "--init",
+	}
+	if !reflect.DeepEqual(launch.DockerArgs, want) {
+		t.Fatalf("docker args = %q, want %q", launch.DockerArgs, want)
+	}
+}
+
 func TestResolveLaunchWithoutTemplateDockerArgsIsUnchanged(t *testing.T) {
 	params := Params{ModelPath: "/model", APIPort: 30000, AssignedGPUs: 1, TensorParallel: 1}
 	withField, err := ResolveLaunch(ResolveLaunchInput{

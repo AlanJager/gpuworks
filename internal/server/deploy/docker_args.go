@@ -182,6 +182,24 @@ func dockerOptionName(token string) string {
 	return ""
 }
 
+// splitDockerArgRows turns each "option value" row the deploy form's editor
+// allows into the two arguments docker run reads, so the launch runs what the
+// checks above judged. A space after "=" belongs to the value, and a row that
+// names no option is passed as written.
+func splitDockerArgRows(args []string) []string {
+	var out []string // nil for no args, as the launch had before
+	for _, arg := range args {
+		token := strings.TrimSpace(arg)
+		at := strings.IndexAny(token, " =")
+		if !strings.HasPrefix(token, "-") || at < 0 || token[at] == '=' {
+			out = append(out, arg)
+			continue
+		}
+		out = append(out, token[:at], strings.TrimSpace(token[at+1:]))
+	}
+	return out
+}
+
 // dockerOptionValue answers the value of the option at args[index], in any of
 // the forms dockerOptionName accepts.
 func dockerOptionValue(args []string, index int) string {
