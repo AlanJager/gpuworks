@@ -587,6 +587,8 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/images/import` | 两种请求体：带 `schema_version` 的系统目录 manifest（schema 2/3，其他值 400），或社区/自定义添加用的 `{"series":[...]}`（不能写 `source=official`） | JWT(admin) |
 | POST | `/api/v1/images/sync` | 从发布通道更新系统镜像目录；忽略请求体，返回版本计数与系列。错误见[目录导入结果](#目录导入结果) | JWT(admin) |
 | POST | `/api/v1/images/preview-archive-url` | 下载前解析 `docker save` 归档 URL：`{"url"}` → `url`、`size_bytes`、`repo_tags`、`previewable`，可选的 `metadata_by_tag` 按引用返回引擎、框架、各自版本和宿主架构 | JWT(admin) |
+| GET | `/api/v1/images/nodes/{uuid}/runtime-images` | 扫描带标签的节点镜像。可选查询参数 `namespace`；返回镜像引用、不可变标识、大小及来源和部署用的 namespace。 | JWT(admin) |
+| POST | `/api/v1/images/nodes/{uuid}/runtime-images/inspect` | 检查所选镜像的配置并回填目录字段。将同一选择和 `node_uuid` 作为 `runtime_image` 随单个自定义版本提交到 `POST /api/v1/images/import`。 | JWT(admin) |
 | POST | `/api/v1/images/nodes/{uuid}/preview-archive-path` | 在所选节点预读本地镜像 tar，输入 `{"archive_path":"/absolute/file.tar"}`，返回 `repo_tags` 和可选的 `metadata_by_tag`，用于回填所选引用及其配置。`IMAGE_ARCHIVE_PREVIEW_FAILED` 的 `params.reason` 区分文件不存在、权限不足、文件类型错误、归档无效和超时。 | JWT(admin) |
 | POST | `/api/v1/images/{id}/nodes/{uuid}/sync` | 触发节点镜像获取：空请求体按[拉取设置](../how-to/configure-pull-settings.md)拉取（与部署启动同一份候选，不能指定仓库）；`source: url` / `url-relay` 从 HTTP 归档导入；管理员可用 `source: local` 和计算节点上的绝对路径 `archive_path` 加载本地文件，显式传 `force: true` 可替换已存在的镜像，同一节点的活动传输继续复用。节点已持有镜像时，普通本地导入返回 202、状态 `present` 且无传输 ID。节点加载启动失败返回 409 `IMAGE_ARCHIVE_LOAD_FAILED` 和分类原因 `params.reason`。路径或来源组合无效返回 400 `IMAGE_ARCHIVE_PATH_INVALID`；或从 `source_node` 节点间直连同步（可选 `rate_limit_kib_s`，不受同步组限制）。`source` 取 `""`、`default`、`url`、`url-relay`、`local` 以外的值回 400 `IMAGE_SOURCE_REMOVED`；来源规则让该节点无处可拉时回 409 `IMAGE_SOURCE_FORBIDDEN`；`"force":true` 时节点上已 `present` 也重新拉取 | JWT（本地文件需 admin） |
 | POST | `/api/v1/images/{id}/nodes/{uuid}/sync/probe` | 测试 `source_node` 到目标节点的直连握手，不传字节 | JWT |
@@ -616,6 +618,31 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/storages/settings` | 控制面显示名与缓存盘保留空间 | JWT |
 | PATCH | `/api/v1/storages/settings` | 修改上述设置 | admin |
 | GET | `/api/v1/storages/usage` | 各节点模型盘用量统计 | JWT |
+
+### 登记节点已有镜像
+
+管理员先调用 `GET /api/v1/images/nodes/{uuid}/runtime-images`。`list` 为响应，`selectedIndex` 为用户选择的行。读取该行的 `ref`、`identity`，再从列表顶层读取 `runtime`、`namespace` 和 `target_namespace`。Docker 的两个 namespace 均为空字符串。nerdctl 的 `namespace` 是来源，`target_namespace` 是该节点的部署目标。
+
+```js
+const row = list.items[selectedIndex];
+const selection = {
+  ref: row.ref,
+  identity: row.identity,
+  runtime: list.runtime,
+  namespace: list.namespace,
+  target_namespace: list.target_namespace
+};
+const inspectBody = selection;
+const importBody = {
+  runtime_image: { ...selection, node_uuid: nodeUUID },
+  series: [{
+    source: "custom", engine: "vllm", framework: "cuda",
+    versions: [{ image_ref: row.ref, framework_version: "13.0" }]
+  }]
+};
+```
+
+将 `inspectBody` 提交到同一节点的 `POST .../runtime-images/inspect` 读取元数据。补齐目录字段后，将 `importBody` 提交到 `POST /api/v1/images/import`。`nodeUUID` 与 GET 路径中的节点相同。示例中的引擎、框架和版本应使用该镜像的实际值。需要跨 namespace 复制时，导入请求返回已登记的版本，节点在后台复制。通过节点分布查看传输状态、已复制字节或取消任务。
 
 ### 存储配置与缓存状态
 

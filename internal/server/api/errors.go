@@ -246,7 +246,7 @@ const (
 	ErrorImageRetryUnavailable             = "IMAGE_RETRY_UNAVAILABLE"
 	ErrorImageInspectionUnavailable        = "IMAGE_INSPECTION_UNAVAILABLE"
 	ErrorImageImportTooLarge               = "IMAGE_IMPORT_TOO_LARGE"
-	ErrorImageFrameworkVersionRequired     = "IMAGE_FRAMEWORK_VERSION_REQUIRED"
+	ErrorImageFrameworkVersionRequired     = messages.ErrorImageFrameworkVersionRequired
 	ErrorImageSeriesVersionRequired        = "IMAGE_SERIES_VERSION_REQUIRED"
 	ErrorCatalogPackageDigestInvalid       = "CATALOG_PACKAGE_DIGEST_INVALID"
 	ErrorCatalogPackageRequiredForFiles    = "CATALOG_PACKAGE_REQUIRED_FOR_FILES"
