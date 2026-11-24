@@ -43,7 +43,7 @@ const dashboard = JSON.parse(fs.readFileSync(new URL("../src/i18n/locales/en/das
 const i18n = createInstance();
 await i18n.use(initReactI18next).init({ lng: "en", fallbackLng: "en", resources: { en: { dashboard, common: JSON.parse(fs.readFileSync(new URL("../src/i18n/locales/en/common.json", import.meta.url), "utf8")) } }, defaultNS: "dashboard", interpolation: { escapeValue: false } });
 const { MemoryRouter, useLocation } = await import("react-router-dom");
-const { cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+const { act, cleanup, fireEvent, render, screen, waitFor } = await import("@testing-library/react");
 const { api } = await import("../src/api.ts");
 const { analyticsApi } = await import("../src/analyticsApi.ts");
 const { default: DashboardPage } = await import("../src/pages/DashboardPage.tsx");
@@ -109,6 +109,60 @@ test("the page reads hardware first: compute, then platform services, then stora
   assert.deepEqual(summaryRequests, [[]]);
   assert.equal(document.querySelectorAll(".dashboard-overview-label-key").length, 0);
   ok(!document.body.textContent?.includes("by node label"));
+});
+
+test("manual refresh keeps the overview visible and disables repeated clicks until the response arrives", async () => {
+  stub();
+  api.storages = async () => ({ items: [{ id: 2, name: "shared", type: "nfs_cache" }], total: 1 }) as never;
+  const detail = { id: 2, name: "shared", nodes: { all: [] }, total_bytes: 100 * 1024 ** 3, available_bytes: 40 * 1024 ** 3 };
+  api.storage = async () => detail as never;
+  renderPage();
+  await screen.findByText("Used 60.0 GiB / total 100.0 GiB");
+  let finishStorage!: () => void;
+  api.storage = async () => {
+    await new Promise<void>(resolve => { finishStorage = resolve; });
+    return { ...detail, available_bytes: 30 * 1024 ** 3 } as never;
+  };
+  await screen.findByText("Normal");
+  let finish!: (data: DashboardSummary) => void;
+  let requests = 0;
+  api.dashboardSummary = () => {
+    requests++;
+    return new Promise(resolve => { finish = resolve; });
+  };
+  const button = screen.getByRole("button", { name: i18n.t("common:actions.refresh") }) as HTMLButtonElement;
+  fireEvent.click(button);
+  assert.equal(button.disabled, true);
+  fireEvent.click(button);
+  assert.equal(requests, 1);
+  ok(panel("Hardware").textContent?.includes("560GiB"));
+  finish({ ...summary, nodes: { ...summary.nodes, vram_gib: 640 } });
+  await waitFor(() => ok(panel("Hardware").textContent?.includes("640GiB")));
+  assert.equal(button.disabled, true);
+  ok(screen.getByText("Used 60.0 GiB / total 100.0 GiB"));
+  finishStorage();
+  await screen.findByText("Used 70.0 GiB / total 100.0 GiB");
+  await waitFor(() => assert.equal(button.disabled, false));
+});
+
+test("manual refresh reports a health request failure and clears it after a successful retry", async () => {
+  stub();
+  let offline = false;
+  const health = api.health;
+  api.health = async () => {
+    if (offline) throw Error("offline");
+    return health();
+  };
+  renderPage();
+  await screen.findByText("Normal");
+  offline = true;
+  const button = screen.getByRole("button", { name: i18n.t("common:actions.refresh") });
+  fireEvent.click(button);
+  await screen.findByText(dashboard.overview.refreshIncomplete);
+  offline = false;
+  fireEvent.click(button);
+  await screen.findByText("Normal");
+  await waitFor(() => assert.equal(screen.queryByText(dashboard.overview.refreshIncomplete), null));
 });
 
 test("compute is two panels: the hardware there is, then how it is used now", async () => {
@@ -337,6 +391,12 @@ test("incomplete model pagination marks the known issue count as a lower bound",
   ok(document.querySelector(".dashboard-overview-attention")?.textContent?.includes("Needs attention 1 category"));
   ok(screen.getAllByText("Some overview data is temporarily unavailable").some(el => el.closest('[role="status"]')));
   ok(!document.querySelector(".dashboard-overview-attention")?.textContent?.includes("failed model"));
+
+  const button = screen.getByRole("button", { name: i18n.t("common:actions.refresh") }) as HTMLButtonElement;
+  await act(async () => { fireEvent.click(button); });
+  assert.equal(button.disabled, false);
+  ok(screen.getByRole("link", { name: "Model file issues: at least 1" }));
+  assert.equal(screen.queryAllByText(dashboard.overview.refreshIncomplete).length, 0);
 });
 
 test("hundreds of issues across every category remain a seven-category strip with accurate node count", async () => {
@@ -534,7 +594,7 @@ test("three vendors are all listed without a fold; a vendor without a logo is na
   assert.equal(rows.length, 3);
   ok(!rows.some((row) => row.classList.contains("is-more")), "no fold at three vendors");
   assert.deepEqual(rows.map((row) => row.querySelector("img")?.getAttribute("alt") ?? row.querySelector(".dashboard-vendor-mark")?.textContent), ["AMD", "Kunlunxin", "Unknown Vendor"]);
-  assert.deepEqual(rows.slice(0, 2).map((row) => row.querySelector("img")?.parentElement?.className), ["vendor-mark vendor-mark-ink-dark", "vendor-mark vendor-mark-ink-light"], "dashboard marks carry their ink's plate class: AMD's dark ink, Kunlunxin's white");
+  assert.deepEqual(rows.slice(0, 2).map((row) => row.querySelector("img")?.parentElement?.className), ["vendor-mark vendor-mark-ink-dark", "vendor-mark vendor-mark-ink-light"], "dashboard marks carry the ink class for the original artwork");
   assert.equal(rows[2].querySelector("img"), null, "an unknown vendor has no logo, only its name");
   assert.equal(rows[2].querySelector(".dashboard-model-name")?.textContent, "Unidentified", "a card without a name is grouped as unidentified");
 });

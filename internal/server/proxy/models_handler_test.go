@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -87,7 +88,7 @@ func TestModelsListsTheRoutedNamesWithoutReadingDeployments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := New(st, storeNetworks(st), dialTestHub{}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
+	p := New(storeplane.New(st), storeNetworks(st), dialTestHub{}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
 	t.Cleanup(p.Close)
 	p.routes.rebuild()
 

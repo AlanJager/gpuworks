@@ -62,11 +62,11 @@
     "failed": "Could not install {{version}}. Check again and select a version."
   },
   "updates": {
+    "updateGroup": "Update version",
     "buildFields": {"channel": "Build channel", "builtAt": "Built", "matched": "Matching release"},
     "updateItem": "Update item",
     "channelLatest": "Latest in channel",
     "title": "Version and updates",
-    "description": "Check and update the server, the system image catalog and the inference template catalog here; without internet access, upload the files instead.",
     "check": "Check for updates",
     "unavailable": "Updates cannot be checked right now",
     "unavailableHelp": "Make sure the server can reach the internet (set HTTPS_PROXY on its host if it needs a proxy). Without internet access, upload the system image catalog and the inference template catalog here, and upgrade the server with an uploaded release or gpuworks upgrade --archive.", "checking": "Checking…", "unpublished": "Nothing has been published on the {{channel}} channel yet", "unpublishedHelp": "The sources can be reached; this channel just has nothing on it yet. Switch to the other channel, or check again once a release is published. The system image catalog and the inference template catalog can still be updated here by uploading a file.", "invalidIndex": "The sources answered with something that did not pass signature verification", "invalidIndexHelp": "The server reached the sources but did not get a valid release index back, which usually means a gateway or proxy that requires signing in intercepted the request. Check the outbound proxy and gateway of the server's host and check again later; meanwhile, update by uploading files here.",
@@ -87,6 +87,10 @@
     "apply": "Update",
     "uploadManifest": "Upload manifest",
     "uploadPackage": "Upload package",
+    "retryImageCatalog": "Retry catalog import",
+    "imageConflictsOtherVersion": "This channel does not offer the partially imported version. Use Upload manifest with that version to retry it.",
+    "imageConflictsSourceUnavailable": "To retry offline, use Upload manifest with the partially imported version. To retry from the channel, check for updates when the source is reachable.",
+    "imagesPartiallyApplied": "Catalog {{version}} partially imported",
     "imagesApplied": "System image catalog updated to {{version}}",
     "templatesApplied": "Inference template catalog updated to {{version}} ({{count}} models)",
     "templatesSkipped_one": "{{count}} inference template needs a newer server and was not updated",
@@ -129,7 +133,7 @@
     "autoCheckOffHelp": "Off: the server does not check by itself. \"Check for updates\" still reads the version index when you ask.",
     "notChecked": "Not checked yet",
     "notCheckedHelp": "Automatic checks are off. Use \"Check for updates\" at the top right, or upload files here.",
-    "currentBuild": "Current control-plane build",
+    "currentBuild": "Current version information",
     "checkedAt": "Checked {{time}}"
   },
   "usageReport": {
@@ -141,7 +145,6 @@
   "page": { "title": "Settings", "description": "Manage branding, updates, where images and models are pulled from, node and deployment policy, security and access, and integrations such as AI services", "breadcrumb": { "platform": "Platform", "settings": "Settings" }, "tabs": { "general": "General", "pull": "Image & model pulls", "nodes": "Nodes & deployments", "access": "Security & access", "integrations": "Integrations", "data": "Data retention", "diagnostics": "Diagnostics" } },
   "branding": {
     "title": "Branding",
-    "description": "Customize the logo, product name, header title and sign-in page text. Fields left empty use the built-in defaults, shown in the viewer's language; custom text is shown exactly as written, without translation.",
     "adminOnly": "Only administrators can change the branding.",
     "logo": "Logo",
     "logoHelp": "Shown at the left of the top bar and on the sign-in page, scaled with its proportions to at most 160 px wide and 24 px high; wide or square images both work. PNG, JPEG, WebP, or SVG. You can crop it after uploading; raster images are scaled down to 256 px and compressed, and a small uncropped SVG is kept as is.",

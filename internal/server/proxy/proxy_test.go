@@ -19,6 +19,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -233,7 +234,7 @@ func newProxyE2E(t *testing.T, upstream http.Handler) (*Proxy, string, func()) {
 		t.Fatal(err)
 	}
 	addr := strings.TrimPrefix(upstreamServer.URL, "http://")
-	p := New(st, storeNetworks(st), dialTestHub{addr: addr}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
+	p := New(storeplane.New(st), storeNetworks(st), dialTestHub{addr: addr}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
 	t.Cleanup(p.Close)
 	return p, apiKey, upstreamServer.Close
 }
@@ -402,7 +403,7 @@ func TestPlaygroundExternalEndpointRewritesModelAndStreams(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := New(st, storeNetworks(st), readinessTestHub{}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{}, nil, 0)
 	t.Cleanup(p.Close)
 	body := fmt.Sprintf(`{"model":"external:%d:GPT-5","messages":[{"role":"user","content":"hi"}],"stream":true}`, config.ID)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/playground/v1/chat/completions", strings.NewReader(body))
@@ -440,7 +441,7 @@ func TestPlaygroundExternalEndpointRejectsOtherPaths(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	p := New(st, storeNetworks(st), readinessTestHub{}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{}, nil, 0)
 	t.Cleanup(p.Close)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/playground/v1/audio/transcriptions", strings.NewReader(`{"model":"external:1:GPT-5"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -482,7 +483,7 @@ func TestPlaygroundProxyAuthorizesVideoLifecycleFromDeploymentContract(t *testin
 	if _, err := st.CreateInstance(&store.Instance{UUID: "video-instance", DeploymentID: dep.ID, NodeID: node.ID, State: proto.InstRunning, APIPort: 30000, DesiredStateJSON: string(desired)}); err != nil {
 		t.Fatal(err)
 	}
-	p := New(st, storeNetworks(st), dialTestHub{addr: strings.TrimPrefix(upstream.URL, "http://")}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), dialTestHub{addr: strings.TrimPrefix(upstream.URL, "http://")}, nil, 0)
 	t.Cleanup(p.Close)
 	handler := p.PlaygroundHandler(nil)
 
@@ -635,7 +636,7 @@ func TestDistributedSelectionRequiresEveryRankAndRoutesOnlyLeader(t *testing.T) 
 		DistGroup: "group-a", DistRole: "follower", NNodes: 2, NodeRank: 1,
 		Headless: true, DistAttempt: 1,
 	})
-	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"node-a": true, "node-b": true}}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{"node-a": true, "node-b": true}}, nil, 0)
 	t.Cleanup(p.Close)
 
 	_, _, status, message, _ := p.selectStatus("qwen-72b")
@@ -712,7 +713,7 @@ func TestSelectInstanceReturns503ForAsleepOrNonRoutableSingleInstance(t *testing
 			}); err != nil {
 				t.Fatal(err)
 			}
-			p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"single-node": true}}, nil, 0)
+			p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{"single-node": true}}, nil, 0)
 			t.Cleanup(p.Close)
 			_, _, status, msg, asleep := p.selectStatus("model")
 			if status != http.StatusServiceUnavailable || !strings.Contains(msg, tc.wantMsg) || asleep != tc.wantAsleep {
@@ -752,7 +753,7 @@ func TestSelectDeploymentInstanceSkipsNewerPendingRollout(t *testing.T) {
 		t.Fatalf("pending deployment id=%d, want newer than serving id=%d", pending.ID, serving.ID)
 	}
 
-	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"rollout-node": true}}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{"rollout-node": true}}, nil, 0)
 	t.Cleanup(p.Close)
 	selected, target, status, message, asleep := p.selectStatus("stable-name")
 	if status != 0 || message != "" || asleep || selected == nil || selected.ID != serving.ID || target.nodeUUID != "rollout-node" || target.port != 30001 {
@@ -789,7 +790,7 @@ func TestSelectInstanceReturns503OnceSleepIsOrdered(t *testing.T) {
 	if _, err := st.CreateInstance(&store.Instance{UUID: "ordered-instance", DeploymentID: dep.ID, NodeID: node.ID, State: proto.InstRunning, APIPort: 30001, DesiredStateJSON: string(spec)}); err != nil {
 		t.Fatal(err)
 	}
-	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"ordered-node": true}}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{"ordered-node": true}}, nil, 0)
 	t.Cleanup(p.Close)
 	if _, _, status, msg, asleep := p.selectStatus("model"); status != 0 || asleep {
 		t.Fatalf("awake instance not routable: %d %q", status, msg)

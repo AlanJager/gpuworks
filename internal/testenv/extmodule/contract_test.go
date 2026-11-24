@@ -262,7 +262,9 @@ func TestASchedulingHolderHoldsANode(t *testing.T) {
 		t.Fatalf("uncordon a held node = %d %s", status, body)
 	}
 	holder.on.Store(false)
-	if _, released, err := e.Store().ApplySchedulingHolds(); err != nil || len(released) != 1 || released[0] != n.UUID {
+	// The server applies holds in its own pass too; whichever pass finds the
+	// hold gone first releases the node, so this call may find nothing left.
+	if _, released, err := e.Store().ApplySchedulingHolds(); err != nil || len(released) > 1 || (len(released) == 1 && released[0] != n.UUID) {
 		t.Fatalf("release = %v %v", released, err)
 	}
 	if node, _ := e.Store().NodeByUUID(n.UUID); node.Scheduling != store.NodeSchedulable || node.SchedulingBy != store.SchedulingBySelf {

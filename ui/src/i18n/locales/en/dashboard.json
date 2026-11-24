@@ -12,6 +12,7 @@
   "description": "Monitor cluster capacity, GPU utilization, temperature, power, and service health in real time",
   "overview": {
     "description": "Whether anything needs you, how services and tasks run, and whether the GPUs suffice",
+    "refreshIncomplete": "Some data could not be refreshed. Try again.",
     "unavailable": "Some overview data is temporarily unavailable",
     "platformSummary": "Platform resources",
     "models": "Models",

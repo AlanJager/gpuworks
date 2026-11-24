@@ -33,7 +33,7 @@ infer_vendor_callers	0	max
 store_list_nodes_callers	9	max
 store_list_deployments_callers	6	max
 store_list_instances_callers	1	max
-store_concrete_importers	24	max
+store_concrete_importers	26	max
 store_db_accessor_callers	0	max
 controller_struct_fields	34	max
 controller_struct_mutexes	0	max
@@ -46,6 +46,10 @@ agent_engine_struct_maps	9	max
 controller_exported_methods	15	max
 planning_concrete_store_refs	74	max
 planning_sync_files	0	max
+proxy_store_handle_refs	0	max
+proxy_bus_hub_imports	0	max
+proxy_adapter_refs	0	max
+proxy_store_type_files	15	max
 app_new_lines	301	max
 app_run_lines	191	max
 app_run_goroutines	20	max

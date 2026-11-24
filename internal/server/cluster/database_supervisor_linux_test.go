@@ -495,3 +495,24 @@ func TestHelperDiesWithAKilledServer(t *testing.T) {
 		t.Fatalf("child %d outlived a killed parent", pid)
 	}
 }
+
+// The child is told that this server files its role records, and records it
+// writes before a start error are neither part of that error nor counted
+// against the bytes kept for it: the error still starts with the child's own
+// first line, however many records came first.
+func TestHelperRoleRecordsStayOutOfAStartError(t *testing.T) {
+	fakeHelper(t, `echo "$`+roleRecordsEnv+`" > "$0.env"
+for i in $(seq 1 60); do echo "`+roleLinePrefix+`at=1700000000000000000 event=state old=UNAVAILABLE new=FOLLOWER term=1 id=7 address=127.0.0.1:9001 n=$i" >&2; done
+echo 'raft directory is damaged' >&2; exit 3`)
+	_, _, err := startHelperUntilReady(t.Context(), nil)
+	if err == nil {
+		t.Fatal("start succeeded")
+	}
+	told, readErr := os.ReadFile(os.Getenv(helperBinaryEnv) + ".env")
+	if readErr != nil || strings.TrimSpace(string(told)) != "1" {
+		t.Fatalf("the child was started with %s=%q (%v), want 1", roleRecordsEnv, told, readErr)
+	}
+	if text := err.Error(); !strings.HasSuffix(text, ": raft directory is damaged") || strings.Contains(text, roleLinePrefix) || strings.Contains(text, "event=state") {
+		t.Fatalf("start error: %q", text)
+	}
+}

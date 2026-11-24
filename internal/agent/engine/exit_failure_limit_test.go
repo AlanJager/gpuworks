@@ -37,6 +37,29 @@ func exitedInstanceReport(t *testing.T, logs string, vramLimitBytes int64) proto
 	return failedReport(t, statuses)
 }
 
+// A KV cache that does not fit a limited instance (GWKS-423: 1 GiB limit on a
+// 910B4, 0.09 GiB left for a KV cache of 0.44 GiB) names the limit first and
+// keeps the KV cache cause; the message carries the engine's own line, whose
+// figures are the only ones known.
+func TestAKVCacheShortageUnderADGPULimitNamesTheLimitAndKeepsTheEnginesLine(t *testing.T) {
+	const line = "ValueError: To serve at least one request with the models's max seq len (40960), (0.44 GiB KV cache is needed, which is larger than the available KV cache memory (0.09 GiB). Based on the available memory, the estimated maximum model length is 8368."
+	st := exitedInstanceReport(t, "INFO 11-23 11:20:01 [api_server.py:1] vLLM API server\n"+line+"\n", 1<<30)
+	f := st.RuntimeFailure
+	if f.Code != proto.ErrorContainerExited || len(f.Causes) != 2 || f.Causes[0].Code != enginelog.CodeDGPUMemoryLimit || f.Causes[1].Code != enginelog.CodeKVCacheInsufficient {
+		t.Fatalf("failure = %+v", f)
+	}
+	if c := f.Causes[0]; c.LimitBytes != 1<<30 || c.NeededBytes != 0 || c.Device != nil {
+		t.Fatalf("limit cause = %+v", c)
+	}
+	if want := "headless worker exited (code 1): dGPU memory limit reached: the engine could not get the memory it needs within its 1.0 GiB limit (" + line + ")"; st.Message != want {
+		t.Fatalf("message = %q, want %q", st.Message, want)
+	}
+	// Without a limit the same exit is the KV cache alone.
+	if f := exitedInstanceReport(t, line+"\n", 0).RuntimeFailure; len(f.Causes) != 1 || f.Causes[0].Code != enginelog.CodeKVCacheInsufficient {
+		t.Fatalf("unlimited failure = %+v", f)
+	}
+}
+
 // A start that failed for memory on an instance with a dGPU memory limit is
 // reported as the limit: the cause the assistant's findings are read from,
 // its numbers where the engine printed them, and a message that says so.

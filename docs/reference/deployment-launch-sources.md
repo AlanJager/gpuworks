@@ -205,7 +205,8 @@ sleep、LoRA、投机解码、KV 卸载等特性只在对应字典字段被声�
 
 手写命令勾选「命令已包含准备脚本」后，模板的准备脚本不再执行，避免重复。多机与 PD 的手写命令由所有 rank 共用，
 必须引用能区分 rank 的变量，否则评估与创建返回 `MANUAL_COMMAND_RANK_BLIND`，见
-[多机与 PD 的手工命令](../explanation/launch-config.md#多机与-pd-的手工命令)。
+[多机与 PD 的手工命令](../explanation/launch-config.md#多机与-pd-的手工命令)。手写命令要写 `--port ${GPUWORKS_API_PORT}`；没写端口或写的端口已被占用时，
+评估分别给出 `MANUAL_COMMAND_PORT_UNSTATED`、`MANUAL_COMMAND_PORT_TAKEN` 提醒，见[手工命令的端口与平台变量](../explanation/launch-config.md#手工命令的端口与平台变量)。
 
 ### 容器覆盖字段
 
@@ -264,6 +265,8 @@ vLLM 把 CPU 内存层（字典参数 `kv_offloading_size`，GiB）放在 `/dev/
 1. 模板档位的 `docker_args`
 2. 部署自己的 `docker_args`（容器覆盖字段）
 3. 平台追加的参数（拓扑 RDMA 选项、`memlock_unlimited` 带来的 `--ulimit`，见「锁定内存」）
+
+前两层里把选项和值写在同一项的（如 `--group-add video`），下发时拆成两个参数；`=` 之后的空格属于值。
 
 校验与部署自己的 `docker_args` 完全一致（`deploy.ValidateDockerArgs`，见下节「docker 参数里不允许的项」），
 对模板档位自己的 `shm_bytes` 生效：一个模板写 `--ipc=host` 又写 `shm_bytes` 在导入时就被拒绝。

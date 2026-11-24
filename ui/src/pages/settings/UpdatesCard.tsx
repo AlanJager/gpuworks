@@ -19,6 +19,7 @@ import { OptionSelect } from "../../ui-kit/OptionSelect";
 import type { ServerBuildInfo } from "../../serverBuildInfo";
 import { useConsoleUpgrade } from "./useConsoleUpgrade";
 import ServerAgentNotice from "./ServerAgentNotice";
+import ImageCatalogConflicts from "../images/ImageCatalogConflicts";
 import TemplatesSkippedNotice from "./TemplatesSkippedNotice";
 import UsageReportSwitch from "./UsageReportSwitch";
 
@@ -145,7 +146,7 @@ export default function UpdatesCard() {
 
   const updateImages = () => apply("images", async () => {
     const result = await api.syncImages();
-    return t("updates.imagesApplied", { version: result.catalog_version });
+    return t(result.skipped?.length ? "updates.imagesPartiallyApplied" : "updates.imagesApplied", { version: result.catalog_version });
   });
   const uploadImages = (file: File) => apply("imagesUpload", async () => {
     const result = await api.importImageCatalogFile(file);
@@ -205,8 +206,11 @@ export default function UpdatesCard() {
   };
 
   const serverState = status && serverUpdateState(status);
+  const imageCatalog = status?.image_catalog;
+  const canRetryImages = Boolean(status?.available && imageCatalog?.latest && imageCatalog.latest === imageCatalog.current);
 
   const stateOf = (row: Row) => {
+    if (row.key === "images" && !row.updateAvailable && imageCatalog?.skipped?.length) return <Badge size="sm" status="warning">{t("updates.imagesPartiallyApplied", { version: row.current })}</Badge>;
     if (!status?.available) return <Text type="secondary">{t("updates.unknown")}</Text>;
     if (row.checkError) return <Text type="danger">{productMessageText(tCommon, row.checkError)}</Text>;
     if (!row.latest) return <Text type="secondary">{t("updates.notPublished")}</Text>;
@@ -336,38 +340,47 @@ export default function UpdatesCard() {
       </div>
     </div>}>
       <div className="gw-updates">
-        <p className="gw-description">{t("updates.description")}</p>
-        {!status && showServerNotice && serverNotice}
-        {loadError && <Notice tone="danger" title={loadError} />}
-        {status && notChecked && !loading && !loadError && <Notice tone="info" title={t("updates.notChecked")}>{t("updates.notCheckedHelp")}</Notice>}
-        {status && !notChecked && !status.available && !loading && <UnavailableAlert status={status} channelName={channelName(status.channel)} />}
-        <div className="gw-toolbar">
-          {status && <div className="gw-channel">
-            <span className="gw-channel-label">{t("updates.channel")}</span>
-            <OptionSelect aria-label={t("updates.channel")} value={channel} options={channelOptions}
-              disabled={!status.channel_editable || busy !== "" || waiting || switchingTo !== null}
-              onChange={value => void switchChannel(value)} />
-            <p className="gw-channel-help">{channel === "release" ? t("updates.channelReleaseNote") : t("updates.channelNightlyNote")}</p>
-          </div>}
-          <div className="gw-check">
-            {status && (loading || !notChecked) && <span>{loading ? t("updates.checking") : t("updates.checkedAt", { time: formatTime(status.checked_at) })}</span>}
-            <Button variant="secondary" leadingIcon={ConsoleIcon.refresh} loading={loading} aria-busy={loading} onClick={() => void check(true)}>{t("updates.check")}</Button>
-          </div>
-        </div>
         {status && <RunningBuild version={status.server.current} build={status.server.current_build} />}
-        {status && <div className="gw-items-table">
-          <Table<Row> rowKey="key" size="small" pagination={false} loading={loading}
-            dataSource={rowsOf(status, names)} columns={columns}
-            expandable={{
-              showExpandColumn: false,
-              expandedRowClassName: "gw-notice-row",
-              expandedRowKeys: showServerNotice ? ["server"] : [],
-              rowExpandable: row => row.key === "server",
-              expandedRowRender: () => serverNotice,
-            }} />
-        </div>}
-        <TemplatesSkippedNotice skipped={skippedTemplates} />
-
+        <section aria-labelledby="update-version-heading">
+          <h3 className="gw-version-group" id="update-version-heading">{t("updates.updateGroup")}</h3>
+          <div className="gw-update-body">
+            {!status && showServerNotice && serverNotice}
+            {loadError && <Notice tone="danger" title={loadError} />}
+            {status && notChecked && !loading && !loadError && <Notice tone="info" title={t("updates.notChecked")}>{t("updates.notCheckedHelp")}</Notice>}
+            {status && !notChecked && !status.available && !loading && <UnavailableAlert status={status} channelName={channelName(status.channel)} />}
+            <div className="gw-toolbar">
+              {status && <div className="gw-channel">
+                <span className="gw-channel-label">{t("updates.channel")}</span>
+                <OptionSelect aria-label={t("updates.channel")} value={channel} options={channelOptions}
+                  disabled={!status.channel_editable || busy !== "" || waiting || switchingTo !== null}
+                  onChange={value => void switchChannel(value)} />
+                <p className="gw-channel-help">{channel === "release" ? t("updates.channelReleaseNote") : t("updates.channelNightlyNote")}</p>
+              </div>}
+              <div className="gw-check">
+                {status && (loading || !notChecked) && <span>{loading ? t("updates.checking") : t("updates.checkedAt", { time: formatTime(status.checked_at) })}</span>}
+                <Button variant="secondary" leadingIcon={ConsoleIcon.refresh} loading={loading} aria-busy={loading} onClick={() => void check(true)}>{t("updates.check")}</Button>
+              </div>
+            </div>
+            {status && <div className="gw-items-table">
+              <Table<Row> rowKey="key" size="small" pagination={false} loading={loading}
+                dataSource={rowsOf(status, names)} columns={columns}
+                expandable={{
+                  showExpandColumn: false,
+                  expandedRowClassName: "gw-notice-row",
+                  expandedRowKeys: showServerNotice ? ["server"] : [],
+                  rowExpandable: row => row.key === "server",
+                  expandedRowRender: () => serverNotice,
+                }} />
+            </div>}
+            <ImageCatalogConflicts skipped={imageCatalog?.skipped ?? []} action={canRetryImages && (
+              <Button variant="secondary" size="sm" disabled={loading || busy !== ""} loading={busy === "images"}
+                onClick={() => void updateImages()}>{t("updates.retryImageCatalog")}</Button>
+            )}>
+              {!canRetryImages && <p>{t(status?.available ? "updates.imageConflictsOtherVersion" : "updates.imageConflictsSourceUnavailable")}</p>}
+            </ImageCatalogConflicts>
+            <TemplatesSkippedNotice skipped={skippedTemplates} />
+          </div>
+        </section>
       </div>
       {status && <VersionDrawer open={picker} canInstall={status.server.self_upgrade}
         blocker={status.server.self_upgrade_blocker ? t(`updates.blocker.${status.server.self_upgrade_blocker}`, { defaultValue: status.server.self_upgrade_blocker }) : undefined}

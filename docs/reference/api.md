@@ -587,6 +587,8 @@ macOS 忽略 `no_systemd`。
 | POST | `/api/v1/images/import` | 两种请求体：带 `schema_version` 的系统目录 manifest（schema 2/3，其他值 400），或社区/自定义添加用的 `{"series":[...]}`（不能写 `source=official`） | JWT(admin) |
 | POST | `/api/v1/images/sync` | 从发布通道更新系统镜像目录；忽略请求体，返回版本计数与系列。错误见[目录导入结果](#目录导入结果) | JWT(admin) |
 | POST | `/api/v1/images/preview-archive-url` | 下载前解析 `docker save` 归档 URL：`{"url"}` → `url`、`size_bytes`、`repo_tags`、`previewable`，可选的 `metadata_by_tag` 按引用返回引擎、框架、各自版本和宿主架构 | JWT(admin) |
+| GET | `/api/v1/images/nodes/{uuid}/runtime-images` | 扫描带标签的节点镜像。可选查询参数 `namespace`；返回镜像引用、不可变标识、大小及来源和部署用的 namespace。 | JWT(admin) |
+| POST | `/api/v1/images/nodes/{uuid}/runtime-images/inspect` | 检查所选镜像的配置并回填目录字段。将同一选择和 `node_uuid` 作为 `runtime_image` 随单个自定义版本提交到 `POST /api/v1/images/import`。 | JWT(admin) |
 | POST | `/api/v1/images/nodes/{uuid}/preview-archive-path` | 在所选节点预读本地镜像 tar，输入 `{"archive_path":"/absolute/file.tar"}`，返回 `repo_tags` 和可选的 `metadata_by_tag`，用于回填所选引用及其配置。`IMAGE_ARCHIVE_PREVIEW_FAILED` 的 `params.reason` 区分文件不存在、权限不足、文件类型错误、归档无效和超时。 | JWT(admin) |
 | POST | `/api/v1/images/{id}/nodes/{uuid}/sync` | 触发节点镜像获取：空请求体按[拉取设置](../how-to/configure-pull-settings.md)拉取（与部署启动同一份候选，不能指定仓库）；`source: url` / `url-relay` 从 HTTP 归档导入；管理员可用 `source: local` 和计算节点上的绝对路径 `archive_path` 加载本地文件，显式传 `force: true` 可替换已存在的镜像，同一节点的活动传输继续复用。节点已持有镜像时，普通本地导入返回 202、状态 `present` 且无传输 ID。节点加载启动失败返回 409 `IMAGE_ARCHIVE_LOAD_FAILED` 和分类原因 `params.reason`。路径或来源组合无效返回 400 `IMAGE_ARCHIVE_PATH_INVALID`；或从 `source_node` 节点间直连同步（可选 `rate_limit_kib_s`，不受同步组限制）。`source` 取 `""`、`default`、`url`、`url-relay`、`local` 以外的值回 400 `IMAGE_SOURCE_REMOVED`；来源规则让该节点无处可拉时回 409 `IMAGE_SOURCE_FORBIDDEN`；`"force":true` 时节点上已 `present` 也重新拉取 | JWT（本地文件需 admin） |
 | POST | `/api/v1/images/{id}/nodes/{uuid}/sync/probe` | 测试 `source_node` 到目标节点的直连握手，不传字节 | JWT |
@@ -617,6 +619,31 @@ macOS 忽略 `no_systemd`。
 | PATCH | `/api/v1/storages/settings` | 修改上述设置 | admin |
 | GET | `/api/v1/storages/usage` | 各节点模型盘用量统计 | JWT |
 
+### 登记节点已有镜像
+
+管理员先调用 `GET /api/v1/images/nodes/{uuid}/runtime-images`。`list` 为响应，`selectedIndex` 为用户选择的行。读取该行的 `ref`、`identity`，再从列表顶层读取 `runtime`、`namespace` 和 `target_namespace`。Docker 的两个 namespace 均为空字符串。nerdctl 的 `namespace` 是来源，`target_namespace` 是该节点的部署目标。
+
+```js
+const row = list.items[selectedIndex];
+const selection = {
+  ref: row.ref,
+  identity: row.identity,
+  runtime: list.runtime,
+  namespace: list.namespace,
+  target_namespace: list.target_namespace
+};
+const inspectBody = selection;
+const importBody = {
+  runtime_image: { ...selection, node_uuid: nodeUUID },
+  series: [{
+    source: "custom", engine: "vllm", framework: "cuda",
+    versions: [{ image_ref: row.ref, framework_version: "13.0" }]
+  }]
+};
+```
+
+将 `inspectBody` 提交到同一节点的 `POST .../runtime-images/inspect` 读取元数据。补齐目录字段后，将 `importBody` 提交到 `POST /api/v1/images/import`。`nodeUUID` 与 GET 路径中的节点相同。示例中的引擎、框架和版本应使用该镜像的实际值。需要跨 namespace 复制时，导入请求返回已登记的版本，节点在后台复制。通过节点分布查看传输状态、已复制字节或取消任务。
+
 ### 存储配置与缓存状态
 
 - `updated_at` 用作编辑版本；target 的 `override_only: true` 表示纯节点配置例外，不参与范围选择。省略或为 `false` 时保留显式选择语义。
@@ -645,14 +672,14 @@ macOS 忽略 `no_systemd`。
 
 `POST /images/sync` 与带 `schema_version` 的 `POST /images/import` 导入系统目录，返回
 `{catalog_version, created, updated, deleted, deprecated, skipped:[], series:[...]}`。
-计数按版本行；`series` 是导入后的系统系列。manifest 未列出的系统版本，无引用时删除，有引用时弃用。
+计数按版本行；`series` 是导入后的系统系列。manifest 未列出的系统版本，有引用或已分发到节点时标记为弃用，其余删除。
 社区/自定义导入返回受影响的系列 `{items:[...], total}`。
 
-失败时不修改目录，按以下错误处理：
+通道同步遇到社区或自定义条目的名称或镜像引用冲突时返回 200，保留本地条目，在 `skipped` 中列出跳过项，并导入其余条目。手工上传的 manifest 遇到相同冲突时返回 400 `IMAGE_IMPORT_CONFLICT`，整批回滚。
 
-- 发布源均不可达：502 `UPDATE_SOURCES_UNAVAILABLE`；有索引但没有与索引一致的目录文件：502 `UPDATE_DOWNLOAD_FAILED`。
-- 通道未发布目录：404 `UPDATE_NOT_PUBLISHED`。
-- 内容非法：400 `IMAGE_MANIFEST_INVALID`；与社区/自定义行同名或同 ref 冲突：400 `IMAGE_IMPORT_CONFLICT`。
+manifest 内容非法时，导入前返回 400 `IMAGE_MANIFEST_INVALID`。通道同步还可能在下载阶段返回 502 `UPDATE_SOURCES_UNAVAILABLE`（发布源均不可达）、404 `UPDATE_NOT_PUBLISHED`（索引未发布目录）或 502 `UPDATE_DOWNLOAD_FAILED`（无法下载与索引一致的文件）。
+
+两种方式都在目录行提交后记录目录版本与跳过项。记录失败时 API 返回 500，此时目录行已经生效。排除存储错误后，重新导入同一份 manifest 即可刷新记录。
 
 版本行的 `rolling_tag`、`deprecated`、`deprecated_since` 描述滚动 tag 与弃用状态；
 `reference_count` 统计引用该 ref 的部署、未结束实例与模型数。
@@ -1963,7 +1990,7 @@ RunPod 需要开放端口或补平台公钥时，先返回 409 `INSTANCE_RESTART
 - 来源信息：胜出源，以及已答复来源的 `{url,ok,latency_ms,error}`；尚未答复的慢源不列出，界面不展示来源详情。
 - `server`、`image_catalog`、`template_catalog`：各含 `current`、`latest`、`update_available`。模板另有 `compatible`；server 另有 `installable`、`self_upgrade`、`self_upgrade_blocker`、`install_dir`（`server.yaml` 所在安装目录，无目录时省略）。
 
-server 只有渠道版本更新时才标记 `update_available`。两份目录还须与当前内容不同，且发布不早于当前构建，避免把旧目录标成更新。
+server 只有渠道版本更新时才标记 `update_available`。目录发布不早于当前构建且内容有变时可更新。系统镜像目录部分导入时，`image_catalog.skipped` 列出冲突名称。当前版本与渠道相同时，`update_available` 仍为 false。管理员解决冲突后可重试导入。完整导入后省略该字段。
 无可用源仍返回 200、`available=false`，由 `unavailable_reason` 区分：
 
 - `unpublished`：源可达，但该渠道没有索引。

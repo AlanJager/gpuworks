@@ -160,7 +160,7 @@ specs:
   - --hf-overrides
   - '{"architectures":["Qwen3VLForSequenceClassification"],"classifier_from_token":["no","yes"],"is_original_qwen3_reranker":true}'
   - --chat-template
-  - /models/Qwen/Qwen3-VL-Reranker-2B/additional_chat_templates/reranker.jinja
+  - /model/additional_chat_templates/reranker.jinja
   api:
     health_endpoint: /health
     operations:

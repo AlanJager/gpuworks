@@ -218,7 +218,11 @@ func TestOfflineSegmentPreservationRejectsChangedProtectedBytesAndCancellation(t
 
 func TestOfflineSegmentSnapshotPairsRefuseOmissionAndCorruption(t *testing.T) {
 	requireDatabaseHelper(t)
-	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	// The snapshot below needs more than a thousand committed entries, each
+	// synced to disk on its own; a runner whose disk takes a third of a second
+	// per sync needs minutes for them, so the bound is the work's, not a
+	// fast disk's.
+	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Minute)
 	defer cancel()
 	original := filepath.Join(t.TempDir(), "original")
 	db, err := OpenSingleDatabase(ctx, original, "gpuworks.db")

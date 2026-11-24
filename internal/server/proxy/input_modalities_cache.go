@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/server/proxy/plane"
 )
 
 // modalityMaxAge bounds how long a model's declared input modalities are
@@ -18,7 +18,7 @@ const modalityMaxAge = 30 * time.Second
 // model. The cache holds while the model topic's bus generation stands (an
 // edit of a model's declarations announces one); any model change empties it.
 type modelModalities struct {
-	store *store.Store
+	store plane.Source
 	now   func() time.Time
 	mu    sync.Mutex
 	gen   uint64
@@ -41,9 +41,9 @@ func (m *modelModalities) clock() time.Time {
 // declares none or they cannot be read as a list.
 func (m *modelModalities) forModel(modelID uint) ([]string, error) {
 	gen := uint64(0)
-	cacheable := m.store != nil && m.store.Bus != nil
+	cacheable := m.store != nil && m.store.Announces()
 	if cacheable {
-		gen = m.store.Bus.Generation("model")
+		gen = m.store.Generation(plane.TopicModel)
 	}
 	now := m.clock()
 	if cacheable {

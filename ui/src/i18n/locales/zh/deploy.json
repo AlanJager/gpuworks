@@ -120,7 +120,7 @@
     "PLANNING_KV_BELOW_CONTEXT": "预计 KV 缓存可容纳 {{kv_tokens}} 个 token，少于最大上下文 {{max_model_len}}。实际容量受注意力结构和推理引擎实现影响，估算可能不准确。可以降低最大上下文，也可以按当前配置继续部署；引擎可能启动失败。",
     "IMAGE_PARTITION_PROFILE_UNBUILT": "镜像 CANN {{framework_version}} × {{arch}} 不在内嵌 dGPU 资产的已构建组合内；探针验证的是节点执行路径，镜像仍可能不兼容。",
     "IMAGE_PARTITION_PROFILE_UNVERIFIED": "镜像 CANN {{framework_version}} × {{arch}} 的 dGPU 资产尚未经预置真机环境验证。",
-    "PD_CARD_NETWORK_UNREACHABLE": "网络 {{network}} 上所选 PD 卡口不互通：{{pairs}}（已验证卡对：{{available}}，— 表示暂无）。请改选互通卡对，并在部署前重跑卡矩阵测试。",
+    "PD_CARD_NETWORK_UNREACHABLE": "$t(common:apiError.PD_CARD_NETWORK_BLOCKED)",
     "PD_CARD_NETWORK_UNTESTED": "网络 {{network}} 的 PD 卡口尚未验证双向互通：{{pairs}}（已验证卡对：{{available}}，— 表示暂无）。请固定卡号并运行卡矩阵测试，结果 24 小时内有效。",
     "PD_UNVERIFIED_COMBINATION": "PD 与 {{feature}} 的组合是允许的，但尚未在真机上验证过。",
     "PD_GPU_MODELS_DIFFER": "PD 各角色使用了不同的 GPU 型号（{{models}}），各角色的吞吐与延迟会有差异。",
@@ -132,6 +132,8 @@
     "ENGRAM_SHARED_MEMORY_RUNTIME": "Engram 共享内存（{{flag}}）需要约 {{shm_gib}} GiB /dev/shm 和不受限的锁定内存，{{runtime}} 直接沿用宿主机设置，平台无法检查；请检查宿主机，或改用 Docker/nerdctl。",
     "ENGRAM_CONFIG_UNCERTAIN": "无法解析 Engram 配置（{{flag}}）；如果它使用共享内存，需要约 {{shm_gib}} GiB /dev/shm 和不受限的锁定内存，而 {{runtime}} 直接沿用宿主机设置，请检查配置和宿主机。",
     "ENGRAM_MANUAL_UNCHECKED": "手写命令中出现了 Engram（{{flag}}），但写法过于动态无法解析，平台没有据此推导共享内存和锁定内存设置。请确认共享内存与 memlock 足够，或改用引擎模式。",
+    "MANUAL_COMMAND_PORT_UNSTATED": "手写命令没有设置 API 端口，引擎会监听自己的默认端口，与平台分配的端口不一致时部署会一直无法就绪。请在引擎命令中加上 {{flag}} {{variable}}。",
+    "MANUAL_COMMAND_PORT_TAKEN": "端口 {{port}} 在节点 {{node}} 上已被占用。命令里写的端口总会换成平台分配的端口，可直接写 {{flag}} {{variable}}。",
     "ASCEND_SLEEP_EXPANDABLE_SEGMENTS_DISABLED": "昇腾上休眠不能与 expandable segments 共存，已把 {{variable}} 改为 {{value}}；如显存不足，请调低 gpu_memory_utilization 或 max_model_len 或关闭“可休眠”。",
     "KUBE_ENGINE_PORTS_OUTSIDE": "有运行中的实例占用的端口在新的引擎端口段 {{range}} 之外：{{instances}}。它们保留原端口、继续运行；只有之后启动的实例才使用新范围。",
     "PD_UCX_NETLINK_HANG": "节点 {{names}} 的内核会让 UCX 卡住，而 PD 模式 {{mode}} 经以太网用 NIXL 传 KV，引擎很可能一直起不来。部署仍允许创建；请先在该节点上关闭整机 IPv6，修复命令见下方。",
@@ -209,7 +211,8 @@
     "runtime_unreported": "{{vendor}} 需要 {{required_os}}/{{required_arch}} 和 {{required_runtime}}；此节点尚未上报完整的运行时信息。",
     "accelerator_feature_unsupported": "{{vendor}} 不支持{{feature}}。请调整启动选项或选择其他加速卡。",
     "accelerator_device_selection_required": "{{vendor}} 启动前必须明确分配 GPU。",
-    "launch_features_unknown": "无法检查 {{vendor}} 的启动命令功能，请提供可识别的引擎入口或结构化启动参数。"
+    "launch_features_unknown": "无法检查 {{vendor}} 的启动命令功能，请提供可识别的引擎入口或结构化启动参数。",
+    "dgpu_startup_memory": "$t(common:apiError.DGPU_STARTUP_MEMORY)"
   },
   "placementReason": {
     "node_cordoned": "该节点已停止调度。请恢复它的调度或选择其他节点。",
@@ -233,6 +236,7 @@
     "sleeping_residue": "休眠实例需保留 {{sleeping_gib}} GiB 常驻显存。",
     "foreign_held": "平台外的进程占用此卡 {{foreign_gib}} GiB，另在其旁保留 {{foreign_headroom_gib}} GiB 余量。",
     "foreign_held_only": "平台外的进程占用此卡 {{foreign_gib}} GiB。",
+    "memory_contract_hint": "卸载权重或加载时量化的引擎，模板可用 placement 解析器声明每卡显存。",
     "image_delivery_detail": "失败原因：{{detail}}",
     "model_unavailable_detail": "失败原因：{{detail}}",
     "plan_failed_detail": "上报的失败原因：{{detail}}",

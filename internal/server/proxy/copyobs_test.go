@@ -18,6 +18,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -78,7 +79,7 @@ func newObservedProxy(t *testing.T, upstream http.Handler, buf *syncBuffer) (*Pr
 		t.Fatal(err)
 	}
 	log := slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	p := New(st, storeNetworks(st), dialTestHub{addr: strings.TrimPrefix(upstreamServer.URL, "http://")}, log, 0)
+	p := New(storeplane.New(st), storeNetworks(st), dialTestHub{addr: strings.TrimPrefix(upstreamServer.URL, "http://")}, log, 0)
 	t.Cleanup(p.Close)
 	return p, apiKey, upstreamServer.Close
 }

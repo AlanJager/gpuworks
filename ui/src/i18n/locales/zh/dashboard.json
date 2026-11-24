@@ -12,6 +12,7 @@
   "description": "实时查看集群容量、GPU 利用率、温度、功耗和服务健康状态",
   "overview": {
     "description": "平台当前是否有问题、服务和任务的运行情况、GPU 是否够用",
+    "refreshIncomplete": "本次刷新未能获取全部数据，请重试。",
     "unavailable": "部分概览数据暂时无法获取",
     "platformSummary": "平台资源汇总",
     "models": "模型",

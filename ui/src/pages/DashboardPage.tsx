@@ -1,10 +1,11 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { ConsoleIcon } from "../ui-kit/consoleIcons";
 import { Button } from "../components/ui/button";
 import { Tooltip } from "../components/ui/tooltip";
 import { Notice } from "../ui-kit/Notice";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { api, useEvents, usePolling, type CloudProvider, type GPUListResponse, type Health, type List, type ModelListItem, type ModelPage, type MonitorOverview, type NodePage, type Storage, type StorageNodeUsage } from "../api";
+import { api, useEvents, usePolling, type CloudProvider, type GPUListResponse, type Health, type List, type ModelListItem, type ModelPage, type MonitorOverview, type NodePage, type Storage } from "../api";
 import { analyticsApi, type UsageAnalytics } from "../analyticsApi";
 import { fmtCelsius, fmtCompact, fmtInt, fmtPct, fmtWatts } from "./analytics/format";
 import { storageTypeInfo } from "../storageTypes";
@@ -19,7 +20,7 @@ const ATTENTION_DETAIL_LIMIT = 5;
 const STORAGE_PAGE_SIZE = 2;
 
 type ModelOverview = { total: number; ready: number; preparing: number; failed: number; items: ModelListItem[] };
-type StorageOverview = { rows: StorageRow[]; problems: { id: number; name: string; count: number }[]; failedDetails: number };
+type StorageOverview = { sharedCount: number; usageUnavailable: boolean; rows: StorageRow[]; problems: { id: number; name: string; count: number }[]; failedDetails: number };
 type Issue = { kind: string; name: string; reason: string; to: string };
 type AttentionGroup = { label: string; count: number; to: string };
 
@@ -41,11 +42,14 @@ async function readModels(): Promise<ModelOverview> {
   };
 }
 
-async function readStorageOverview(storages: Storage[], usage: StorageNodeUsage[]): Promise<StorageOverview> {
+async function readStorageOverview(): Promise<StorageOverview> {
+  const [list, usage] = await Promise.allSettled([api.storages(), api.storageUsage()]);
+  if (list.status === "rejected") throw list.reason;
+  const storages = list.value.items;
   const sharedStorages = storages.filter((storage) => storageTypeInfo(storage.type).shared);
   const results = await Promise.allSettled(sharedStorages.map((storage) => api.storage(storage.id, true)));
   const details = results.filter((result): result is PromiseFulfilledResult<Storage> => result.status === "fulfilled").map((result) => result.value);
-  const usageByNode = new Map(usage.map((node) => [node.node_uuid, node]));
+  const usageByNode = new Map((usage.status === "fulfilled" ? usage.value.items : []).map((node) => [node.node_uuid, node]));
   const rows: StorageRow[] = [];
   const problems = storages.flatMap((storage) => {
     const count = (storage.nodes?.problems ?? []).filter((node) => node.state !== "offline").length;
@@ -69,7 +73,7 @@ async function readStorageOverview(storages: Storage[], usage: StorageNodeUsage[
       problems: problems.find((problem) => problem.id === storage.id)?.count ?? 0,
     });
   }
-  return { rows, problems, failedDetails: results.length - details.length };
+  return { sharedCount: sharedStorages.length, usageUnavailable: usage.status === "rejected", rows, problems, failedDetails: results.length - details.length };
 }
 
 const ratio = (part?: number | null, whole?: number | null) => part != null && whole != null && whole > 0 ? part / whole * 100 : undefined;
@@ -79,6 +83,8 @@ export default function DashboardPage() {
   const { t, i18n } = useTranslation("dashboard");
   const language = i18n.resolvedLanguage ?? "en";
   const [storagePage, setStoragePage] = useState(1);
+  const [refreshState, setRefreshState] = useState<"idle" | "pending" | "finished" | "incomplete">("idle");
+  const refreshing = refreshState === "pending";
   const health = usePolling<Health>(api.health, 10000);
   const summary = usePolling(() => api.dashboardSummary(), 10000);
   const providers = usePolling<List<CloudProvider>>(api.providers, 30000);
@@ -86,17 +92,24 @@ export default function DashboardPage() {
   const models = usePolling<ModelOverview>(readModels, 60000);
   const offlineNodes = usePolling<NodePage>(() => api.nodesPage({ page: 1, page_size: 20, state: ["offline"] }), 30000);
   const monitor = usePolling<MonitorOverview>(() => api.monitorOverview("6h"), 30000);
-  const storages = usePolling<List<Storage>>(api.storages, 30000);
-  const storageUsage = usePolling<List<StorageNodeUsage>>(api.storageUsage, 30000);
-  const storageIds = storages.data?.items.map((storage) => storage.id).join(",") ?? "";
-  const storage = usePolling<StorageOverview>(() => readStorageOverview(storages.data?.items ?? [], storageUsage.data?.items ?? []), 30000, [storageIds, storageUsage.updatedAt]);
+  const storage = usePolling(readStorageOverview, 30000);
   const usage = usePolling<UsageAnalytics>(() => {
     const to = Date.now();
     return analyticsApi.usage({ from: to - DAY, to, granularity: "hour" });
   }, 30000);
-  useEvents("node", () => { void health.refresh(); void summary.refresh(); void gpus.refresh(); void offlineNodes.refresh(); void storageUsage.refresh(); });
+  useEvents("node", () => { void health.refresh(); void summary.refresh(); void gpus.refresh(); void offlineNodes.refresh(); void storage.refresh(); });
   useEvents("deployment", () => { summary.refetch(); monitor.refetch(); });
   useEvents("provider", () => providers.refetch());
+
+  async function refreshDashboard() {
+    setRefreshState("pending");
+    try {
+      await Promise.all([health, summary, providers, gpus, models, offlineNodes, monitor, storage, usage]
+        .map(query => query.refresh()));
+    } finally {
+      setRefreshState("finished");
+    }
+  }
 
   const fleet = summary.data;
   const cloudList = providers.data?.items ?? [];
@@ -127,7 +140,7 @@ export default function DashboardPage() {
   const totalTokens = totals ? totals.prompt_tokens + totals.completion_tokens : undefined;
   // Open usage analytics on the same window the token panel shows.
   const usageLink = usage.data ? `/analytics/usage?range=custom&from=${usage.data.range.from_ms}&to=${usage.data.range.to_ms}&gran=${usage.data.range.granularity}` : "/analytics/usage";
-  const storageIncomplete = !!(storages.error || storage.error || storage.data?.failedDetails);
+  const storageIncomplete = !!(storage.error || storage.data?.failedDetails || storage.data?.usageUnavailable);
   const storageRows = storage.data?.rows ?? [];
   const currentStoragePage = Math.min(storagePage, Math.max(1, Math.ceil(storageRows.length / STORAGE_PAGE_SIZE)));
   const attentionGroups: AttentionGroup[] = [
@@ -152,7 +165,13 @@ export default function DashboardPage() {
   const attentionEntries = groupedAttention
     ? attentionGroups.map((group) => ({ to: group.to, title: group.label, content: <strong>{group.label}</strong> }))
     : issues.map((issue) => ({ to: issue.to, title: `${issue.kind} · ${issue.name} · ${issue.reason}`, content: <><span>{issue.kind}</span><strong>{issue.name}</strong><span>{issue.reason}</span></> }));
-  const partial = [summary, providers, gpus, models, offlineNodes, monitor, storages, storageUsage, storage, usage].some((query) => !!query.error) || !!storage.data?.failedDetails || modelIssuesIncomplete;
+  const refreshFailed = [health, summary, providers, gpus, models, offlineNodes, monitor, usage].some((query) => !!query.error) || storageIncomplete;
+  // Polling keeps failures in query state and resolves the refresh promise.
+  // Read the committed results once the complete manual refresh has settled.
+  useEffect(() => {
+    if (refreshState === "finished") setRefreshState(refreshFailed ? "incomplete" : "idle");
+    if (refreshState === "incomplete" && !refreshFailed) setRefreshState("idle");
+  }, [refreshState, refreshFailed]);
   const groups = gpus.data ? vendorGroups(gpus.data, t("overview.unknownGpu")) : [];
   const modelCount = groups.reduce((sum, group) => sum + group.models.length, 0);
 
@@ -234,7 +253,7 @@ export default function DashboardPage() {
   </Block>;
 
   const storageBlock = <Block key="storage" title={t("overview.storageBlock")} className="dashboard-storage">
-    <Panel title={t("overview.storageCapacity")} tag={t("overview.storageCount", { count: storages.data?.items.filter((item) => storageTypeInfo(item.type).shared).length ?? 0 })} to="/storage" label={t("overview.viewStorage")}>
+    <Panel title={t("overview.storageCapacity")} tag={t("overview.storageCount", { count: storage.data?.sharedCount ?? 0 })} to="/storage" label={t("overview.viewStorage")}>
       {storageRows.length ? <><div className={storageRows.length > STORAGE_PAGE_SIZE ? "dashboard-overview-storage-page" : undefined}>{storageRows.slice((currentStoragePage - 1) * STORAGE_PAGE_SIZE, currentStoragePage * STORAGE_PAGE_SIZE).map((row) => <StorageCapacityRow key={row.id} row={row} />)}</div>{storageRows.length > STORAGE_PAGE_SIZE && <nav className="dashboard-overview-storage-pagination" aria-label={t("overview.storageCapacity")}><Button variant="ghost" size="sm" disabled={currentStoragePage === 1} onClick={() => setStoragePage(currentStoragePage - 1)}>{t("common:resourceTable.previousPage")}</Button><span>{currentStoragePage} / {Math.ceil(storageRows.length / STORAGE_PAGE_SIZE)}</span><Button variant="ghost" size="sm" disabled={currentStoragePage * STORAGE_PAGE_SIZE >= storageRows.length} onClick={() => setStoragePage(currentStoragePage + 1)}>{t("common:resourceTable.nextPage")}</Button></nav>}</> : <EmptyState title={storageIncomplete ? t("overview.unavailable") : t("overview.noStorage")} detail={storageIncomplete ? "" : t("overview.noStorageHint")} />}
     </Panel>
     <Panel title={t("overview.resourceAccess")}>
@@ -255,9 +274,12 @@ export default function DashboardPage() {
         // A light green pill with a bright dot: the dark success text alone read as black.
         ? <Badge status="success" size="sm" leadingIcon={<span className="size-1.5 rounded-full bg-success-strong" />}>{t("overview.normal")}</Badge>
         : <b>{controlStatus ?? "—"}</b>}</span>
+      <Button size="sm" variant="secondary" leadingIcon={ConsoleIcon.refresh}
+        loading={refreshing} disabled={refreshing} aria-busy={refreshing}
+        onClick={() => void refreshDashboard()}>{t("common:actions.refresh")}</Button>
     </div>} />
     {attentionEntries.length > 0 && <AttentionBanner entries={attentionEntries} grouped={groupedAttention} count={groupedAttention ? attentionGroups.length : attentionCount} />}
-    {partial && <Notice tone="warning" title={t("overview.unavailable")} />}
+    {(refreshFailed || modelIssuesIncomplete) && <Notice tone="warning" title={t(refreshState === "incomplete" ? "overview.refreshIncomplete" : "overview.unavailable")} />}
     {blocks}
   </div>;
 }

@@ -32,7 +32,7 @@ func newPreemptibleProxy(t *testing.T, level string, replies ...string) (*Proxy,
 		if reply == abortedReply && p != nil {
 			// The arbiter put the deployment to sleep for another while the
 			// request ran.
-			_ = updateInstanceRow(p.store, "omni-instance", map[string]any{"sleep_level": 1})
+			_ = updateInstanceRow(storeOf(p.store), "omni-instance", map[string]any{"sleep_level": 1})
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, reply)
@@ -41,7 +41,7 @@ func newPreemptibleProxy(t *testing.T, level string, replies ...string) (*Proxy,
 	t.Cleanup(closeUpstream)
 	front := httptest.NewServer(p.Handler())
 	t.Cleanup(front.Close)
-	return p, p.store, key, depID, front, &calls
+	return p, storeOf(p.store), key, depID, front, &calls
 }
 
 // presetDeployment is a sleepable deployment of the yield policy, with its

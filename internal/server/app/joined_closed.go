@@ -185,7 +185,7 @@ func (a *App) assembleClosedMemberMaterials(ctx context.Context, bundle *enrollm
 			return err
 		}
 		router.Post(enrollment.ClusterQuorumDiscoveryPath, discovery)
-		if upgrade, err := clusterUpgradeHandler(bundle, a.joinedRaft, requests); err == nil {
+		if upgrade, err := clusterUpgradeHandler(bundle, a.joinedRaft, requests, a.heldAgentConnections); err == nil {
 			router.Post(enrollment.ClusterUpgradePath, upgrade)
 		}
 	}

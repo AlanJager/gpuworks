@@ -7,6 +7,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -35,7 +36,7 @@ func TestSharedServedNameRoutesToTheNewestDeploymentThatCanAnswer(t *testing.T) 
 			t.Fatal(err)
 		}
 	}
-	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"shared-name-node": true}}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{"shared-name-node": true}}, nil, 0)
 	t.Cleanup(p.Close)
 	// Each step rebuilds the route snapshot first, so the assertion is about
 	// the ordering and not about how soon an asynchronous refresh lands.

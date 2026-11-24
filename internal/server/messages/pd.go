@@ -57,6 +57,7 @@ const (
 	// network the group shares cannot carry the mode's KV transport.
 	ErrorPDNetworkAcceleratorRequired = "PD_NETWORK_ACCELERATOR_REQUIRED"
 	ErrorPDNetworkHostRequired        = "PD_NETWORK_HOST_REQUIRED"
+	ErrorPDCardNetworkBlocked         = "PD_CARD_NETWORK_BLOCKED"
 	// ErrorPDNetworkRDMARequired: the mode moves KV over RDMA (Mooncake), and
 	// the group, even a single host, is not on a host RDMA compute network;
 	// only such a network gives the instances the RDMA devices.
