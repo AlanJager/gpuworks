@@ -34,10 +34,6 @@ func ClusterBackupDirectory(cfg Config) string {
 	return filepath.Join(cfg.DataDir, "cluster-backups")
 }
 
-// ErrClusterBackupUnavailable reports that no consistent image could be read:
-// no leader answered, or leadership moved on every attempt.
-var ErrClusterBackupUnavailable = errors.New("cluster backup could not read a consistent database image")
-
 // clusterBackupLeader finds the member that answers a quorum proof naming
 // itself the leader, asking this member first.
 func clusterBackupLeader(ctx context.Context, addresses []string, dial func(context.Context, string) (net.Conn, error)) (cluster.QuorumProof, string, error) {
@@ -122,28 +118,19 @@ func BackupCluster(ctx context.Context, cfg Config, options ClusterBackupOptions
 		}
 	}
 	name := filepath.Base(cfg.DBPath)
-	var image []byte
-	var before, after cluster.QuorumProof
-	for attempt := 0; image == nil; attempt++ {
-		if attempt == 3 {
-			return backup, fmt.Errorf("%w: leadership moved during three attempts", ErrClusterBackupUnavailable)
-		}
-		var leader string
-		before, leader, err = clusterBackupLeader(callCtx, addresses, dial)
-		if err != nil {
-			return backup, err
-		}
-		candidate, err := cluster.ReadDatabaseImage(callCtx, leader, name, dial)
-		if err != nil {
-			return backup, fmt.Errorf("%w: %s: %w", ErrClusterBackupUnavailable, leader, err)
-		}
-		// The second barrier on the same member in the same term shows it was
-		// the leader throughout, so the image holds only committed writes: all
-		// of them up to the first barrier and none after the second.
-		after, err = cluster.ReadQuorumProof(callCtx, leader, dial)
-		if err == nil && after.Term == before.Term && after.LeaderID == before.LeaderID && after.Index >= before.Index {
-			image = candidate
-		}
+	image, before, after, err := clusterBackupImage(callCtx, clusterBackupRead{
+		leader: func(ctx context.Context) (cluster.QuorumProof, string, error) {
+			return clusterBackupLeader(ctx, addresses, dial)
+		},
+		image: func(ctx context.Context, leader string) ([]byte, error) {
+			return cluster.ReadDatabaseImage(ctx, leader, name, dial)
+		},
+		proof: func(ctx context.Context, leader string) (cluster.QuorumProof, error) {
+			return cluster.ReadQuorumProof(ctx, leader, dial)
+		},
+	})
+	if err != nil {
+		return backup, err
 	}
 	dir := options.Dir
 	if dir == "" {

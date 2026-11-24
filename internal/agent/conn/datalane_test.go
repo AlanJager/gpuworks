@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -302,7 +303,7 @@ func TestDataLane_OpensWithSessionIDAndFlag(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if err := stop(); err != nil && err != context.Canceled {
+	if err := stop(); err != nil && !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run: %v", err)
 	}
 	c.dataMu.Lock()
@@ -362,7 +363,7 @@ func TestDataLane_RejectRetriesWithBackoffAndCtrlSurvives(t *testing.T) {
 	if live != nil {
 		t.Fatal("rejected data lane left a live data session")
 	}
-	if err := stop(); err != nil && err != context.Canceled {
+	if err := stop(); err != nil && !errors.Is(err, context.Canceled) {
 		t.Fatalf("Run ended with %v; the ctrl lane must survive data rejects", err)
 	}
 }

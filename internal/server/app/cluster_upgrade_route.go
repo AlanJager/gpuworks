@@ -18,7 +18,11 @@ import (
 // own enrollment listener, to a caller that proves an admitted member key.
 // It works on the session that owns the database, so it answers while the
 // member's business is closed and while its executable is ahead of the schema.
-func clusterUpgradeHandler(bundle *enrollmentBundle, session joinedRaftSession, requests *materialRequestTracker) (http.HandlerFunc, error) {
+//
+// agents reports the agent connections this member holds (nil when the
+// member has no business to hold any): the upgrade command replaces the
+// members that hold none first.
+func clusterUpgradeHandler(bundle *enrollmentBundle, session joinedRaftSession, requests *materialRequestTracker, agents func() (int, bool)) (http.HandlerFunc, error) {
 	if requests == nil || bundle == nil || bundle.trust == nil {
 		return nil, errors.New("cluster upgrade requires an authenticated enrollment identity")
 	}
@@ -56,6 +60,11 @@ func clusterUpgradeHandler(bundle *enrollmentBundle, session joinedRaftSession, 
 			Applied: status.Applied, Known: status.Known, Base: status.Base, Ready: status.Ready(),
 			AppliedExtensions: status.AppliedExtensions, KnownExtensions: status.KnownExtensions,
 			AppliedByExtension: status.AppliedExtensionMarkers(),
+		}
+		if agents != nil {
+			if held, known := agents(); known {
+				response.AgentConnections = &held
+			}
 		}
 		for _, member := range status.Members {
 			response.Members = append(response.Members, enrollment.ClusterUpgradeMember{

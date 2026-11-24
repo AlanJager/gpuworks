@@ -1,6 +1,6 @@
 /* Overview composes public Zeron surfaces and metrics; layout follows prototype v12. */
 .dashboard-overview { max-width: 1480px; margin: 0 auto; color: var(--fg-default); font-size: 13px; container-type: inline-size; }
-.dashboard-header-meta { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 14px; color: var(--fg-muted); font-size: 12px; }
+.dashboard-header-meta { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 4px 14px; color: var(--fg-muted); font-size: 12px; }
 .dashboard-header-meta b { color: var(--fg-default); font-weight: 550; }
 .dashboard-header-service { display: inline-flex; align-items: center; gap: 6px; }
 .dashboard-overview-alert { margin-bottom: 12px; }
