@@ -1,7 +1,7 @@
 package app
 
 // businessRefusalHeader names, on a refused request, why this member did not
-// serve it. The value is one of businessRefusalCodes and nothing else: the
+// serve it. The value is a key of businessRefusalCodes and nothing else: the
 // refusal is answered before authentication, so it carries no address, no
 // identity and no text from the request. It is a diagnostic for operators
 // and collectors, documented in docs/explanation/control-plane-cluster.md;
@@ -38,15 +38,34 @@ const (
 	refusalOther              = "other"                     // a reason this list does not name
 )
 
-// businessRefusalCodes is every value the header can carry; markRefusal
-// writes nothing else.
-var businessRefusalCodes = []string{
-	refusalNoGeneration, refusalGenerationChanged, refusalClusterUpgrade, refusalNoHandler,
-	refusalSessionsUnroutable, refusalTargetNotCurrent,
-	refusalProofNotEligible, refusalProofMissing, refusalProofExpired, refusalProofStopped,
-	refusalProofRunCanceled, refusalProofCanceled, refusalProofHeadroom, refusalProofEpochChanged,
-	refusalProofOwnerChanged, refusalRenewalUnavailable, refusalRequestCanceled, refusalRequestDeadline,
-	refusalNoKnownLeader, refusalNotTheLeader, refusalLeaderUnreachable,
-	refusalPeerUnidentified, refusalForwardNotReady, refusalPeerUndecided, refusalPeerNotAdmitted,
-	refusalOther,
+// businessRefusalCodes is the one list of the values the header can carry.
+// Each has the word the gate and the material proof use for the same reason
+// in the readiness log line, where that is not the code itself.
+var businessRefusalCodes = map[string]string{
+	refusalNoGeneration:       "",
+	refusalGenerationChanged:  "",
+	refusalClusterUpgrade:     "",
+	refusalNoHandler:          "",
+	refusalSessionsUnroutable: "",
+	refusalTargetNotCurrent:   "",
+	refusalProofNotEligible:   "",
+	refusalProofMissing:       "",
+	refusalProofExpired:       "expired",
+	refusalProofStopped:       "stopped",
+	refusalProofRunCanceled:   "run_canceled",
+	refusalProofCanceled:      "",
+	refusalProofHeadroom:      "headroom",
+	refusalProofEpochChanged:  "epoch_changed",
+	refusalProofOwnerChanged:  "",
+	refusalRenewalUnavailable: "",
+	refusalRequestCanceled:    "",
+	refusalRequestDeadline:    "",
+	refusalNoKnownLeader:      "",
+	refusalNotTheLeader:       "",
+	refusalLeaderUnreachable:  "",
+	refusalPeerUnidentified:   "",
+	refusalForwardNotReady:    "",
+	refusalPeerUndecided:      "",
+	refusalPeerNotAdmitted:    "",
+	refusalOther:              "",
 }

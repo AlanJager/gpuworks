@@ -29,8 +29,8 @@ func memberServiceHandler(next http.Handler, member *App, refusals *businessRefu
 			serveMemberHealth(w, r, next, member, refusals)
 			return
 		}
-		if reason := member.businessRefusalReason(); reason != "" {
-			refusals.refuse(w, r, reason)
+		if service := member.memberService(r.Context(), false); !service.BusinessReady {
+			refusals.refuse(w, r, service.BusinessRefusal)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -119,31 +119,6 @@ func serveMemberHealth(w http.ResponseWriter, r *http.Request, next http.Handler
 	copyHeader(w.Header(), header)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(append(encoded, '\n'))
-}
-
-// businessRefusalReason is empty when this member's business is ready: the
-// facts memberService reads, without the scheduling answer.
-func (a *App) businessRefusalReason() string {
-	if a == nil || a.store == nil {
-		return memberRefusalReason(false, false, false, false)
-	}
-	return memberRefusalReason(true, a.materialsSurviveFault(), a.sessionsRoutable(), a.targetsCurrent())
-}
-
-// memberRefusalReason names the first fact EvaluateMemberService finds
-// missing for business; it is empty when that function says ready.
-func memberRefusalReason(live, materialsSurviveFault, sessionRoutable, targetCurrent bool) string {
-	switch {
-	case !live:
-		return refusalNoHandler
-	case !materialsSurviveFault:
-		return refusalProofNotEligible
-	case !sessionRoutable:
-		return refusalSessionsUnroutable
-	case !targetCurrent:
-		return refusalTargetNotCurrent
-	}
-	return ""
 }
 
 type capturingResponse struct {

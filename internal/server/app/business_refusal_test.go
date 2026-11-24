@@ -179,10 +179,16 @@ func TestGateAndMemberHandlerRefusalsNameTheirReason(t *testing.T) {
 // the gate and the proof give in their own words has its code there, and a
 // reason nobody listed is answered as "other", never passed through.
 func TestRefusalHeaderCarriesOnlyListedCodes(t *testing.T) {
-	seen := map[string]bool{}
-	for _, code := range businessRefusalCodes {
-		if seen[code] || code == "" || strings.ContainsAny(code, " :/.") {
-			t.Fatalf("code %q is repeated or not a plain word", code)
+	seen, words := map[string]bool{}, 0
+	for code, word := range businessRefusalCodes {
+		if code == "" || strings.ContainsAny(code, " :/.") {
+			t.Fatalf("code %q is not a plain word", code)
+		}
+		if _, alsoCode := businessRefusalCodes[word]; word != "" && alsoCode {
+			t.Fatalf("the gate's word %q for %q is itself a code", word, code)
+		}
+		if word != "" {
+			words++
 		}
 		seen[code] = true
 	}
@@ -194,8 +200,8 @@ func TestRefusalHeaderCarriesOnlyListedCodes(t *testing.T) {
 		"renewal_unavailable": "renewal_unavailable", "request_canceled": "request_canceled", "request_deadline": "request_deadline",
 		"10.0.0.7:9002 refused": "other", "": "other",
 	}
-	if len(want) != len(gateReasons)+2 {
-		t.Fatalf("this test names %d gate reasons, the table has %d", len(want)-2, len(gateReasons))
+	if words != 5 {
+		t.Fatalf("this test names the gate's 5 own words, the list has %d", words)
 	}
 	gate := newBusinessHandlerGate()
 	for reason, code := range want {
@@ -243,17 +249,28 @@ func TestServedBusinessEndsARunOfRefusals(t *testing.T) {
 	}
 }
 
-// The reason the member handler refuses with is empty exactly when the
-// member is business-ready, for every combination of the three facts.
-func TestBusinessRefusalReasonAgreesWithMemberService(t *testing.T) {
-	if got := (*App)(nil).businessRefusalReason(); got != refusalNoHandler {
-		t.Fatalf("no member: %q", got)
+// One evaluation says whether a member is business-ready and, when it is
+// not, the first fact it is missing: the code is empty exactly when the
+// member is ready, for every combination of the facts.
+func TestMemberServiceNamesTheMissingFact(t *testing.T) {
+	if got := (*App)(nil).memberService(t.Context(), false); got.BusinessReady || got.BusinessRefusal != refusalNoHandler {
+		t.Fatalf("no member: %+v", got)
 	}
-	for _, facts := range [][3]bool{{true, true, true}, {false, true, true}, {true, false, true}, {true, true, false}, {false, false, false}} {
-		ready := EvaluateMemberService(true, facts[0], false, facts[1], facts[2]).BusinessReady
-		reason := memberRefusalReason(true, facts[0], facts[1], facts[2])
-		if ready != (reason == "") {
-			t.Fatalf("facts %v: business ready %t, refusal reason %q", facts, ready, reason)
+	for _, tc := range []struct {
+		live, materials, sessions, target bool
+		refusal                           string
+	}{
+		{true, true, true, true, ""},
+		{false, true, true, true, refusalNoHandler},
+		{true, false, true, true, refusalProofNotEligible},
+		{true, true, false, true, refusalSessionsUnroutable},
+		{true, true, true, false, refusalTargetNotCurrent},
+		{true, false, false, false, refusalProofNotEligible},
+		{false, false, false, false, refusalNoHandler},
+	} {
+		got := EvaluateMemberService(tc.live, tc.materials, false, tc.sessions, tc.target)
+		if got.BusinessRefusal != tc.refusal || got.BusinessReady != (tc.refusal == "") {
+			t.Fatalf("facts %+v: %+v", tc, got)
 		}
 	}
 }

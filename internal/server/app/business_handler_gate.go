@@ -20,7 +20,6 @@ import (
 // business handler is installed or withdrawn. It starts closed; a later stage
 // must enforce candidate admission before installation and per request.
 type businessHandlerGate struct {
-	closed              http.Handler
 	mu                  sync.Mutex
 	active              *businessHandler
 	materialRequired    atomic.Bool
@@ -51,53 +50,50 @@ type businessHandlerDrain struct {
 
 func newBusinessHandlerGate(loggers ...*slog.Logger) *businessHandlerGate {
 	gate := &businessHandlerGate{}
-	closed := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Cache-Control", "no-store")
-		if r.Method == http.MethodGet && r.URL.Path == "/healthz" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		if gate.clusterUpgrade.Load() && wantsUpgradePage(r) {
-			serveClusterUpgradePage(w)
-			return
-		}
-		if gate.clusterUpgrade.Load() {
-			gate.refusals.mark(w, r, refusalClusterUpgrade)
-			// The same status as any closed member, so an entry layer keeps
-			// treating it as not ready; the code tells a client why, and
-			// that the answer will change without its doing anything.
-			w.Header().Set("Retry-After", "5")
-			messages.WriteHTTPError(w, http.StatusServiceUnavailable, messages.NewProductError(api.ErrorClusterUpgradeInProgress,
-				"the control-plane cluster is being upgraded; the request was not processed", nil))
-			return
-		}
-		reason, _ := r.Context().Value(gateRefusalKey{}).(string)
-		if reason == "" {
-			reason = refusalNoGeneration
-		}
-		gate.refusals.mark(w, r, reason)
-		http.Error(w, "member business service is not ready", http.StatusServiceUnavailable)
-	})
 	var log *slog.Logger
 	if len(loggers) != 0 {
 		log = loggers[0]
 	}
-	gate.closed, gate.readinessLog = closed, log
+	gate.readinessLog = log
 	return gate
 }
 
-type gateRefusalKey struct{}
-
 // refuse answers as a closed member and names the reason: the gate's own
-// reason, as its readiness log line has it, translated to its refusal code.
+// reason, as its readiness log line has it, as its refusal code.
 func (g *businessHandlerGate) refuse(w http.ResponseWriter, r *http.Request, reason string) {
-	g.closed.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), gateRefusalKey{}, gateRefusalCode(reason))))
+	g.serveClosed(w, r, refusalCodeOf(reason))
+}
+
+// serveClosed is the gate's answer while business is closed; reason is the
+// refusal code a business request is refused with.
+func (g *businessHandlerGate) serveClosed(w http.ResponseWriter, r *http.Request, reason string) {
+	w.Header().Set("Cache-Control", "no-store")
+	if r.Method == http.MethodGet && r.URL.Path == "/healthz" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	if g.clusterUpgrade.Load() && wantsUpgradePage(r) {
+		serveClusterUpgradePage(w)
+		return
+	}
+	if g.clusterUpgrade.Load() {
+		g.refusals.mark(w, r, refusalClusterUpgrade)
+		// The same status as any closed member, so an entry layer keeps
+		// treating it as not ready; the code tells a client why, and
+		// that the answer will change without its doing anything.
+		w.Header().Set("Retry-After", "5")
+		messages.WriteHTTPError(w, http.StatusServiceUnavailable, messages.NewProductError(api.ErrorClusterUpgradeInProgress,
+			"the control-plane cluster is being upgraded; the request was not processed", nil))
+		return
+	}
+	g.refusals.mark(w, r, reason)
+	http.Error(w, "member business service is not ready", http.StatusServiceUnavailable)
 }
 
 func (g *businessHandlerGate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// The public probe reports process liveness in either state.
 	if r.Method == http.MethodGet && r.URL.Path == "/healthz" {
-		g.closed.ServeHTTP(w, r)
+		g.serveClosed(w, r, refusalNoGeneration)
 		return
 	}
 	if g.upgradeProgress != nil && r.URL.Path == ClusterUpgradeProgressPath {

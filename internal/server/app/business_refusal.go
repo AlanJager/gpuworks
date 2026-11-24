@@ -11,38 +11,18 @@ import (
 	"time"
 )
 
-var businessRefusalCodeSet = func() map[string]bool {
-	set := make(map[string]bool, len(businessRefusalCodes))
-	for _, code := range businessRefusalCodes {
-		set[code] = true
-	}
-	return set
-}()
-
-// gateReasons translates the reasons the gate and the material proof give in
-// their own words (the readiness log line keeps those) to refusal codes.
-var gateReasons = map[string]string{
-	"no_business_generation": refusalNoGeneration,
-	"generation_changed":     refusalGenerationChanged,
-	"proof_missing":          refusalProofMissing,
-	"expired":                refusalProofExpired,
-	"stopped":                refusalProofStopped,
-	"run_canceled":           refusalProofRunCanceled,
-	"proof_canceled":         refusalProofCanceled,
-	"headroom":               refusalProofHeadroom,
-	"epoch_changed":          refusalProofEpochChanged,
-	"proof_owner_changed":    refusalProofOwnerChanged,
-	"renewal_unavailable":    refusalRenewalUnavailable,
-	"request_canceled":       refusalRequestCanceled,
-	"request_deadline":       refusalRequestDeadline,
-}
-
-func gateRefusalCode(reason string) string {
-	if code, ok := gateReasons[reason]; ok {
-		return code
-	}
-	if businessRefusalCodeSet[reason] {
+// refusalCodeOf is the refusal code of a reason given as a code or in the
+// gate's own word; a reason the list does not have is "other".
+func refusalCodeOf(reason string) string {
+	if _, listed := businessRefusalCodes[reason]; listed {
 		return reason
+	}
+	if reason != "" {
+		for code, word := range businessRefusalCodes {
+			if word == reason {
+				return code
+			}
+		}
 	}
 	return refusalOther
 }
@@ -193,7 +173,7 @@ func (b *businessRefusals) serving(next http.Handler) http.Handler {
 // mark names the reason on the response and counts it. A probe asks about
 // the member and is not business: it gets the header and no count.
 func (b *businessRefusals) mark(w http.ResponseWriter, r *http.Request, reason string) {
-	if !businessRefusalCodeSet[reason] {
+	if _, listed := businessRefusalCodes[reason]; !listed {
 		reason = refusalOther
 	}
 	w.Header().Set(businessRefusalHeader, reason)
