@@ -32,8 +32,7 @@ type PlatformLimit struct {
 	// when the snapshot changed; nil uses the core's.
 	Notice *messages.ProductError
 	// Link is the console page where an administrator lifts the limit;
-	// the console sends every other page there while Locked. Empty for
-	// none.
+	// the console's notice opens it. Empty for none.
 	Link string
 	// Action names what Link does, for the control that opens it; nil
 	// leaves the console's own wording.
@@ -41,7 +40,11 @@ type PlatformLimit struct {
 }
 
 // platformClass is what a limit does to one route. The zero value is the
-// strictest class, so a route nobody classified is refused under any limit.
+// strictest class. A route under /api/v1 that no table names is classified
+// by its method, so a new GET there is served under a limit; a route outside
+// /api/v1 that no rule names is refused. Either way the pinned list in
+// platform_limit_test.go fails until the new route is added to it, which
+// is where serving it under a limit is decided.
 type platformClass uint8
 
 const (
@@ -53,9 +56,10 @@ const (
 	// platformServe is the data plane that running work answers: served
 	// while ReadOnly, refused while Locked.
 	platformServe
-	// platformRecovery is served under any limit: signing in, health,
-	// what machines that already joined need, and what an administrator
-	// needs to lift the limit or to repair the server.
+	// platformRecovery is served under any limit although it may change
+	// something: signing in, health, what machines that already joined
+	// need, and what an administrator needs to lift the limit or to repair
+	// the server.
 	platformRecovery
 )
 
@@ -87,11 +91,29 @@ var platformRecoveryRoutes = map[string]bool{
 
 // platformRecoveryPrefixes are subtrees served under any limit: the
 // installed packages' management (the local administrator's floor), the
-// server's own upgrade, and what support asks for.
+// server's own upgrade (a release may be what makes the limit liftable),
+// and what support asks for.
 var platformRecoveryPrefixes = []string{
 	"/api/v1/plugins",
 	"/api/v1/updates",
 	"/api/v1/diagnostics/",
+}
+
+// platformRefusedRecovery are routes inside a recovery subtree that bring
+// new code into the server: refused like any change. Stopping, restarting,
+// rolling back and removing an installed package stay served.
+var platformRefusedRecovery = map[string]bool{
+	"POST /api/v1/plugins/install":      true,
+	"POST /api/v1/plugins/{id}/upgrade": true,
+}
+
+// platformOwnCredentialRoutes are routes under /api/v1 that authenticate
+// with a credential of their own instead of a management identity. The
+// guard cannot tell their caller, so it refuses them outright; every other
+// route under /api/v1 is refused only after the caller has authenticated.
+var platformOwnCredentialRoutes = map[string]bool{
+	"POST /api/v1/kube/enroll":  true,
+	"POST /api/v1/slurm/enroll": true,
 }
 
 // platformChangingReads are GET routes that hand out what brings a new
@@ -131,10 +153,34 @@ var platformReachingReads = map[string]bool{
 	"GET /api/v1/nodes/{uuid}/ssh": true,
 }
 
-// platformReadingPosts are POST routes that only read.
+// platformReadingPosts are POST routes that read or compute and leave
+// nothing of the business behind: served under any limit. A POST that
+// starts a job, stores a resource or changes one is not here.
 var platformReadingPosts = map[string]bool{
-	// MCP serves read-only tools.
-	"POST /api/v1/mcp": true,
+	// MCP serves read-only tools, and the assistant answers from what it
+	// reads.
+	"POST /api/v1/mcp":    true,
+	"POST /api/v1/ai/ask": true,
+	// Previews of a form: what a model, a deployment or a benchmark would
+	// be, computed and returned.
+	"POST /api/v1/models/local/preview": true,
+	"POST /api/v1/models/preview-url":   true,
+	"POST /api/v1/evaluate":             true,
+	"POST /api/v1/benchmarks/models":    true,
+	// Checks of something not saved: unsaved cloud credentials, a storage
+	// definition, the network between the nodes of a planned deployment.
+	"POST /api/v1/providers/test":        true,
+	"POST /api/v1/storages/probe":        true,
+	"POST /api/v1/deployments/preflight": true,
+	// Which notices this user has read: the user's own view, no resource.
+	"POST /api/v1/notices/read": true,
+}
+
+// platformServePatterns are the data plane: the OpenAI-compatible address
+// and the console's own entry to it, which reaches the same models.
+var platformServePatterns = map[string]bool{
+	"/v1/*":                   true,
+	"/api/v1/playground/v1/*": true,
 }
 
 // platformExtensionRoot is where every extension's routes live; the core
@@ -147,12 +193,15 @@ const platformExtensionRoot = "/api/v1" + extensionRoot + "/"
 // namespace is read from the path only for a route under the extension
 // root, where the first segment is the namespace whichever route answers:
 // a compiled route, or the packages' mount answering 404 or 405 for it.
-// classified is false for a route no rule names: it is refused under any
-// limit, and the route inventory test fails until it is classified.
+// classified is false for a route outside /api/v1 that no rule names: it is
+// refused under any limit.
 func classifyPlatformRoute(method, pattern, path, owner string) (class platformClass, classified bool) {
 	key := method + " " + pattern
 	if platformRecoveryRoutes[key] {
 		return platformRecovery, true
+	}
+	if platformRefusedRecovery[key] || platformOwnCredentialRoutes[key] {
+		return platformChange, true
 	}
 	for _, prefix := range platformRecoveryPrefixes {
 		if pattern == strings.TrimSuffix(prefix, "/") || strings.HasPrefix(pattern, strings.TrimSuffix(prefix, "/")+"/") {
@@ -168,7 +217,7 @@ func classifyPlatformRoute(method, pattern, path, owner string) (class platformC
 	if platformReadingPosts[key] || platformReachingReads[key] {
 		return platformRead, true
 	}
-	if pattern == "/v1/*" {
+	if platformServePatterns[pattern] {
 		return platformServe, true
 	}
 	if pattern == "/*" {
@@ -202,6 +251,19 @@ var (
 		"this server is read-only; what runs keeps running and can be viewed, changes are refused", nil)
 )
 
+// platformServeRefusal is a refusal on the data plane, in the shape its
+// clients read (the gateway's own errors, proxy/api_errors.go): the same
+// code and message as everywhere else, under "error".
+type platformServeRefusal struct {
+	Error struct {
+		Message string         `json:"message"`
+		Type    string         `json:"type"`
+		Code    string         `json:"code"`
+		Param   *string        `json:"param"`
+		Params  map[string]any `json:"params,omitempty"`
+	} `json:"error"`
+}
+
 // allows reports whether a route of class is served under access.
 func (c platformClass) allows(access featuregate.Access) bool {
 	switch access {
@@ -224,9 +286,16 @@ func platformRefusal(limit PlatformLimit) *messages.ProductError {
 	return platformLockedRefusal
 }
 
-// platformGuard refuses, before authentication and before any handler, what
-// the server's limit does not serve. Without a limiter it adds nothing, and
-// under a limiter that answers Full it costs that one call.
+// platformGuard refuses, before any handler, what the server's limit does
+// not serve. Without a limiter it adds nothing, and under a limiter that
+// answers Full it costs that one call.
+//
+// A management route (under /api/v1) is refused only to a caller who has
+// authenticated: an anonymous one gets the 401 an unlimited server gives,
+// and so learns neither which routes exist nor that the server is limited.
+// The data plane, the routes that hand out enrollment material and the two
+// enrollment routes carry credentials the guard cannot check, and are
+// refused to anyone.
 //
 // It resolves the route the request would reach in routes (the router it is
 // installed on), so the class comes from the route's pattern, never from a
@@ -263,7 +332,20 @@ func (a *apiHandlers) platformGuard(routes chi.Routes) func(http.Handler) http.H
 				next.ServeHTTP(w, r)
 				return
 			}
-			writeErr(w, http.StatusForbidden, platformRefusal(limit))
+			if strings.HasPrefix(pattern, "/api/v1/") && !platformOwnCredentialRoutes[r.Method+" "+pattern] {
+				if _, err := a.authenticateIdentity(r); err != nil {
+					a.writeManagementAuthError(w, err)
+					return
+				}
+			}
+			refusal := platformRefusal(limit)
+			if class != platformServe {
+				writeErr(w, http.StatusForbidden, refusal)
+				return
+			}
+			var body platformServeRefusal
+			body.Error.Message, body.Error.Type, body.Error.Code, body.Error.Params = refusal.Error(), "permission_error", refusal.Code(), refusal.Params()
+			writeJSON(w, http.StatusForbidden, body)
 		})
 	}
 }

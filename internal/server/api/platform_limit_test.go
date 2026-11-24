@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
 	"gpuworks.ai/gpuworks/internal/server/messages"
 )
@@ -25,12 +26,22 @@ func newSwitchLimiter(access featuregate.Access) *switchLimiter {
 func (l *switchLimiter) set(limit PlatformLimit)      { l.cur.Store(&limit) }
 func (l *switchLimiter) PlatformLimit() PlatformLimit { return *l.cur.Load() }
 
-// fullRouter is the router with every optional mount present, so the
-// inventory holds every route a limit can meet.
+// fullRouter is the router with every optional mount present (the data
+// plane, the console's entry to it, the console's files, the install script
+// and the installed packages' routes), so the inventory holds every route a
+// limit can meet.
 func fullRouter(extra ...Extension) http.Handler {
 	nop := func(http.ResponseWriter, *http.Request) {}
-	return Router(Deps{AgentConnect: nop, InstallSh: nop, ProxyV1: http.HandlerFunc(nop), UIHandler: http.HandlerFunc(nop),
-		Extensions: ExtensionDeps{Extensions: extra}})
+	packages := []DynamicRoute{
+		{Plugin: "sample", Method: http.MethodGet, Pattern: "/things", Access: DynamicMember},
+		{Plugin: "sample", Method: http.MethodPost, Pattern: "/things", Access: DynamicAdmin},
+	}
+	dynamic := &DynamicExtension{
+		Match:  func(string, string) (*DynamicRoute, DynamicMatch) { return nil, DynamicMiss },
+		Routes: func() []DynamicRoute { return packages },
+	}
+	return Router(Deps{AgentConnect: nop, InstallSh: nop, ProxyV1: http.HandlerFunc(nop), PlaygroundV1: http.HandlerFunc(nop), UIHandler: http.HandlerFunc(nop),
+		Extensions: ExtensionDeps{Extensions: extra, Dynamic: dynamic}})
 }
 
 // inventoryRoutes are the method and pattern of every route of h.
@@ -64,7 +75,7 @@ func TestEveryRouteIsClassifiedForAPlatformLimit(t *testing.T) {
 			t.Errorf("%s %s is not classified for a platform limit: name it in platform_limit.go", method, pattern)
 		}
 	}
-	for _, table := range []map[string]bool{platformRecoveryRoutes, platformChangingReads, platformReachingReads, platformReadingPosts} {
+	for _, table := range []map[string]bool{platformRecoveryRoutes, platformRefusedRecovery, platformOwnCredentialRoutes, platformChangingReads, platformReachingReads, platformReadingPosts} {
 		for key := range table {
 			if !seen[key] {
 				t.Errorf("platform_limit.go names %q, which is not a route", key)
@@ -131,10 +142,11 @@ func TestReadsThatActAndReadsThatReachOutside(t *testing.T) {
 	}
 }
 
-// The routes a limit treats other than by their method are this list. A
-// change here widens or narrows what a limited server serves: make it
-// deliberately.
-func TestPlatformLimitExceptionsAreTheKnownOnes(t *testing.T) {
+// What a limited server serves is this list, route by route: every read,
+// the data plane, the recovery surface, and the GETs refused like a change.
+// A new route that reads, or a route whose class changes, differs from it;
+// the list's own comment says what to check before adding one.
+func TestPlatformLimitRoutesAreTheKnownOnes(t *testing.T) {
 	var got []string
 	for _, route := range inventoryRoutes(t, fullRouter()) {
 		method, pattern := route[0], route[1]
@@ -144,7 +156,7 @@ func TestPlatformLimitExceptionsAreTheKnownOnes(t *testing.T) {
 		case http.MethodGet, http.MethodHead, http.MethodOptions:
 			byMethod = platformRead
 		}
-		if class == byMethod && class != platformServe {
+		if class == platformChange && byMethod == platformChange {
 			continue
 		}
 		name := map[platformClass]string{platformChange: "change", platformRead: "read", platformServe: "serve", platformRecovery: "recovery"}[class]
@@ -152,9 +164,47 @@ func TestPlatformLimitExceptionsAreTheKnownOnes(t *testing.T) {
 	}
 	sort.Strings(got)
 	got = slices.Compact(got)
-	want := strings.Split(strings.TrimSpace(platformLimitExceptions), "\n")
+	want := strings.Split(strings.TrimSpace(platformLimitRoutes), "\n")
 	if !slices.Equal(got, want) {
-		t.Fatalf("the routes a platform limit treats specially changed; update the list deliberately\ngot:\n%s", strings.Join(got, "\n"))
+		t.Fatalf("what a limited server serves changed; update platform_limit_routes_test.go deliberately\ngot:\n%s", strings.Join(got, "\n"))
+	}
+}
+
+// A POST is served under a limit only when it reads or computes and leaves
+// nothing behind; one that starts work or stores something is refused. The
+// server's own upgrade stays possible under any limit, bringing a new
+// package in does not.
+func TestWritesThatOnlyReadAndWritesThatBringCodeIn(t *testing.T) {
+	for _, tc := range []struct {
+		route string
+		class platformClass
+		why   string
+	}{
+		{"POST /api/v1/mcp", platformRead, "serves read-only tools"},
+		{"POST /api/v1/ai/ask", platformRead, "answers from what it reads"},
+		{"POST /api/v1/models/local/preview", platformRead, "previews a model that is not registered"},
+		{"POST /api/v1/models/preview-url", platformRead, "previews a model that is not registered"},
+		{"POST /api/v1/evaluate", platformRead, "previews a deployment that is not created"},
+		{"POST /api/v1/benchmarks/models", platformRead, "lists what a benchmark could target"},
+		{"POST /api/v1/providers/test", platformRead, "tests credentials that are not saved"},
+		{"POST /api/v1/storages/probe", platformRead, "probes a storage that is not saved"},
+		{"POST /api/v1/deployments/preflight", platformRead, "measures the network for a deployment that is not created"},
+		{"POST /api/v1/notices/read", platformRead, "records which notices this user has read"},
+		{"POST /api/v1/deployments", platformChange, "creates a deployment"},
+		{"POST /api/v1/benchmarks", platformChange, "starts a benchmark"},
+		{"POST /api/v1/ai/configs/test", platformChange, "not decided to be served; refused"},
+		{"POST /api/v1/updates/server", platformRecovery, "a release may be what makes the limit liftable"},
+		{"PUT /api/v1/updates/channel", platformRecovery, "chooses where that release comes from"},
+		{"POST /api/v1/plugins/{id}/disable", platformRecovery, "stops an installed package"},
+		{"POST /api/v1/plugins/install", platformChange, "brings a new package in"},
+		{"POST /api/v1/plugins/{id}/upgrade", platformChange, "brings a new package version in"},
+		{"POST /api/v1/kube/enroll", platformChange, "enrolls a new machine"},
+		{"POST /api/v1/slurm/enroll", platformChange, "enrolls a new machine"},
+	} {
+		method, pattern, _ := strings.Cut(tc.route, " ")
+		if class, _ := classifyPlatformRoute(method, pattern, pattern, ""); class != tc.class {
+			t.Errorf("%s (%s) is class %d, want %d", tc.route, tc.why, class, tc.class)
+		}
 	}
 }
 
@@ -169,6 +219,7 @@ func TestPlatformLimitServesByClass(t *testing.T) {
 	rig := newTokenRig(t, func(d *Deps) {
 		d.Extensions = ExtensionDeps{Extensions: []Extension{ext, other}, Platform: limiter, PlatformOwner: "owner"}
 		d.ProxyV1 = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { served++; w.WriteHeader(http.StatusNoContent) })
+		d.PlaygroundV1 = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
 		d.AgentConnect = func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }
 		d.UIHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusAccepted) })
 	})
@@ -184,9 +235,15 @@ func TestPlatformLimitServesByClass(t *testing.T) {
 		{"a read with a read token", read, "GET", "/api/v1/nodes", 200, 200, 200},
 		{"a read without a session", "", "GET", "/api/v1/nodes", 401, 401, 401},
 		{"a change", rig.session, "PUT", "/api/v1/nodes/n1/labels", 400, refused, refused},
-		{"a change without a session", "", "PUT", "/api/v1/nodes/n1/labels", 401, refused, refused},
+		// A caller who has not signed in learns nothing from a limit: the
+		// answer is the one an unlimited server gives.
+		{"a change without a session", "", "PUT", "/api/v1/nodes/n1/labels", 401, 401, 401},
+		{"a change with a token nobody issued", "gwp_unknown", "PUT", "/api/v1/nodes/n1/labels", 401, 401, 401},
 		{"a read that opens a session on a node", rig.session, "GET", "/api/v1/nodes/n1/terminal", 503, refused, refused},
 		{"the data plane", "", "POST", "/v1/chat/completions", 204, 204, refused},
+		{"the console's entry to the data plane", rig.session, "POST", "/api/v1/playground/v1/chat/completions", 204, 204, refused},
+		{"a stream on the console's entry to the data plane", rig.session, "GET", "/api/v1/playground/v1/realtime", 204, 204, refused},
+		{"the console's entry to the data plane without a session", "", "POST", "/api/v1/playground/v1/chat/completions", 401, 401, 401},
 		{"a joined machine's connection", "", "GET", "/api/v1/agent/connect", 204, 204, 204},
 		{"who am I", rig.session, "GET", "/api/v1/auth/me", 200, 200, 200},
 		{"the console shell", rig.session, "GET", "/api/v1/console/manifest", 200, 200, 200},
@@ -225,7 +282,10 @@ func TestPlatformLimitServesByClass(t *testing.T) {
 // in their place when it gives one.
 func TestPlatformLimitRefusalWire(t *testing.T) {
 	limiter := newSwitchLimiter(featuregate.Locked)
-	rig := newTokenRig(t, func(d *Deps) { d.Extensions = ExtensionDeps{Platform: limiter} })
+	rig := newTokenRig(t, func(d *Deps) {
+		d.Extensions = ExtensionDeps{Platform: limiter}
+		d.ProxyV1 = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	})
 	t.Cleanup(func() { _ = rig.st.Close() })
 	body := func(method, path string) string {
 		rec := rig.do(rig.session, method, path, "")
@@ -236,6 +296,11 @@ func TestPlatformLimitRefusalWire(t *testing.T) {
 	}
 	if got, want := body("POST", "/api/v1/nodes"), `{"code":"PLATFORM_LOCKED","error":"this server is locked; it can be viewed, and changes and inference are refused until it is unlocked"}`; got != want {
 		t.Errorf("locked refusal = %s, want %s", got, want)
+	}
+	// The data plane's clients read the gateway's error shape.
+	limiter.set(PlatformLimit{Access: featuregate.Locked, Notice: messages.NewProductError("ACME_REQUIRED", "the acme term has not begun", map[string]any{"days": 3})})
+	if got, want := body("POST", "/v1/chat/completions"), `{"error":{"message":"the acme term has not begun","type":"permission_error","code":"ACME_REQUIRED","param":null,"params":{"days":3}}}`; got != want {
+		t.Errorf("data plane refusal = %s, want %s", got, want)
 	}
 	limiter.set(PlatformLimit{Access: featuregate.ReadOnly})
 	if got, want := body("POST", "/api/v1/nodes"), `{"code":"PLATFORM_READ_ONLY","error":"this server is read-only; what runs keeps running and can be viewed, changes are refused"}`; got != want {
@@ -249,10 +314,16 @@ func TestPlatformLimitRefusalWire(t *testing.T) {
 
 func TestConsoleManifestShowsThePlatformLimit(t *testing.T) {
 	limiter := newSwitchLimiter(featuregate.Full)
-	rig := newTokenRig(t, func(d *Deps) { d.Extensions = ExtensionDeps{Platform: limiter} })
+	var signer *auth.TokenSigner
+	rig := newTokenRig(t, func(d *Deps) { d.Extensions, signer = ExtensionDeps{Platform: limiter}, d.AuthSigner })
 	t.Cleanup(func() { _ = rig.st.Close() })
+	member, err := managementSessionTestToken(t, rig.st, signer, auth.Claims{Username: "member", Role: "user"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bearer := rig.session
 	platform := func() (string, bool) {
-		rec := rig.do(rig.session, "GET", "/api/v1/console/manifest", "")
+		rec := rig.do(bearer, "GET", "/api/v1/console/manifest", "")
 		if rec.Code != http.StatusOK {
 			t.Fatalf("manifest = %d %s", rec.Code, rec.Body.String())
 		}
@@ -267,18 +338,23 @@ func TestConsoleManifestShowsThePlatformLimit(t *testing.T) {
 		t.Fatalf("an unlimited server's manifest names a platform limit: %s", raw)
 	}
 	limiter.set(PlatformLimit{Access: featuregate.Hidden, Link: "/x/acme", Action: messages.NewProductError("ACME_RENEW", "renew", nil)})
-	if got, want := first(platform()), `{"access":"locked","link":"/x/acme","action":{"code":"ACME_RENEW","message":"renew"},"message":{"code":"PLATFORM_LOCKED","message":"this server is locked; only signing in and the page that unlocks it are served"}}`; got != want {
-		t.Errorf("locked platform = %s, want %s", got, want)
+	if got, _ := platform(); got != `{"access":"locked","link":"/x/acme","action":{"code":"ACME_RENEW","message":"renew"},"message":{"code":"PLATFORM_LOCKED","message":"this server is locked; it can be viewed, and changes and inference are refused until it is unlocked"}}` {
+		t.Errorf("locked platform = %s", got)
 	}
+	// The page that lifts the limit is an administrator's: anyone else is
+	// told of the limit and offered nothing to open.
+	bearer = member
+	if got, _ := platform(); got != `{"access":"locked","message":{"code":"PLATFORM_LOCKED","message":"this server is locked; it can be viewed, and changes and inference are refused until it is unlocked"}}` {
+		t.Errorf("locked platform for a member = %s", got)
+	}
+	bearer = rig.session
 	// An action without a link names nothing and is left out.
 	limiter.set(PlatformLimit{Access: featuregate.ReadOnly, Action: messages.NewProductError("ACME_RENEW", "renew", nil),
 		Notice: messages.NewProductError("ACME_LAPSED", "the acme term ended", map[string]any{"days": 3})})
-	if got, want := first(platform()), `{"access":"read_only","message":{"code":"ACME_LAPSED","params":{"days":3},"message":"the acme term ended"}}`; got != want {
-		t.Errorf("read-only platform = %s, want %s", got, want)
+	if got, _ := platform(); got != `{"access":"read_only","message":{"code":"ACME_LAPSED","params":{"days":3},"message":"the acme term ended"}}` {
+		t.Errorf("read-only platform = %s", got)
 	}
 }
-
-func first(s string, _ bool) string { return s }
 
 // Without a limiter, and under one that answers Full, the guard resolves
 // no route: a nil router would panic if it did.
@@ -294,71 +370,3 @@ func TestPlatformGuardAddsNothingWhenNothingIsLimited(t *testing.T) {
 		}
 	}
 }
-
-const platformLimitExceptions = `
-change GET /api/v1/kube/clusters/{uuid}/manifest
-change GET /api/v1/nodes/{uuid}/terminal
-change GET /api/v1/slurm/clusters/{uuid}/script
-change GET /api/v1/slurm/clusters/{uuid}/setup
-change GET /install.sh
-change GET /kube/manifest.yaml
-change GET /slurm/setup.sh
-change OPTIONS /*
-read POST /api/v1/mcp
-recovery DELETE /api/v1/diagnostics/debug-session
-recovery DELETE /api/v1/plugins/overrides/{oid}
-recovery DELETE /api/v1/plugins/{id}
-recovery GET /*
-recovery GET /api/v1/agent/connect
-recovery GET /api/v1/auth/me
-recovery GET /api/v1/branding
-recovery GET /api/v1/console/manifest
-recovery GET /api/v1/diagnostics/bundles
-recovery GET /api/v1/diagnostics/bundles/{id}
-recovery GET /api/v1/diagnostics/bundles/{id}/download
-recovery GET /api/v1/diagnostics/debug-session
-recovery GET /api/v1/healthz
-recovery GET /api/v1/plugins
-recovery GET /api/v1/plugins/catalog
-recovery GET /api/v1/plugins/overrides
-recovery GET /api/v1/plugins/{id}/impact
-recovery GET /api/v1/plugins/{id}/logs
-recovery GET /api/v1/plugins/{id}/state
-recovery GET /api/v1/readyz
-recovery GET /api/v1/updates
-recovery GET /api/v1/updates/server/result
-recovery GET /api/v1/updates/server/versions
-recovery GET /healthz
-recovery GET /slurm/check.sh
-recovery GET /slurm/token-status
-recovery HEAD /*
-recovery POST /api/v1/auth/activity
-recovery POST /api/v1/auth/login
-recovery POST /api/v1/auth/logout
-recovery POST /api/v1/auth/password
-recovery POST /api/v1/diagnostics/bundles
-recovery POST /api/v1/diagnostics/debug-session
-recovery POST /api/v1/plugins/install
-recovery POST /api/v1/plugins/overrides
-recovery POST /api/v1/plugins/{id}/disable
-recovery POST /api/v1/plugins/{id}/enable
-recovery POST /api/v1/plugins/{id}/restart
-recovery POST /api/v1/plugins/{id}/rollback
-recovery POST /api/v1/plugins/{id}/upgrade
-recovery POST /api/v1/slurm/gpu-nodes
-recovery POST /api/v1/updates/prefetch
-recovery POST /api/v1/updates/server
-recovery POST /api/v1/updates/server/upload
-recovery PUT /api/v1/updates/auto-check
-recovery PUT /api/v1/updates/channel
-serve CONNECT /v1/*
-serve DELETE /v1/*
-serve GET /v1/*
-serve HEAD /v1/*
-serve OPTIONS /v1/*
-serve PATCH /v1/*
-serve POST /v1/*
-serve PUT /v1/*
-serve QUERY /v1/*
-serve TRACE /v1/*
-`

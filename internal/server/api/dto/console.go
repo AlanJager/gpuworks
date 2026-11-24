@@ -18,9 +18,10 @@ type ConsoleManifest struct {
 // ConsolePlatform is a limit on the whole server.
 type ConsolePlatform struct {
 	// Access is read_only (pages show, changes are refused) or locked
-	// (only Link is reachable).
+	// (pages show, changes and inference are refused).
 	Access string `json:"access"`
-	// Link is the console page where an administrator lifts the limit, and
+	// Link is the console page where an administrator lifts the limit
+	// (absent for anyone else), and
 	// Action what the control that opens it says, rendered from its code;
 	// absent leaves the console's own wording.
 	Link   string          `json:"link,omitempty"`

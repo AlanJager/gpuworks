@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Notice } from "../ui-kit/Notice";
 import { productMessageText } from "../apiError";
 import { useConsoleBanners, useConsolePlatform } from "../extensions/featureAccess";
-import { opensPage, PlatformNotice } from "./PlatformGate";
+import { opensPage, PlatformNotice, platformNoticeShown } from "./PlatformNotice";
 
 const tones: Record<string, "info" | "warning" | "danger"> = { info: "info", warning: "warning", danger: "danger" };
 
@@ -22,9 +22,7 @@ export default function ConsoleBanners() {
   const { pathname } = useLocation();
   const banners = useConsoleBanners().filter((banner) => !opensPage(banner.link, pathname));
   const { platform } = useConsolePlatform();
-  const limited = platform !== undefined && !opensPage(platform.link, pathname);
-
-  if (banners.length === 0 && !limited) return null;
+  if (banners.length === 0 && !platformNoticeShown(platform, pathname)) return null;
   return (
     <section aria-label={t("consoleBanners.region")} className="mb-4 grid gap-2">
       <PlatformNotice />

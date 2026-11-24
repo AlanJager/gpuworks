@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Notice } from "../ui-kit/Notice";
 import { Spinner } from "../ui-kit/Spinner";
 import { productMessageText } from "../apiError";
+import type { ConsolePlatform } from "../consoleManifest";
 import { consoleExtensions } from "../extensions";
 import { useConsolePlatform } from "../extensions/featureAccess";
 
@@ -20,30 +21,38 @@ export function opensPage(link: string | undefined, pathname: string): boolean {
 
 const trimSlash = (path: string) => (path.length > 1 ? path.replace(/\/+$/, "") : path);
 
+/** platformNoticeShown reports whether the limit is stated above the page at pathname: on every page but the one that lifts it. */
+export function platformNoticeShown(platform: ConsolePlatform | undefined, pathname: string): platform is ConsolePlatform {
+  return platform !== undefined && !opensPage(platform.link, pathname);
+}
+
 /**
- * PlatformGate holds the pages back until the server's limit on the whole
- * server is known (GET /api/v1/console/manifest, platform). Under either
- * limit the pages show: a read-only and a locked server both serve reads, and
- * PlatformNotice says above every page what is refused and where to lift it.
- * The server decides and enforces the limit.
- *
- * A console with extensions waits for the manifest before it shows a page, so
- * a limited server never shows one without its notice; the community console,
- * which nothing limits, never waits.
+ * ConsoleManifestWait holds the pages back until the console manifest has
+ * answered, when the console has extensions: the manifest says whether the
+ * server is limited as a whole, and a limited server's page never shows
+ * without its notice. The community console, which nothing limits, never
+ * waits.
  */
-export default function PlatformGate({ children }: { children: ReactNode }) {
+export default function ConsoleManifestWait({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const { settled } = useConsolePlatform();
   if (!settled && consoleExtensions().length > 0) return <Spinner label={t("consoleExtension.loading")} />;
   return <>{children}</>;
 }
 
-/** PlatformNotice states the limit above every page but the one that lifts it. */
+/**
+ * PlatformNotice states the limit on the whole server (GET
+ * /api/v1/console/manifest, platform) above every page but the one that
+ * lifts it: what is refused, and a control that opens that page when the
+ * server names one for this user. Read-only and locked servers both serve
+ * reads, so the pages show under it. The server decides and enforces the
+ * limit.
+ */
 export function PlatformNotice() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const { platform } = useConsolePlatform();
-  if (!platform || opensPage(platform.link, pathname)) return null;
+  if (!platformNoticeShown(platform, pathname)) return null;
   const path = consolePath(platform.link);
   const label = platform.action ? productMessageText(t, platform.action) : t("consoleBanners.details");
   const control = "text-label font-medium underline underline-offset-2";

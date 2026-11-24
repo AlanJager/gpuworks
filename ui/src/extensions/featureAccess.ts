@@ -69,8 +69,8 @@ export function loadConsoleManifest(): Promise<void> {
 
 /**
  * knownPlatform is the server's limit as this console understands it. A limit
- * with an access this console does not know is locked: a console that cannot
- * tell what is still served must not offer it.
+ * with an access this console does not know is shown as locked, the stricter
+ * of the two notices.
  */
 function knownPlatform(platform: ConsolePlatform | undefined): ConsolePlatform | undefined {
   if (!platform) return undefined;
@@ -119,8 +119,8 @@ export function useConsoleBanners(): readonly ConsoleBanner[] {
 /**
  * PlatformState is the limit on the whole server as the shell needs it.
  * settled is false until the manifest has answered or failed; a console that
- * has extensions waits for it before showing a page, so a locked server never
- * flashes pages it will not serve.
+ * has extensions waits for it before showing a page, so a limited server's
+ * page never shows without its notice.
  */
 export interface PlatformState {
   platform?: ConsolePlatform;

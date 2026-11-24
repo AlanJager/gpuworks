@@ -40,9 +40,14 @@ func (a *apiHandlers) consoleManifest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if limit := a.consolePlatform(); limit != nil {
-		out.Platform = &dto.ConsolePlatform{Access: limit.Access.String(), Link: limit.Link,
+		out.Platform = &dto.ConsolePlatform{Access: limit.Access.String(),
 			Message: dto.ProductMessage{Code: limit.Notice.Code(), Params: limit.Notice.Params(), Message: limit.Notice.Error()}}
-		if limit.Action != nil && limit.Link != "" {
+		// The page that lifts the limit is an administrator's; anyone else
+		// is told of the limit and offered nothing to open.
+		if claims.Role == "admin" {
+			out.Platform.Link = limit.Link
+		}
+		if limit.Action != nil && out.Platform.Link != "" {
 			out.Platform.Action = &dto.ProductMessage{Code: limit.Action.Code(), Params: limit.Action.Params(), Message: limit.Action.Error()}
 		}
 	}

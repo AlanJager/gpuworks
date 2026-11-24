@@ -10,7 +10,7 @@ const { cleanup, render, screen, waitFor } = await import("@testing-library/reac
 const userEvent = (await import("@testing-library/user-event")).default;
 const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
 const manifestModule = await import("../src/consoleManifest.ts");
-const { default: PlatformGate, PlatformNotice, consolePath, opensPage } = await import("../src/app/PlatformGate.tsx");
+const { default: ConsoleManifestWait, PlatformNotice, consolePath, opensPage } = await import("../src/app/PlatformNotice.tsx");
 const { resetConsoleManifestForTest } = await import("../src/extensions/featureAccess.ts");
 type ConsolePlatform = import("../src/consoleManifest.ts").ConsolePlatform;
 
@@ -36,9 +36,9 @@ function renderGate(path: string, withI18n = i18n) {
     <I18nextProvider i18n={withI18n}>
       <MemoryRouter initialEntries={[path]}>
         <PlatformNotice />
-        <PlatformGate>
+        <ConsoleManifestWait>
           <Routes><Route path="*" element={<><h1>page</h1><Where /></>} /></Routes>
-        </PlatformGate>
+        </ConsoleManifestWait>
       </MemoryRouter>
     </I18nextProvider>,
   );

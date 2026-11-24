@@ -190,8 +190,8 @@ func (h *Host) ProvideFeatures(src featuregate.Source) error {
 
 // LimitPlatform makes src the answer for how far the whole server is
 // available (api.PlatformLimiter): read-only refuses every change and keeps
-// serving reads and the data plane, locked serves only the recovery surface
-// and this module's own routes. At most one module limits the server;
+// serving reads and the data plane; locked serves reads as well and refuses
+// the data plane too. This module's own routes are served under either. At most one module limits the server;
 // without one it is never limited. src runs on every request and must
 // answer from a snapshot: one atomic load, no I/O, no lock, no allocation.
 func (h *Host) LimitPlatform(src api.PlatformLimiter) error {

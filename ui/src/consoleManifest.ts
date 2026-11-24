@@ -33,8 +33,9 @@ export interface ConsoleBanner {
 }
 
 /**
- * ConsolePlatform is a limit on the whole server: read_only shows every page
- * and the server refuses changes; locked leaves only the page at link.
+ * ConsolePlatform is a limit on the whole server. Both show every page:
+ * read_only refuses changes, locked refuses changes and inference. link is
+ * the page that lifts it, present for an administrator only.
  */
 export interface ConsolePlatform {
   access: "read_only" | "locked";

@@ -38,8 +38,9 @@ func (m *limiterModule) Init(_ context.Context, h *app.Host) error {
 }
 
 // The module that limits the server decides, request by request, what the
-// whole server serves: everything, reads and the data plane, or only the
-// recovery surface and its own routes. The console manifest follows it.
+// whole server serves: everything; reads and the data plane; or reads
+// alone. Its own routes are served under any limit. The console manifest
+// follows it.
 func TestAPlatformLimiterDecidesWhatTheServerServes(t *testing.T) {
 	limiter := newFakeLimiter(featuregate.Full)
 	first := &fakeModule{name: "fake", source: newFakeSource(featuregate.Full), limiter: limiter}
@@ -54,8 +55,8 @@ func TestAPlatformLimiterDecidesWhatTheServerServes(t *testing.T) {
 	}{
 		{api.PlatformLimit{Access: featuregate.Full}, 200, 400, 200, 200, "", ""},
 		{api.PlatformLimit{Access: featuregate.ReadOnly}, 200, 403, 200, 200, messages.ErrorPlatformReadOnly, `"platform":{"access":"read_only"`},
-		{api.PlatformLimit{Access: featuregate.Locked, Link: "/x/fake"}, 403, 403, 200, 200, messages.ErrorPlatformLocked, `"platform":{"access":"locked","link":"/x/fake"`},
-		{api.PlatformLimit{Access: featuregate.Locked, Notice: notice}, 403, 403, 200, 200, "ACME_LAPSED", `"platform":{"access":"locked","message":{"code":"ACME_LAPSED"`},
+		{api.PlatformLimit{Access: featuregate.Locked, Link: "/x/fake"}, 200, 403, 200, 200, messages.ErrorPlatformLocked, `"platform":{"access":"locked","link":"/x/fake"`},
+		{api.PlatformLimit{Access: featuregate.Locked, Notice: notice}, 200, 403, 200, 200, "ACME_LAPSED", `"platform":{"access":"locked","message":{"code":"ACME_LAPSED"`},
 	} {
 		limiter.set(c.limit)
 		name := c.limit.Access.String()
