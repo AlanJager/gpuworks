@@ -22,6 +22,13 @@ type MaterialManifestRecord struct {
 	RecordedAt     time.Time
 }
 
+// ErrMaterialManifestNoMajority reports a publication attempt in which too
+// few members were freshly verified: the others could not be reached or did
+// not answer. It says how many answered, nothing about this member's bytes;
+// a peer that answered with a difference fails the attempt with its own
+// error before the count is taken.
+var ErrMaterialManifestNoMajority = errors.New("material manifest lacks a freshly verified majority")
+
 // PublishMaterialManifest follows a live membership grant and authenticated
 // remote byte readback. verifiedPeers contains only members whose complete
 // inventory and manifest were freshly verified in this publication attempt.
@@ -59,7 +66,7 @@ func (s *Store) PublishMaterialManifest(ctx context.Context, expected ClusterIde
 		seen[peer.ID] = true
 	}
 	if 1+len(verifiedPeers) <= len(members)/2 {
-		return errors.New("material manifest lacks a freshly verified majority")
+		return ErrMaterialManifestNoMajority
 	}
 	// Acquire the writer before checking receipts. Concurrent publishers must
 	// not upgrade a stale read snapshot into a write transaction.

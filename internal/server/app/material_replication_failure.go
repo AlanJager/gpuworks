@@ -81,7 +81,10 @@ func materialReplicationFailureInvalidates(err error) bool {
 
 // materialOutcomeUndecided reports a failure that carries no verdict on this
 // member's material: the pass ran out of its own time, the database had no
-// leader to ask, or the leader could not be read in time. None of them says a
+// leader to ask, the leader could not be read in time, or too few of the
+// other members answered for a majority (one down and another refusing for
+// the moment is enough: on a cluster with a member stopped this closed the
+// leader's own business again and again). None of them says a
 // byte, a receipt or the membership changed; a
 // change this pass did see has already closed the member through its change
 // callback, and a second cause joined to one of these keeps its own verdict.
@@ -100,7 +103,7 @@ func materialReplicationFailureInvalidates(err error) bool {
 func materialOutcomeUndecided(err error) bool {
 	if _, joined := err.(interface{ Unwrap() []error }); !joined &&
 		(store.ReplicatedLeaderUnavailable(err) || errors.Is(err, store.ErrClusterMembershipObservationTimeout) ||
-			errors.Is(err, driver.ErrBadConn)) {
+			errors.Is(err, driver.ErrBadConn) || errors.Is(err, store.ErrMaterialManifestNoMajority)) {
 		return true
 	}
 	for err != nil {

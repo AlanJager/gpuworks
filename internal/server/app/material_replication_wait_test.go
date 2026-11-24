@@ -99,6 +99,7 @@ func TestMaterialReplicationPassClosesMemberOnlyOnVerdict(t *testing.T) {
 		{"store call ran out of time", fmt.Errorf("index material inventory locally: %w", context.DeadlineExceeded), false},
 		{"no database leader", fmt.Errorf("grant: %w", dqlitedriver.ErrNoAvailableLeader), false},
 		{"peer unreachable", &url.Error{Op: "Post", URL: "https://fixture.invalid", Err: syscall.ECONNREFUSED}, false},
+		{"too few members answered for a majority", fmt.Errorf("publish: %w", store.ErrMaterialManifestNoMajority), false},
 		{"changed bytes", integrity, true},
 		{"timeout joined to changed bytes", errors.Join(context.DeadlineExceeded, integrity), true},
 		{"admission rejected", fmt.Errorf("grant: %w", store.ErrClusterAdmissionRejected), true},
