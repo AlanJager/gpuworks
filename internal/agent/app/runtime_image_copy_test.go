@@ -130,10 +130,10 @@ func TestRuntimeImageCopyLifecycle(t *testing.T) {
 				if last.TransferID != p.TransferID || last.Source != proto.RuntimeImageCopySource || (finish == "success" && (last.State != "present" || last.ImageID != id)) || (finish == "cancel" && (last.State != "failed" || last.ImageID != "")) {
 					t.Fatalf("terminal: %+v", last)
 				}
-				if n.imageOps.cancel(p.Ref, p.TransferID) || !n.imagePullMu.TryLock() {
+				if n.imageWork().ops.cancel(p.Ref, p.TransferID) || !n.imageWork().slot.TryLock() {
 					t.Fatal("finished transfer still active")
 				}
-				n.imagePullMu.Unlock()
+				n.imageWork().slot.Unlock()
 			})
 		})
 	}

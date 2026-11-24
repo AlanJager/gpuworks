@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"os/exec"
 	"strings"
-	"sync"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/docker"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -34,12 +34,13 @@ func TestRuntimeImageErrorDiagnostics(t *testing.T) {
 		t.Fatalf("unbounded diagnostic: %d bytes", log.Len())
 	}
 
-	var lock sync.Mutex
-	lock.Lock()
-	defer lock.Unlock()
 	raw := fmt.Sprintf(`{"ref":"example:v1","identity":"sha256:%s","runtime":"docker"}`, strings.Repeat("a", 64))
-	images := runtimeImageRPC{driver: docker.New(), lock: &lock, stateDir: t.TempDir()}
-	_, busyErr := images.selection(t.Context(), proto.RPCImageRuntimeImport, []byte(raw))
+	stateDir := t.TempDir()
+	images := &nodeImages{}
+	images.wire(imageDeps{driver: func() runtime.Driver { return docker.New() }, stateDir: func() string { return stateDir }})
+	images.slot.Lock()
+	defer images.slot.Unlock()
+	_, busyErr := images.localSelection(t.Context(), proto.RPCImageRuntimeImport, []byte(raw))
 	if !errors.As(busyErr, &rpc) || rpc.Code != proto.ErrorLocalImageBusy {
 		t.Fatalf("busy should have its own code: %v", busyErr)
 	}

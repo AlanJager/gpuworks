@@ -151,7 +151,7 @@ func TestPeerRelaySourceUsesExistingModelAndImageArchives(t *testing.T) {
 			if kind == "model" {
 				n.modelSyncs = map[string]*activeModelSync{"key": {transferID: "owned", receiver: receiver}}
 			} else {
-				n.imageSyncs = map[string]*activeImageSync{"image": {transferID: "owned", receiver: receiver}}
+				n.imageWork().syncs = map[string]*activeImageSync{"image": {transferID: "owned", receiver: receiver}}
 			}
 			raw, err := n.PeerRelayReceiver(context.Background(), kind, "owned")
 			if err != nil {
@@ -171,9 +171,9 @@ func TestPeerRelaySourceUsesExistingModelAndImageArchives(t *testing.T) {
 				if string(archive) != "recording-image" || value.(proto.ImageSyncTransferResult).Bytes != int64(len(archive)) {
 					t.Fatalf("image archive=%q result=%+v", archive, value)
 				}
-				n.imageSyncMu.Lock()
-				active := len(n.imageSyncSends)
-				n.imageSyncMu.Unlock()
+				n.imageWork().syncMu.Lock()
+				active := len(n.imageWork().sends)
+				n.imageWork().syncMu.Unlock()
 				if active != 0 {
 					t.Fatalf("image send ownership leaked: %d", active)
 				}
