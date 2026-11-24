@@ -22,9 +22,6 @@ specs:
     - huggingface:
         repo_id: tencent/HunyuanOCR
         revision: 47644ecc4fc854efa4f505155158831f36773ee4
-    - modelscope:
-        repo_id: Tencent-Hunyuan/HunyuanOCR
-        revision: 9d8082d87e0f38a1d9c8d417124e3bd354828ee4
   weight_bytes: 4622600430
   gpus:
     vendor: nvidia
@@ -52,9 +49,6 @@ specs:
     - huggingface:
         repo_id: tencent/HunyuanOCR
         revision: 47644ecc4fc854efa4f505155158831f36773ee4
-    - modelscope:
-        repo_id: Tencent-Hunyuan/HunyuanOCR
-        revision: 9d8082d87e0f38a1d9c8d417124e3bd354828ee4
   weight_bytes: 4622600430
   gpus:
     vendor: nvidia
