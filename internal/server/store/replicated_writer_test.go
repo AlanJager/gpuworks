@@ -140,18 +140,6 @@ func TestReplicatedWriterRefusesAMemberThatIsNotAdmitted(t *testing.T) {
 		t.Fatal(err)
 	}
 	all(ErrClusterAdmissionRejected, "revoked member")
-	// A write transaction that only reads is not checked, and takes no
-	// writer: the other pool commits while it is open.
-	if err := st.schedulingDB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Raw("SELECT count(*) FROM things").Scan(new(int64)).Error; err != nil {
-			return err
-		}
-		st.writerGuard.off.Store(true)
-		defer st.writerGuard.off.Store(false)
-		return st.db.Exec("INSERT INTO things (n) VALUES (1)").Error
-	}); err != nil {
-		t.Fatalf("a transaction of a revoked member that only reads: %v", err)
-	}
 	// A read-only transaction and a plain read are not writes.
 	if err := st.db.Raw("SELECT count(*) FROM things").Scan(new(int64)).Error; err != nil {
 		t.Fatalf("read of a revoked member: %v", err)
@@ -185,7 +173,9 @@ func TestStoreHasNoUnreviewedWayAroundTheGuardedPool(t *testing.T) {
 	reviewed := map[string]map[string]int{
 		// Exempt transactions: membership decisions and grants, and loading an
 		// image or an import into an empty database.
-		`withoutWriterGuard\(`: {"store/cluster_admission.go": 1, "store/replicated_writer_guard.go": 1, "store/restore_image.go": 1, "store/import_sqlite.go": 1},
+		`withoutWriterGuard\(`: {"store/cluster_admission.go": 1, "store/replicated_writer_guard.go": 1, "store/restore_image.go": 1, "store/import_sqlite.go": 1,
+			// a seam other packages' tests use to show a statement cannot carry it
+			"store/writer_guard_test_seam_dqlite.go": 1},
 		// A held connection: a consistent read of the schema for a backup, and
 		// the read-only discovery of a closed cluster.
 		`\.Conn\(ctx\)`: {"store/backup_sqlite_schema.go": 1, "store/closed_cluster_discovery_dqlite.go": 1, "cluster/quorum_snapshot.go": 1},
@@ -265,40 +255,57 @@ func TestStoreHasNoUnreviewedWayAroundTheGuardedPool(t *testing.T) {
 	}
 }
 
-// A decision on the scheduling pool must survive commits on the other pool.
+// commitOnOtherPoolWaits runs inside an open scheduling-pool transaction: it
+// starts a write on the normal pool and reports whether that write had to
+// wait for the transaction. If it committed instead, the transaction did not
+// own the writer, and a write after a read in it fails for good. The returned
+// channel yields the other write's result once the transaction has ended.
+func commitOnOtherPoolWaits(st *Store) (waited bool, result <-chan error) {
+	other := make(chan error, 1)
+	go func() { other <- st.db.Exec("INSERT INTO things (n) VALUES (7)").Error }()
+	select {
+	case err := <-other:
+		other <- err
+		return false, other
+	case <-time.After(300 * time.Millisecond):
+		return true, other
+	}
+}
+
+// A decision on the scheduling pool must survive a commit on the other pool.
 // The scheduling pool begins without the writer. If the admission read came
 // before the writer was taken it would pin a snapshot, and a heartbeat
-// committing before the transaction's write would fail that write for good.
-// The check takes the writer first. With that step removed this test fails
-// with "database is locked (517)".
+// committing before the transaction's write would fail that write for good
+// ("database is locked (517)", which is what this test shows with the
+// writer acquisition removed). The pool takes the writer at the begin, so
+// the other commit waits, also for a transaction that reads before it writes
+// (recording a notified instance, establishing the drained maintenance
+// point; neither is retried).
 func TestSchedulingPoolWriteSurvivesCommitsOnTheOtherPool(t *testing.T) {
-	st := replicatedOnSQLite(t)
-	key := strings.Repeat("a", 64)
-	if err := st.db.Exec("INSERT INTO cluster_admissions (key_fingerprint) VALUES (?)", key).Error; err != nil {
-		t.Fatal(err)
-	}
-	st.writerGuard.key.Store(&key)
-	var stop atomic.Bool
-	var beats atomic.Int64
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for !stop.Load() {
-			if err := st.db.Exec("INSERT INTO things (n) VALUES (7)").Error; err == nil {
-				beats.Add(1)
+	for _, readFirst := range []bool{false, true} {
+		st := replicatedOnSQLite(t)
+		key := strings.Repeat("a", 64)
+		if err := st.db.Exec("INSERT INTO cluster_admissions (key_fingerprint) VALUES (?)", key).Error; err != nil {
+			t.Fatal(err)
+		}
+		st.writerGuard.key.Store(&key)
+		var waited bool
+		var other <-chan error
+		err := st.schedulingDB.Transaction(func(tx *gorm.DB) error {
+			if readFirst {
+				if err := tx.Raw("SELECT count(*) FROM things").Scan(new(int64)).Error; err != nil {
+					return err
+				}
 			}
-		}
-	}()
-	defer func() { stop.Store(true); <-done }()
-	for i := range 400 {
-		if err := st.schedulingDB.Transaction(func(tx *gorm.DB) error {
+			waited, other = commitOnOtherPoolWaits(st)
 			return tx.Exec("INSERT INTO things (n) VALUES (8)").Error
-		}); err != nil {
-			t.Fatalf("scheduling write %d after %d commits on the other pool: %v", i, beats.Load(), err)
+		})
+		if err != nil || !waited {
+			t.Fatalf("read first=%t: the other pool waited=%t, scheduling write: %v", readFirst, waited, err)
 		}
-	}
-	if beats.Load() == 0 {
-		t.Fatal("the other pool committed nothing meanwhile")
+		if err := <-other; err != nil {
+			t.Fatalf("read first=%t: the waiting write on the other pool: %v", readFirst, err)
+		}
 	}
 }
 
@@ -365,6 +372,15 @@ func TestStatementVerb(t *testing.T) {
 		{"SELECT 1", "SELECT", true},
 		{"  select * from t where n = 'UPDATE x'", "SELECT", true},
 		{"-- note\nSELECT 1", "SELECT", true},
+		{"SELECT/**/1", "SELECT", true},
+		{"SELECT--x\n1", "SELECT", true},
+		{"SELECT 1;", "SELECT", true},
+		{"SELECT 1; -- done\n", "SELECT", true},
+		{"SELECT ';' AS s", "SELECT", true},
+		{"SELECT 1; DELETE FROM t", "SELECT", false},
+		{"SAVEPOINT a; INSERT INTO t (n) VALUES (1)", "SAVEPOINT", false},
+		{"PRAGMA foreign_keys = OFF", "PRAGMA", false},
+		{"PRAGMA foreign_keys=OFF", "PRAGMA", false},
 		{"/* UPDATE */ SELECT 1", "SELECT", true},
 		{"-- note\nUPDATE t SET n = 1 RETURNING id", "UPDATE", false},
 		{"/* SELECT */ DELETE FROM t RETURNING id", "DELETE", false},
@@ -391,8 +407,10 @@ func TestStatementVerb(t *testing.T) {
 			t.Errorf("%q is not taken for a savepoint statement", query)
 		}
 	}
-	if savepointStatement("UPDATE t SET n = 1") {
-		t.Error("an update is taken for a savepoint statement")
+	for _, query := range []string{"UPDATE t SET n = 1", "SAVEPOINT a; INSERT INTO t (n) VALUES (1)", "RELEASE a; DELETE FROM t"} {
+		if savepointStatement(query) {
+			t.Errorf("%q is taken for a savepoint statement", query)
+		}
 	}
 }
 
@@ -445,5 +463,39 @@ func TestMemberWriteOutsideAWriteTransactionIsRefused(t *testing.T) {
 		return tx.Raw("INSERT INTO things (n) VALUES (9) RETURNING id").Scan(new(int)).Error
 	}); !errors.Is(err, ErrClusterAdmissionRejected) {
 		t.Fatalf("a revoked member's write returning rows inside a transaction: %v", err)
+	}
+}
+
+// Whether a transaction is checked is fixed when it begins. Neither pool of
+// this stand-in owns the writer at its begin, so both are checked there and a
+// statement's context comes too late to matter; the case where it could
+// matter (a pool that is checked at its first write) only exists on the real
+// database and is tested there (TestNativeExemptStatementInside...).
+func TestExemptStatementInsideACheckedTransactionIsStillChecked(t *testing.T) {
+	st := replicatedOnSQLite(t)
+	key := strings.Repeat("a", 64)
+	st.writerGuard.key.Store(&key) // no admission row: not admitted
+	count := func() (n int64) {
+		if err := st.db.Raw("SELECT count(*) FROM things").Scan(&n).Error; err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	for name, db := range map[string]*gorm.DB{"normal pool": st.db, "scheduling pool": st.schedulingDB} {
+		err := db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.WithContext(withoutWriterGuard(t.Context())).Exec("INSERT INTO things (n) VALUES (1)").Error; err != nil {
+				return err
+			}
+			return tx.Exec("INSERT INTO things (n) VALUES (2)").Error
+		})
+		if !errors.Is(err, ErrClusterAdmissionRejected) || count() != 0 {
+			t.Fatalf("%s: err=%v rows=%d, want a refusal and no row", name, err, count())
+		}
+	}
+	// The exemption does work where it belongs: on the transaction's begin.
+	if err := st.db.WithContext(withoutWriterGuard(t.Context())).Transaction(func(tx *gorm.DB) error {
+		return tx.Exec("INSERT INTO things (n) VALUES (3)").Error
+	}); err != nil || count() != 1 {
+		t.Fatalf("exempt transaction: err=%v rows=%d", err, count())
 	}
 }

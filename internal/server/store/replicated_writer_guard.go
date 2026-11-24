@@ -72,16 +72,14 @@ const writerAdmittedQuery = "SELECT count(*) FROM cluster_admissions WHERE key_f
 // is owned: the queued pool begins owning it, the other pool takes it here.
 const writerAcquireStatement = "UPDATE cluster_admissions SET key_fingerprint = key_fingerprint WHERE 0"
 
-// check answers for one transaction. Only the answer "not admitted" is a
-// refusal. A statement of the check that fails (the writer busy, no leader, a
-// dropped connection, an expired deadline) is returned as it is: it says
-// nothing about this member, and callers classify it as they classify the
-// same failure of the write itself.
-func (g *writerGuard) check(ctx context.Context, tx *sql.Tx, ownsWriter bool) error {
-	key, ok := g.applies(ctx)
-	if !ok {
-		return nil
-	}
+// check answers for one transaction of the member with this key. Whether a
+// transaction is checked at all was decided when it began (applies); ctx here
+// only carries the statements. Only the answer "not admitted" is a refusal.
+// A statement of the check that fails (the writer busy, no leader, a dropped
+// connection, an expired deadline) is returned as it is: it says nothing
+// about this member, and callers classify it as they classify the same
+// failure of the write itself.
+func (g *writerGuard) check(ctx context.Context, tx *sql.Tx, key string, ownsWriter bool) error {
 	if !ownsWriter {
 		if _, err := tx.ExecContext(ctx, writerAcquireStatement); err != nil {
 			return err
@@ -152,12 +150,19 @@ func statementVerb(query string) string {
 			for i < len(query) && query[i] != '\n' {
 				i++
 			}
+			// A comment separates words, as white space does.
+			if verb, ok := decide(flush()); ok && depth == 0 {
+				return verb
+			}
 		case c == '/' && i+1 < len(query) && query[i+1] == '*':
 			end := strings.Index(query[i+2:], "*/")
 			if end < 0 {
 				return ""
 			}
 			i += end + 3
+			if verb, ok := decide(flush()); ok && depth == 0 {
+				return verb
+			}
 		case c == '\'' || c == '"' || c == '`':
 			end := strings.IndexByte(query[i+1:], c)
 			if end < 0 {
@@ -196,12 +201,80 @@ func statementVerb(query string) string {
 	return verb
 }
 
+// singleStatement reports text that holds one statement: nothing but white
+// space and comments follows its first semicolon. Quoted text is skipped. A
+// second statement could be anything, so text that has one is a write.
+func singleStatement(query string) bool {
+	for i := 0; i < len(query); i++ {
+		switch c := query[i]; {
+		case c == '\'' || c == '"' || c == '`':
+			end := strings.IndexByte(query[i+1:], c)
+			if end < 0 {
+				return false
+			}
+			i += end + 1
+		case c == '-' && i+1 < len(query) && query[i+1] == '-':
+			for i < len(query) && query[i] != '\n' {
+				i++
+			}
+		case c == '/' && i+1 < len(query) && query[i+1] == '*':
+			end := strings.Index(query[i+2:], "*/")
+			if end < 0 {
+				return false
+			}
+			i += end + 3
+		case c == ';':
+			return statementVerb(query[i+1:]) == "" && strings.TrimSpace(stripComments(query[i+1:])) == ""
+		}
+	}
+	return true
+}
+
+// stripComments removes comments outside quoted text.
+func stripComments(query string) string {
+	var out strings.Builder
+	for i := 0; i < len(query); i++ {
+		switch c := query[i]; {
+		case c == '\'' || c == '"' || c == '`':
+			end := strings.IndexByte(query[i+1:], c)
+			if end < 0 {
+				out.WriteString(query[i:])
+				return out.String()
+			}
+			out.WriteString(query[i : i+end+2])
+			i += end + 1
+		case c == '-' && i+1 < len(query) && query[i+1] == '-':
+			for i < len(query) && query[i] != '\n' {
+				i++
+			}
+			out.WriteByte(' ')
+		case c == '/' && i+1 < len(query) && query[i+1] == '*':
+			end := strings.Index(query[i+2:], "*/")
+			if end < 0 {
+				return out.String()
+			}
+			i += end + 3
+			out.WriteByte(' ')
+		default:
+			out.WriteByte(c)
+		}
+	}
+	return out.String()
+}
+
 // readStatement reports a statement known to read. Everything else counts as
 // a write: an unknown shape is checked or refused rather than let through.
+// A PRAGMA that assigns sets something; text with a second statement could
+// hold anything.
 func readStatement(query string) bool {
+	if !singleStatement(query) {
+		return false
+	}
 	switch statementVerb(query) {
-	case "SELECT", "VALUES", "PRAGMA", "EXPLAIN":
+	case "SELECT", "VALUES", "EXPLAIN":
 		return true
+	case "PRAGMA":
+		return !strings.Contains(stripComments(query), "=")
 	}
 	return false
 }
@@ -209,6 +282,9 @@ func readStatement(query string) bool {
 // savepointStatement reports the statements GORM issues for a nested
 // transaction. They change no row, so they do not start the check.
 func savepointStatement(query string) bool {
+	if !singleStatement(query) {
+		return false
+	}
 	switch statementVerb(query) {
 	case "SAVEPOINT", "RELEASE", "ROLLBACK":
 		return true

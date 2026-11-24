@@ -48,21 +48,36 @@ func (p *replicatedWriterPool) BeginTx(ctx context.Context, options *sql.TxOptio
 		// Not checked, so it must not write.
 		return readOnlyTx{tx}, nil
 	}
-	// Whether the transaction is checked is decided here, from the context
-	// it begins with: statements inside it may carry other contexts.
-	if _, ok := p.guard.applies(ctx); !ok {
+	// Whether the transaction is checked, and for which member, is decided
+	// here, from the context it begins with. Statements inside it may carry
+	// other contexts; none of them can switch the check off.
+	key, ok := p.guard.applies(ctx)
+	if !ok {
 		return tx, nil
 	}
-	return &guardedTx{Tx: tx, guard: p.guard, ownsWriter: p.ownsWriterAtBegin()}, nil
+	guarded := &guardedTx{Tx: tx, guard: p.guard, key: key, ownsWriter: p.ownsWriterAtBegin()}
+	if !guarded.ownsWriter {
+		// A deferred transaction that reads first pins a snapshot, and its
+		// later write then fails for good when the other pool committed in
+		// between. So it takes the writer, and is checked, at its begin.
+		if err := guarded.admit(ctx); err != nil {
+			_ = tx.Rollback()
+			return nil, err
+		}
+	}
+	return guarded, nil
 }
 
-// guardedTx is a member's write transaction. Its first write is preceded, in
-// the same transaction, by taking the database writer (where the transaction
-// does not own it yet) and reading the member's own admission. A transaction
-// that only reads is not checked and takes no writer, as before.
+// guardedTx is a member's write transaction. Before its first write it
+// reads, in the same transaction and holding the database writer, the
+// member's own admission. On the queued pool the transaction owns the writer
+// from its begin (BEGIN IMMEDIATE), so the read waits for the first write
+// and a transaction that only reads is not checked. On the other pool the
+// writer is taken and the read is made at the begin.
 type guardedTx struct {
 	*sql.Tx
 	guard      *writerGuard
+	key        string
 	ownsWriter bool
 	mu         sync.Mutex
 	checked    bool
@@ -73,7 +88,7 @@ func (t *guardedTx) admit(ctx context.Context) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if !t.checked {
-		t.checked, t.err = true, t.guard.check(ctx, t.Tx, t.ownsWriter)
+		t.checked, t.err = true, t.guard.check(ctx, t.Tx, t.key, t.ownsWriter)
 	}
 	return t.err
 }
@@ -147,14 +162,15 @@ func (t readOnlyTx) PrepareContext(ctx context.Context, query string) (*sql.Stmt
 // a transaction of its own, so that it carries the admission read too.
 func (p *replicatedWriterPool) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	// VACUUM cannot run inside a transaction and changes no row.
-	if _, ok := p.guard.applies(ctx); !ok || statementVerb(query) == "VACUUM" {
+	key, ok := p.guard.applies(ctx)
+	if !ok || (statementVerb(query) == "VACUUM" && singleStatement(query)) {
 		return p.DB.ExecContext(ctx, query, args...)
 	}
 	tx, err := p.begin(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
-	if err := p.guard.check(ctx, tx, p.ownsWriterAtBegin()); err != nil {
+	if err := p.guard.check(ctx, tx, key, p.ownsWriterAtBegin()); err != nil {
 		_ = tx.Rollback()
 		return nil, err
 	}

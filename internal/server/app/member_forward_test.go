@@ -46,6 +46,9 @@ type forwardMember struct {
 	dropped    atomic.Int64
 	authorized atomic.Int64
 	admit      atomic.Bool
+	// unanswered makes the next authorizations end as a grant that brought
+	// no answer, as during a storage stall.
+	unanswered atomic.Int64
 	seen       chan *http.Request
 }
 
@@ -153,6 +156,10 @@ func (c *forwardCluster) newMember(id uint64) *forwardMember {
 	}
 	authorize := func(context.Context, *x509.Certificate) error {
 		m.authorized.Add(1)
+		if m.unanswered.Load() > 0 {
+			m.unanswered.Add(-1)
+			return fmt.Errorf("grant: %w", context.DeadlineExceeded)
+		}
 		if !m.admit.Load() {
 			return errors.New("not admitted")
 		}
@@ -433,5 +440,49 @@ func TestMemberForwardIsInertWithoutARoute(t *testing.T) {
 	defer ln.Close()
 	if err := forward.ServeMemberSessions(ln); err == nil {
 		t.Fatal("an unconfigured route was served")
+	}
+}
+
+// Seen on the real hosts: during a storage stall the leader's grant for a
+// member's connection timed out, the result was kept for the life of that
+// connection, and for 62 to 102 seconds every request the member forwarded
+// was answered 403 "member is not admitted" although the member was admitted
+// all along. A grant that brings no answer decides nothing: the request is
+// answered "not ready", and the next request on the same connection asks
+// again and is served.
+func TestGrantTimeoutDuringAStallDoesNotRefuseTheMembersConnectionAfterwards(t *testing.T) {
+	c := newForwardCluster(t, 1, 2)
+	c.lead(2)
+	leader, follower := c.members[2], c.members[1]
+	leader.unanswered.Store(2)
+	for i := range 2 {
+		status, body, _ := forwardGet(t, follower.public.URL+"/api/v1/nodes")
+		if status != http.StatusServiceUnavailable || !strings.Contains(body, "member business service is not ready") {
+			t.Fatalf("request %d during the stall: %d %q, want 503 not ready, never 403", i, status, body)
+		}
+	}
+	status, body, header := forwardGet(t, follower.public.URL+"/api/v1/nodes")
+	if status != http.StatusOK || header.Get("X-Served-By") != "2" {
+		t.Fatalf("first request after the stall: %d %q", status, body)
+	}
+	// The stall's attempts and the one that answered: three questions, and
+	// none after the answer, on the one connection the member keeps open.
+	if got := leader.authorized.Load(); got != 3 {
+		t.Fatalf("the leader asked %d times, want 3", got)
+	}
+	if status, _, _ := forwardGet(t, follower.public.URL+"/api/v1/nodes"); status != http.StatusOK || leader.authorized.Load() != 3 {
+		t.Fatalf("a decided connection: status %d, asked %d times", status, leader.authorized.Load())
+	}
+	// A refusal is an answer, and is kept.
+	c2 := newForwardCluster(t, 1, 2)
+	c2.lead(2)
+	c2.members[2].admit.Store(false)
+	for range 2 {
+		if status, _, _ := forwardGet(t, c2.members[1].public.URL+"/api/v1/nodes"); status != http.StatusForbidden {
+			t.Fatalf("a member that is not admitted was answered %d", status)
+		}
+	}
+	if got := c2.members[2].authorized.Load(); got != 1 {
+		t.Fatalf("a refused connection was asked about %d times, want 1", got)
 	}
 }
