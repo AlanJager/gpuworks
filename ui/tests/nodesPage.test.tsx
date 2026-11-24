@@ -130,6 +130,8 @@ const originals = {
   agentUpgradeRuns: api.agentUpgradeRuns,
   agentUpgradePreview: api.agentUpgradePreview,
   createAgentUpgrade: api.createAgentUpgrade,
+  agentUpgradeRun: api.agentUpgradeRun,
+  agentUpgradeItems: api.agentUpgradeItems,
   nodes: api.nodes,
   nodesPage: api.nodesPage,
   health: api.health,
@@ -315,6 +317,63 @@ test("while a batch runs the fleet notice offers its progress, not a second batc
   renderPage(101);
   assert.equal((await screen.findByRole("link", { name: "View upgrade progress" })).getAttribute("href"), "/nodes?agent_run=9");
   assert.equal(screen.queryByRole("button", { name: "Upgrade all" }), null);
+});
+
+// alignServer answers the "align" filter the way the server does: it lists the nodes a batch may
+// still take, so the nodes a running batch has reserved are not in it.
+function alignServer(running: () => number | undefined) {
+  const nodes = api.nodesPage;
+  api.nodesPage = async query => {
+    const page = await nodes(query);
+    const run_id = running();
+    const agent_fleet = { target: "56cb84fa", align: 1, check: 0, ...(run_id ? { run_id } : {}) };
+    return query.extra?.agent_upgrade?.[0] === "align" && run_id ? { ...page, items: [], total: 0, agent_fleet } : { ...page, agent_fleet };
+  };
+}
+
+function renderAt(entry: string) {
+  return render(
+    <I18nextProvider i18n={i18n}>
+      <MemoryRouter initialEntries={[entry]}>
+        <SessionUserContext.Provider value={{ id: 101, username: "preview", role: "admin" }}>
+          <NodesPage />
+        </SessionUserContext.Provider>
+      </MemoryRouter>
+    </I18nextProvider>,
+  );
+}
+
+test("starting a batch from the differing-version filter returns the list to every node", async () => {
+  stubApi([onlineNode]);
+  let runID: number | undefined;
+  alignServer(() => runID);
+  const run = { id: 32, target_version: "56cb84fa", state: "running", counts: { total: 1, processed: 0, succeeded: 0, failed: 0, skipped: 0, cancelled: 0, interrupted: 0, unconfirmed: 0, queued: 0, active: 1 } };
+  api.agentUpgradePreview = async () => ({ target_version: "56cb84fa", manifest_fingerprint: "sha256:sealed", node_uuids: [onlineNode.uuid!], counts: { eligible: 1 },
+    nodes: [{ node_uuid: onlineNode.uuid!, name: onlineNode.name!, from_version: "old", os: "linux", arch: "amd64", transport: "push", eligibility: "eligible" }] }) as never;
+  api.createAgentUpgrade = async () => { runID = run.id; return run as never; };
+  api.agentUpgradeRuns = async () => ({ items: runID ? [run] : [], total: runID ? 1 : 0, page: 1, page_size: 20 }) as never;
+  api.agentUpgradeRun = async () => run as never;
+  api.agentUpgradeItems = async () => ({ items: [], total: 0, page: 1, page_size: 20 }) as never;
+  const user = userEvent.setup();
+  renderAt("/nodes?agent_upgrade=align");
+  await waitFor(() => assert.deepEqual(pageQueries.at(-1)?.extra?.agent_upgrade, ["align"]));
+  await user.click(await screen.findByRole("button", { name: "Upgrade all" }));
+  const modal = await screen.findByRole("dialog");
+  await user.click(await within(modal).findByRole("checkbox", { name: /maintenance window/ }));
+  await user.click(within(modal).getByRole("button", { name: "Update to this version" }));
+  assert.ok(await screen.findByRole("dialog", { name: "Agent upgrade batch 32" }));
+  // The batch reserved its node: the "align" list would now be empty, so the page asks for every node.
+  await waitFor(() => assert.deepEqual(pageQueries.at(-1)?.extra?.agent_upgrade, ["all"]));
+  assert.equal(screen.queryByText("No nodes match the search or the selected labels"), null);
+});
+
+test("the differing-version filter says its nodes are in the running batch, not that nothing matches", async () => {
+  stubApi([onlineNode]);
+  alignServer(() => 32);
+  renderAt("/nodes?agent_upgrade=align");
+  assert.ok(await screen.findByText("The nodes with a different version are in the running upgrade batch. Open View upgrade progress to follow them."));
+  assert.equal(screen.queryByText("No nodes match the search or the selected labels"), null);
+  assert.equal(screen.getByRole("link", { name: "View upgrade progress" }).getAttribute("href"), "/nodes?agent_run=32");
 });
 
 test("the latest-rejection column is gone from the table; the drawer keeps the detail", async () => {

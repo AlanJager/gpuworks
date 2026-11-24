@@ -63,6 +63,12 @@ export default function NodesPage() {
     else next.set("agent_upgrade", group);
     return next.toString();
   };
+  // A started batch reserves its nodes, and "align" lists only the nodes a batch may still take:
+  // staying on it would show an empty table, so the list returns to every node.
+  const onUpgradeStarted = () => {
+    setSelectedNodeUUIDs([]);
+    if (fleetGroup === "align") navigate({ search: fleetSearch("all") }, { replace: true });
+  };
   const [upgradeRunID, setUpgradeRunID] = useState<number>(() => Number(params.get("agent_run")) || 0);
   const incoming = location.state as {
     nodeUUID?: string;
@@ -264,7 +270,7 @@ export default function NodesPage() {
               <Typography.Text>{t("batchUpgrade.selectedCount", { count: selectedNodeUUIDs.length })}</Typography.Text>
               <Button type="link" onClick={() => setSelectedNodeUUIDs([])}>{t("batchUpgrade.clearSelection")}</Button>
             </Space>}
-            <AgentUpgradeManager isAdmin={isAdmin} requestedRunID={upgradeRunID} selectedNodeUUIDs={selectedNodeUUIDs} upgradeAllRequest={upgradeAllRequest} onStarted={() => setSelectedNodeUUIDs([])} />
+            <AgentUpgradeManager isAdmin={isAdmin} requestedRunID={upgradeRunID} selectedNodeUUIDs={selectedNodeUUIDs} upgradeAllRequest={upgradeAllRequest} onStarted={onUpgradeStarted} />
           </>}
           sort={sort}
           onSortChange={setSort}
@@ -304,7 +310,7 @@ export default function NodesPage() {
               />
             </>
           }
-          emptyDescription={t(filtering ? "empty.filtered" : "empty.all")}
+          emptyDescription={t(fleetGroup === "align" && data?.agent_fleet?.run_id ? "empty.inBatch" : filtering ? "empty.filtered" : "empty.all")}
           emptyKind="nodes"
           emptyAction={
             <Button type="primary" onClick={() => setAddOpen(true)}>

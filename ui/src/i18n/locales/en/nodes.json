@@ -197,7 +197,8 @@
   },
   "empty": {
     "all": "No nodes yet. Click Add node to onboard one.",
-    "filtered": "No nodes match the search or the selected labels"
+    "filtered": "No nodes match the search or the selected labels",
+    "inBatch": "The nodes with a different version are in the running upgrade batch. Open View upgrade progress to follow them."
   },
   "connection": {
     "serverDial": "Server-initiated connection",
