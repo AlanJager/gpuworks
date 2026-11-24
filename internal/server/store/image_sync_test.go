@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -171,5 +172,192 @@ func TestApplyImageNodeStatusIgnoresLateProgressForFinishedTransfer(t *testing.T
 	}
 	if row, _ = st.ImageNode(image.ID, node.ID); row.State != ImageStateFailed {
 		t.Fatalf("terminal report after finish was dropped: %+v", row)
+	}
+}
+
+// A peer sync's progress comes from the receiving node, about once a second,
+// and its report of the loaded image carries no count; the sender's result
+// arrives last. The finished row must hold the sender's count, whichever of
+// the two the server handles first, and an archive size nobody knew.
+func TestRecordImageTransferBytesFinishesAPeerSyncWithTheSendersCount(t *testing.T) {
+	const archive = int64(8388608)
+	for _, c := range []struct {
+		name          string
+		size          int64
+		recordFirst   bool
+		wantSizeBytes int64
+	}{
+		{"load report first", archive, false, archive},
+		{"sender's result first", archive, true, archive},
+		{"archive size unknown", 0, false, archive},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			st, err := Open("file:"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared", bus.New())
+			if err != nil {
+				t.Fatal(err)
+			}
+			image, _ := st.UpsertImage(&Image{ImageRef: "example/image:count", Engine: "vllm", Enabled: true})
+			node, _ := st.RegisterNode("node-count", HashToken("t"), "count")
+			if _, err := st.UpsertImageNode(&ImageNode{ImageID: image.ID, NodeID: node.ID, State: ImageStateSyncing, TransferID: "relay", Source: "peer"}); err != nil {
+				t.Fatal(err)
+			}
+			// What the receiving node sends: a sample, then the loaded image.
+			sample := proto.ImageNodeStatus{State: ImageStateSyncing, TransferID: "relay", Source: "peer", SizeBytes: c.size, TransferredBytes: 5545984, RateBPS: 1000}
+			loaded := proto.ImageNodeStatus{State: ImageStatePresent, TransferID: "relay", Message: "image archive loaded"}
+			if err := st.ApplyImageNodeStatus(image.ID, node.ID, sample); err != nil {
+				t.Fatal(err)
+			}
+			record := func() {
+				if ok, err := st.RecordImageTransferBytes(image.ID, node.ID, "relay", archive); err != nil || !ok {
+					t.Fatalf("record = %v, %v", ok, err)
+				}
+			}
+			if c.recordFirst {
+				record()
+				// A sample the node sent earlier, handled after the final count.
+				if err := st.ApplyImageNodeStatus(image.ID, node.ID, sample); err != nil {
+					t.Fatal(err)
+				}
+				if row, _ := st.ImageNode(image.ID, node.ID); row.TransferredBytes != archive {
+					t.Fatalf("a late sample lowered the count to %d", row.TransferredBytes)
+				}
+			}
+			if err := st.ApplyImageNodeStatus(image.ID, node.ID, loaded); err != nil {
+				t.Fatal(err)
+			}
+			if !c.recordFirst {
+				if row, _ := st.ImageNode(image.ID, node.ID); row.TransferredBytes != 5545984 {
+					t.Fatalf("before the sender's result the row holds %d, want the sample", row.TransferredBytes)
+				}
+				// The count changes no state, so it must not make the
+				// controller re-plan: the topic's generation stays.
+				before := st.Bus.Generation("image")
+				record()
+				if after := st.Bus.Generation("image"); after != before {
+					t.Fatalf("recording the count advanced the image generation from %d to %d", before, after)
+				}
+			}
+			// Nothing the node can still send for this transfer changes it.
+			for _, late := range []proto.ImageNodeStatus{sample, loaded} {
+				if err := st.ApplyImageNodeStatus(image.ID, node.ID, late); err != nil {
+					t.Fatal(err)
+				}
+			}
+			row, _ := st.ImageNode(image.ID, node.ID)
+			if row.State != ImageStatePresent || row.TransferredBytes != archive || row.SizeBytes != c.wantSizeBytes || row.RateBPS != 0 {
+				t.Fatalf("finished row = %+v, want present with %d of %d and no rate", row, archive, c.wantSizeBytes)
+			}
+		})
+	}
+}
+
+// The count belongs to one transfer: it is not written on a row another
+// transfer owns or finished, nor on a failed one.
+func TestRecordImageTransferBytesLeavesOtherTransfersAlone(t *testing.T) {
+	st, err := Open("file:store_image_count_other?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, _ := st.UpsertImage(&Image{ImageRef: "example/image:other", Engine: "vllm", Enabled: true})
+	node, _ := st.RegisterNode("node-other", HashToken("t"), "other")
+	if _, err := st.UpsertImageNode(&ImageNode{ImageID: image.ID, NodeID: node.ID, State: ImageStateSyncing, TransferID: "second", Source: "peer", SizeBytes: 100, TransferredBytes: 10}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"first", ""} {
+		if ok, err := st.RecordImageTransferBytes(image.ID, node.ID, id, 100); err != nil || ok {
+			t.Fatalf("record for %q on another transfer's row = %v, %v", id, ok, err)
+		}
+	}
+	if err := st.ApplyImageNodeStatus(image.ID, node.ID, proto.ImageNodeStatus{State: ImageStateFailed, TransferID: "second", Message: "load failed"}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := st.RecordImageTransferBytes(image.ID, node.ID, "second", 100); err != nil || ok {
+		t.Fatalf("record on a failed row = %v, %v", ok, err)
+	}
+	if row, _ := st.ImageNode(image.ID, node.ID); row.TransferredBytes != 10 {
+		t.Fatalf("row = %+v, want the count untouched", row)
+	}
+}
+
+// A count that is not a peer copy's sample is shown as the node reports it,
+// also when it falls: a registry pull keeps one transfer id while it moves
+// from one source to the next and from download to extraction, and an archive
+// download starts again from zero when its server ignores the range.
+func TestApplyImageNodeStatusShowsAFallingCountOutsideAPeerCopy(t *testing.T) {
+	const gib = int64(1) << 30
+	// rowSource is what the server wrote when it started the transfer;
+	// statusSource is what the node puts in its samples (a pull names the
+	// reference it is pulling, an archive download names nothing).
+	for _, c := range []struct {
+		name, state, rowSource, statusSource string
+	}{
+		{"registry pull moving to its next source", ImageStatePulling, "registry", "mirror.example/image:v1"},
+		{"archive download restarted from zero", ImageStateSyncing, "url", ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			st, err := Open("file:"+strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())+"?mode=memory&cache=shared", bus.New())
+			if err != nil {
+				t.Fatal(err)
+			}
+			image, _ := st.UpsertImage(&Image{ImageRef: "example/image:falls", Engine: "vllm", Enabled: true})
+			node, _ := st.RegisterNode("node-falls", HashToken("t"), "falls")
+			if _, err := st.UpsertImageNode(&ImageNode{ImageID: image.ID, NodeID: node.ID, State: c.state, TransferID: "one", Source: c.rowSource}); err != nil {
+				t.Fatal(err)
+			}
+			for _, sample := range []proto.ImageNodeStatus{
+				{State: c.state, TransferID: "one", Source: c.statusSource, SizeBytes: 4 * gib, TransferredBytes: 3 * gib},
+				{State: c.state, TransferID: "one", Source: c.statusSource, SizeBytes: 2 * gib, TransferredBytes: 100 << 20},
+			} {
+				if err := st.ApplyImageNodeStatus(image.ID, node.ID, sample); err != nil {
+					t.Fatal(err)
+				}
+			}
+			row, _ := st.ImageNode(image.ID, node.ID)
+			if row.TransferredBytes != 100<<20 || row.SizeBytes != 2*gib {
+				t.Fatalf("row shows %d of %d, want the later sample's %d of %d", row.TransferredBytes, row.SizeBytes, int64(100<<20), 2*gib)
+			}
+		})
+	}
+}
+
+// The sending side's count can land between the status writer's read of the
+// row and its update. The comparison is the update's own, so a sample that
+// was read against a lower count still cannot replace a higher one. That
+// interleaving cannot be forced through ApplyImageNodeStatus, so the test
+// applies the expression the writer uses to a row read before the count
+// landed.
+func TestImageStatusCountComparesAgainstTheRowAsItIsAtTheUpdate(t *testing.T) {
+	st, err := Open("file:store_image_count_at_update?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, _ := st.UpsertImage(&Image{ImageRef: "example/image:atupdate", Engine: "vllm", Enabled: true})
+	node, _ := st.RegisterNode("node-atupdate", HashToken("t"), "atupdate")
+	if _, err := st.UpsertImageNode(&ImageNode{ImageID: image.ID, NodeID: node.ID, State: ImageStateSyncing, TransferID: "relay", Source: "peer", TransferredBytes: 10}); err != nil {
+		t.Fatal(err)
+	}
+	// What the status writer read, before the sending side's count landed.
+	read, err := st.ImageNode(image.ID, node.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := st.RecordImageTransferBytes(image.ID, node.ID, "relay", 8388608); err != nil || !ok {
+		t.Fatalf("record = %v, %v", ok, err)
+	}
+	sample := proto.ImageNodeStatus{State: ImageStateSyncing, TransferID: "relay", Source: "peer", TransferredBytes: 5545984}
+	if err := st.db.Model(&ImageNode{}).Where("id = ?", read.ID).Update("transferred_bytes", imageStatusCount(*read, sample)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row, _ := st.ImageNode(image.ID, node.ID); row.TransferredBytes != 8388608 {
+		t.Fatalf("a sample read against the earlier row lowered the count to %d", row.TransferredBytes)
+	}
+	// A sample that is ahead of the row is taken.
+	ahead := sample
+	ahead.TransferredBytes = 9000000
+	if err := st.db.Model(&ImageNode{}).Where("id = ?", read.ID).Update("transferred_bytes", imageStatusCount(*read, ahead)).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row, _ := st.ImageNode(image.ID, node.ID); row.TransferredBytes != 9000000 {
+		t.Fatalf("a sample ahead of the row was not taken: %d", row.TransferredBytes)
 	}
 }
