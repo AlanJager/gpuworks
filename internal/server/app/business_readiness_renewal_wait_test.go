@@ -70,7 +70,7 @@ func TestBusinessReadinessWaitsForCapturedRenewalBeforePublishing(t *testing.T) 
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = st.DB().Callback().Query().Remove(hook) })
-			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}))
+			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}, nil))
 			requestCtx, cancelRequest := context.WithCancel(t.Context())
 			defer cancelRequest()
 			if mode == "request-deadline" {

@@ -76,6 +76,7 @@ func newWaitingClosedMemberApp(runtime *memberRuntime, session joinedRaftSession
 		log = slog.Default()
 	}
 	gate := newBusinessHandlerGate(log)
+	gate.refusals = runtime.refusals
 	gate.requireMaterialEligibility()
 	a := &App{cfg: member.cfg, log: log, bus: member.events, selfLog: member.cfg.SelfLog, ha: runtime,
 		http: &http.Server{Handler: gate}}

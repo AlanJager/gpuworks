@@ -74,9 +74,11 @@ type businessRefusals struct {
 	pending  bool      // a recovery line is scheduled
 }
 
-// memberBusinessRefusals is this process's record: a server process is one
-// member.
-var memberBusinessRefusals = &businessRefusals{}
+// newBusinessRefusals is a member's record. A member keeps one for as long
+// as its process runs, across the generations of its business, and hands it
+// to whatever answers business requests: the gate, the member handler and
+// the forwarder. A nil record names reasons and counts nothing.
+func newBusinessRefusals() *businessRefusals { return &businessRefusals{} }
 
 func (b *businessRefusals) logger() *slog.Logger {
 	if log := b.log.Load(); log != nil {
@@ -94,6 +96,9 @@ func (b *businessRefusals) every() time.Duration {
 
 // record counts one refusal.
 func (b *businessRefusals) record(reason string) {
+	if b == nil {
+		return
+	}
 	b.mu.Lock()
 	if b.total == nil {
 		b.total, b.run = map[string]uint64{}, map[string]uint64{}
@@ -114,7 +119,7 @@ func (b *businessRefusals) record(reason string) {
 
 // served notes that business is served again after a refusal.
 func (b *businessRefusals) served() {
-	if !b.open.Load() || !b.open.CompareAndSwap(true, false) {
+	if b == nil || !b.open.Load() || !b.open.CompareAndSwap(true, false) {
 		return
 	}
 	b.mu.Lock()
@@ -160,6 +165,9 @@ func (b *businessRefusals) reportLocked() {
 
 // snapshot is the count per reason since the process started.
 func (b *businessRefusals) snapshot() map[string]uint64 {
+	if b == nil {
+		return nil
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	out := make(map[string]uint64, len(b.total))
@@ -182,9 +190,9 @@ func (b *businessRefusals) serving(next http.Handler) http.Handler {
 	})
 }
 
-// markRefusal names the reason on the response and counts it. A probe asks
-// about the member and is not business: it gets the header and no count.
-func markRefusal(w http.ResponseWriter, r *http.Request, reason string) {
+// mark names the reason on the response and counts it. A probe asks about
+// the member and is not business: it gets the header and no count.
+func (b *businessRefusals) mark(w http.ResponseWriter, r *http.Request, reason string) {
 	if !businessRefusalCodeSet[reason] {
 		reason = refusalOther
 	}
@@ -192,12 +200,12 @@ func markRefusal(w http.ResponseWriter, r *http.Request, reason string) {
 	if r != nil && memberProbe(r) {
 		return
 	}
-	memberBusinessRefusals.record(reason)
+	b.record(reason)
 }
 
-// refuseMemberBusiness answers as a closed member does and says why.
-func refuseMemberBusiness(w http.ResponseWriter, r *http.Request, reason string) {
-	markRefusal(w, r, reason)
+// refuse answers as a closed member does and says why.
+func (b *businessRefusals) refuse(w http.ResponseWriter, r *http.Request, reason string) {
+	b.mark(w, r, reason)
 	answerNotReady(w)
 }
 

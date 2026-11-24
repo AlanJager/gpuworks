@@ -72,7 +72,7 @@ func TestStatusReadinessRejectsProofAboutToExpire(t *testing.T) {
 					age.Store(int64(tc.age))
 				}
 			})
-			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}))
+			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}, nil))
 			rec := httptest.NewRecorder()
 			gate.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/readyz", nil))
 			if rec.Code != tc.status {

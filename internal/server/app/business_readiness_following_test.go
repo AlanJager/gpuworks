@@ -164,7 +164,7 @@ func TestBusinessReadinessFollowingBackgroundRenewal(t *testing.T) {
 					gate.setBusinessHandler(nil)
 				})
 			}
-			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}))
+			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}, nil))
 			reqCtx, cancelRequest := context.WithCancel(t.Context())
 			if mode == "client-deadline" {
 				var cancel context.CancelFunc

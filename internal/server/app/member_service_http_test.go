@@ -35,7 +35,9 @@ func TestHealthyFollowerAcceptsTheEngineCatalog(t *testing.T) {
 	st.SetLocalSchedulingLeader(func(context.Context) (bool, error) { return leader, nil })
 	signer, token := memberAdminSession(t, st, "member-service-entry")
 	member := &App{store: st}
-	entry := memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), member)
+	refusals := &businessRefusals{recoveryEvery: time.Nanosecond}
+	refusals.log.Store(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	entry := memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), member, refusals)
 
 	public := requestMemberEntry(entry, http.MethodGet, "/healthz", "")
 	if public.Code != http.StatusOK {
@@ -71,9 +73,6 @@ func TestHealthyFollowerAcceptsTheEngineCatalog(t *testing.T) {
 	// The count of refused business per reason is part of the authenticated
 	// answer once there is one, under exactly this key and these values, and
 	// never of the other two answers.
-	refusals := &businessRefusals{recoveryEvery: time.Nanosecond}
-	refusals.log.Store(slog.New(slog.NewTextHandler(io.Discard, nil)))
-	useRefusals(t, refusals)
 	if none := requestMemberEntry(entry, http.MethodGet, "/api/v1/healthz", token); none.Code != http.StatusOK || strings.Contains(none.Body.String(), "business_refusals") {
 		t.Fatalf("health with no refusal: %d %s", none.Code, none.Body.String())
 	}
@@ -186,7 +185,7 @@ func TestFailedEntryCheckLeavesTheCandidateSet(t *testing.T) {
 	st.SetLocalSchedulingLeader(func(context.Context) (bool, error) { return leader, nil })
 	signer, token := memberAdminSession(t, st, "entry-check")
 	member := &App{store: st}
-	entry := memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), member)
+	entry := memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), member, nil)
 
 	public := requestMemberEntry(entry, http.MethodGet, "/healthz", "")
 	if public.Code != http.StatusOK || strings.Contains(public.Body.String(), "entry_candidate") {

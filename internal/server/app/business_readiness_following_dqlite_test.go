@@ -139,7 +139,7 @@ func TestNativeFollowingRenewalUsesRealProof(t *testing.T) {
 			})
 			gate.requireMaterialEligibility()
 			gate.setMaterialEligibility(e)
-			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}))
+			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}, nil))
 			request, stopRequest := context.WithCancel(ctx)
 			rec := httptest.NewRecorder()
 			done := make(chan struct{})

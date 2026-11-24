@@ -26,6 +26,8 @@ type businessHandlerGate struct {
 	materialRequired    atomic.Bool
 	materialEligibility atomic.Pointer[materialEligibility]
 	readinessLog        *slog.Logger
+	// refusals is the member's record of what it refused; nil counts nothing.
+	refusals *businessRefusals
 	// clusterUpgrade is set while this member's business is closed for a
 	// cluster upgrade; the closed answer then says so.
 	clusterUpgrade atomic.Bool
@@ -60,7 +62,7 @@ func newBusinessHandlerGate(loggers ...*slog.Logger) *businessHandlerGate {
 			return
 		}
 		if gate.clusterUpgrade.Load() {
-			markRefusal(w, r, refusalClusterUpgrade)
+			gate.refusals.mark(w, r, refusalClusterUpgrade)
 			// The same status as any closed member, so an entry layer keeps
 			// treating it as not ready; the code tells a client why, and
 			// that the answer will change without its doing anything.
@@ -73,7 +75,7 @@ func newBusinessHandlerGate(loggers ...*slog.Logger) *businessHandlerGate {
 		if reason == "" {
 			reason = refusalNoGeneration
 		}
-		markRefusal(w, r, reason)
+		gate.refusals.mark(w, r, reason)
 		http.Error(w, "member business service is not ready", http.StatusServiceUnavailable)
 	})
 	var log *slog.Logger

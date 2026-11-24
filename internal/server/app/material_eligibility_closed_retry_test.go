@@ -128,7 +128,7 @@ func closedRetryReadiness(t *testing.T, e *materialEligibility) (*businessHandle
 	gate := newBusinessHandlerGate()
 	gate.requireMaterialEligibility()
 	gate.setMaterialEligibility(e)
-	gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}))
+	gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}, nil))
 	return gate, reads
 }
 

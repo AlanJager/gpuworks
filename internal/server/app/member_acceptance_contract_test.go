@@ -227,6 +227,6 @@ func TestClosedMemberRefusesBusinessAndReadinessButAnswersHealth(t *testing.T) {
 		refused(t, gate)
 	})
 	t.Run("member without a store", func(t *testing.T) {
-		refused(t, memberServiceHandler(business, &App{}))
+		refused(t, memberServiceHandler(business, &App{}, nil))
 	})
 }
