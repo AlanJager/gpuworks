@@ -176,7 +176,7 @@ func (m *Manager) collectMembers(ctx context.Context, b Bundle, work, log string
 		return
 	}
 	local := filepath.Join(work, "members", "index.json")
-	if err := os.MkdirAll(filepath.Dir(local), 0o700); err == nil {
+	if err = os.MkdirAll(filepath.Dir(local), 0o700); err == nil {
 		err = os.WriteFile(local, raw, 0o600)
 	}
 	if err != nil {

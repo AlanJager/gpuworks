@@ -339,13 +339,3 @@ func memberFileBound(name string) (int64, bool) {
 	}
 	return 0, false
 }
-
-// readMemberFacts reads a staged part's member.json.
-func readMemberFacts(dir string) (MemberFacts, error) {
-	raw, err := os.ReadFile(filepath.Join(dir, MemberFactsFile))
-	if err != nil {
-		return MemberFacts{}, err
-	}
-	var facts MemberFacts
-	return facts, json.Unmarshal(raw, &facts)
-}
