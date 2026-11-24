@@ -173,9 +173,7 @@ func TestStoreHasNoUnreviewedWayAroundTheGuardedPool(t *testing.T) {
 	reviewed := map[string]map[string]int{
 		// Exempt transactions: membership decisions and grants, and loading an
 		// image or an import into an empty database.
-		`withoutWriterGuard\(`: {"store/cluster_admission.go": 1, "store/replicated_writer_guard.go": 1, "store/restore_image.go": 1, "store/import_sqlite.go": 1,
-			// a seam other packages' tests use to show a statement cannot carry it
-			"store/writer_guard_test_seam_dqlite.go": 1},
+		`withoutWriterGuard\(`: {"store/cluster_admission.go": 1, "store/replicated_writer_guard.go": 1, "store/restore_image.go": 1, "store/import_sqlite.go": 1},
 		// A held connection: a consistent read of the schema for a backup, and
 		// the read-only discovery of a closed cluster.
 		`\.Conn\(ctx\)`: {"store/backup_sqlite_schema.go": 1, "store/closed_cluster_discovery_dqlite.go": 1, "cluster/quorum_snapshot.go": 1},
@@ -381,6 +379,14 @@ func TestStatementVerb(t *testing.T) {
 		{"SAVEPOINT a; INSERT INTO t (n) VALUES (1)", "SAVEPOINT", false},
 		{"PRAGMA foreign_keys = OFF", "PRAGMA", false},
 		{"PRAGMA foreign_keys=OFF", "PRAGMA", false},
+		{"PRAGMA user_version(5)", "PRAGMA", false},
+		{"PRAGMA wal_checkpoint(TRUNCATE)", "PRAGMA", false},
+		{"PRAGMA user_version", "PRAGMA", true},
+		{"PRAGMA integrity_check", "PRAGMA", true},
+		{"PRAGMA table_info(\"nodes\")", "PRAGMA", true},
+		{"pragma index_list(nodes)", "PRAGMA", true},
+		{"PRAGMA main.table_info(nodes)", "PRAGMA", false},
+		{"PRAGMA optimize(0x10002)", "PRAGMA", false},
 		{"/* UPDATE */ SELECT 1", "SELECT", true},
 		{"-- note\nUPDATE t SET n = 1 RETURNING id", "UPDATE", false},
 		{"/* SELECT */ DELETE FROM t RETURNING id", "DELETE", false},
@@ -392,7 +398,6 @@ func TestStatementVerb(t *testing.T) {
 		{"with a as materialized (select 1), b as (select 2) update t set n = 1 returning id", "UPDATE", false},
 		{"INSERT INTO t (n) VALUES (1) RETURNING id", "INSERT", false},
 		{"REPLACE INTO t (n) VALUES (1)", "REPLACE", false},
-		{"PRAGMA table_info(t)", "PRAGMA", true},
 		{"SAVEPOINT sp1", "SAVEPOINT", false},
 		{"VACUUM INTO 'x'", "VACUUM", false},
 		{"/* unterminated SELECT 1", "", false},
@@ -466,11 +471,11 @@ func TestMemberWriteOutsideAWriteTransactionIsRefused(t *testing.T) {
 	}
 }
 
-// Whether a transaction is checked is fixed when it begins. Neither pool of
-// this stand-in owns the writer at its begin, so both are checked there and a
-// statement's context comes too late to matter; the case where it could
-// matter (a pool that is checked at its first write) only exists on the real
-// database and is tested there (TestNativeExemptStatementInside...).
+// Whether a transaction is checked is fixed when it begins: a statement
+// inside it that carries the exemption cannot switch the check off for
+// itself or for the statements after it. Both pools of this stand-in are
+// checked at their begin; the last part drives a transaction that is checked
+// at its first write, as the ordinary pool's is on the real database.
 func TestExemptStatementInsideACheckedTransactionIsStillChecked(t *testing.T) {
 	st := replicatedOnSQLite(t)
 	key := strings.Repeat("a", 64)
@@ -491,6 +496,23 @@ func TestExemptStatementInsideACheckedTransactionIsStillChecked(t *testing.T) {
 		if !errors.Is(err, ErrClusterAdmissionRejected) || count() != 0 {
 			t.Fatalf("%s: err=%v rows=%d, want a refusal and no row", name, err, count())
 		}
+	}
+	// Checked at the first write: that write carries the exemption.
+	raw, err := st.db.Statement.ConnPool.(*watchedPool).ConnPool.(*replicatedWriterPool).DB.BeginTx(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lazy := &guardedTx{Tx: raw, guard: st.writerGuard, key: key, ownsWriter: true}
+	_, first := lazy.ExecContext(withoutWriterGuard(t.Context()), "INSERT INTO things (n) VALUES (1)")
+	_, second := lazy.ExecContext(t.Context(), "INSERT INTO things (n) VALUES (2)")
+	if !errors.Is(first, ErrClusterAdmissionRejected) || !errors.Is(second, ErrClusterAdmissionRejected) {
+		t.Fatalf("first write (exempt context): %v; second write: %v; want both refused", first, second)
+	}
+	if err := raw.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	if count() != 0 {
+		t.Fatalf("a member that is not admitted wrote %d rows", count())
 	}
 	// The exemption does work where it belongs: on the transaction's begin.
 	if err := st.db.WithContext(withoutWriterGuard(t.Context())).Transaction(func(tx *gorm.DB) error {

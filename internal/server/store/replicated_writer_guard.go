@@ -264,8 +264,10 @@ func stripComments(query string) string {
 
 // readStatement reports a statement known to read. Everything else counts as
 // a write: an unknown shape is checked or refused rather than let through.
-// A PRAGMA that assigns sets something; text with a second statement could
-// hold anything.
+// A PRAGMA with a value, as an assignment or in parentheses, may set
+// something or do work (user_version(5), wal_checkpoint(TRUNCATE)), except
+// the few that take a table or index name and only describe it; text with a
+// second statement could hold anything.
 func readStatement(query string) bool {
 	if !singleStatement(query) {
 		return false
@@ -274,9 +276,25 @@ func readStatement(query string) bool {
 	case "SELECT", "VALUES", "EXPLAIN":
 		return true
 	case "PRAGMA":
-		return !strings.Contains(stripComments(query), "=")
+		text := stripComments(query)
+		if strings.Contains(text, "=") {
+			return false
+		}
+		name, _, argument := strings.Cut(text, "(")
+		if !argument {
+			return true
+		}
+		fields := strings.Fields(name)
+		return len(fields) == 2 && describingPragmas[strings.ToLower(fields[1])]
 	}
 	return false
+}
+
+// describingPragmas take a table or index name in parentheses and only
+// describe it. The migrations read table_info this way.
+var describingPragmas = map[string]bool{
+	"table_info": true, "table_xinfo": true, "index_list": true, "index_info": true,
+	"index_xinfo": true, "foreign_key_list": true,
 }
 
 // savepointStatement reports the statements GORM issues for a nested

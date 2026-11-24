@@ -3,11 +3,14 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -124,5 +127,112 @@ func TestMaterialReplicationPassClosesMemberOnlyOnVerdict(t *testing.T) {
 				t.Fatalf("undecided failure closed the member: closed=%d eligible=%v", closed, gate.Eligible())
 			}
 		})
+	}
+}
+
+// A run of passes that end without completing is reported once after thirty
+// seconds, then every five minutes, and its end is reported only if the run
+// itself was.
+func TestMaterialPendingNoticeReportsOnceThenAtALowRate(t *testing.T) {
+	var n materialPendingNotice
+	start := time.Unix(1_700_000_000, 0)
+	reports := 0
+	for elapsed := time.Duration(0); elapsed <= 11*time.Minute; elapsed += 2 * time.Second {
+		report, since, _ := n.pending(start.Add(elapsed))
+		if !since.Equal(start) {
+			t.Fatalf("run began at %v, want %v", since, start)
+		}
+		if report {
+			reports++
+			if want := []time.Duration{30 * time.Second, 5*time.Minute + 30*time.Second, 10*time.Minute + 30*time.Second}[reports-1]; elapsed != want {
+				t.Fatalf("report %d after %v, want %v", reports, elapsed, want)
+			}
+		}
+	}
+	if reports != 3 {
+		t.Fatalf("%d reports in eleven minutes, want 3", reports)
+	}
+	if reported, since, passes := n.ended(); !reported || !since.Equal(start) || passes != 331 {
+		t.Fatalf("end of a reported run: reported=%t since=%v passes=%d", reported, since, passes)
+	}
+	// A short run is never reported, and neither is its end.
+	n.pending(start)
+	n.pending(start.Add(10 * time.Second))
+	if reported, _, passes := n.ended(); reported || passes != 2 {
+		t.Fatalf("end of a short run: reported=%t passes=%d", reported, passes)
+	}
+	if reported, _, passes := n.ended(); reported || passes != 0 {
+		t.Fatalf("end with no run: reported=%t passes=%d", reported, passes)
+	}
+}
+
+// What the log shows: nothing above debug for a short run, one warning that
+// names the members not answering once the run has lasted, one line when it
+// ends; a verdict is reported at once and starts no run.
+func TestMaterialReplicationPendingRunIsLoggedOnceAndCleared(t *testing.T) {
+	var logged bytes.Buffer
+	a := &App{log: slog.New(slog.NewTextHandler(&logged, &slog.HandlerOptions{Level: slog.LevelInfo}))}
+	noMajority := fmt.Errorf("%w; not answering: member 3 at 10.0.0.3:9001: connection refused; member 2 at 10.0.0.2:9001: HTTP 503",
+		store.ErrMaterialManifestNoMajority)
+	a.materialReplicationPassFailed(noMajority)
+	a.materialReplicationPassCompleted()
+	if logged.Len() != 0 {
+		t.Fatalf("a single pending pass was logged above debug: %s", logged.String())
+	}
+	a.materialReplicationPassFailed(noMajority)
+	a.materialPending.mu.Lock()
+	a.materialPending.since = time.Now().Add(-materialPendingReportAfter - time.Second)
+	a.materialPending.mu.Unlock()
+	for range 5 {
+		a.materialReplicationPassFailed(noMajority)
+	}
+	out := logged.String()
+	if strings.Count(out, "level=WARN") != 1 || !strings.Contains(out, "has not completed") ||
+		!strings.Contains(out, "member 3 at 10.0.0.3:9001: connection refused") || !strings.Contains(out, "member 2 at 10.0.0.2:9001: HTTP 503") ||
+		!strings.Contains(out, "passes=2") {
+		t.Fatalf("a lasting run: %s", out)
+	}
+	logged.Reset()
+	a.materialReplicationPassCompleted()
+	if out := logged.String(); strings.Count(out, "level=INFO") != 1 || !strings.Contains(out, "completed again") || !strings.Contains(out, "passes=6") {
+		t.Fatalf("the run's end: %s", out)
+	}
+	logged.Reset()
+	a.materialReplicationPassCompleted()
+	if logged.Len() != 0 {
+		t.Fatalf("a completed pass with no run before it was logged: %s", logged.String())
+	}
+	a.materialReplicationPassFailed(errors.New("material digest differs"))
+	if out := logged.String(); strings.Count(out, "level=WARN") != 1 || !strings.Contains(out, "closes_member=true") {
+		t.Fatalf("a verdict: %s", out)
+	}
+	if reported, _, passes := a.materialPending.ended(); reported || passes != 0 {
+		t.Fatalf("a verdict started a pending run: reported=%t passes=%d", reported, passes)
+	}
+}
+
+// The error of a pass that found too few members verified names the members
+// it skipped, and stays the same kind of error; any other error is untouched.
+func TestNoMajorityErrorNamesTheMembersNotAnswering(t *testing.T) {
+	long := errors.New("Post \"https://10.0.0.3:9443/x\":\n dial tcp 10.0.0.3:9443: connect: connection refused " + strings.Repeat("x", 300))
+	silent := []string{
+		silentMaterialMember(store.ClusterTransportMember{ID: 3, Address: "10.0.0.3:9001"}, long),
+		silentMaterialMember(store.ClusterTransportMember{ID: 2, Address: "10.0.0.2:9001"}, errors.New("manifest receiver refused: HTTP 503")),
+	}
+	err := namingSilentMaterialMembers(store.ErrMaterialManifestNoMajority, silent)
+	text := err.Error()
+	if !errors.Is(err, store.ErrMaterialManifestNoMajority) || materialReplicationFailureInvalidates(err) {
+		t.Fatalf("the named error changed its kind: %v", err)
+	}
+	if !strings.Contains(text, "member 3 at 10.0.0.3:9001: Post") || !strings.Contains(text, "member 2 at 10.0.0.2:9001: manifest receiver refused: HTTP 503") ||
+		strings.Contains(text, "\n") || len(silent[0]) > 200 {
+		t.Fatalf("named error: %q", text)
+	}
+	other := errors.New("material digest differs")
+	if got := namingSilentMaterialMembers(other, silent); got != other {
+		t.Fatalf("another error was changed: %v", got)
+	}
+	if got := namingSilentMaterialMembers(store.ErrMaterialManifestNoMajority, nil); got != store.ErrMaterialManifestNoMajority {
+		t.Fatalf("no member was skipped, yet the error changed: %v", got)
 	}
 }

@@ -27,6 +27,10 @@ type memberState struct {
 	materialEligibilityCancel context.CancelFunc
 	materialEligibilityDone   chan struct{}
 	materialEligibilityClosed bool
+	// materialPending says for how long replication passes have ended
+	// without completing, so that the state is reported once and not on
+	// every pass.
+	materialPending materialPendingNotice
 
 	// entryCheck observes whether this process may hold the cluster entry.
 	// Nil leaves a business-ready member in the candidate set.
