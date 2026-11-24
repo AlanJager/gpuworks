@@ -120,7 +120,7 @@
     "PLANNING_KV_BELOW_CONTEXT": "预计 KV 缓存可容纳 {{kv_tokens}} 个 token，少于最大上下文 {{max_model_len}}。实际容量受注意力结构和推理引擎实现影响，估算可能不准确。可以降低最大上下文，也可以按当前配置继续部署；引擎可能启动失败。",
     "IMAGE_PARTITION_PROFILE_UNBUILT": "镜像 CANN {{framework_version}} × {{arch}} 不在内嵌 dGPU 资产的已构建组合内；探针验证的是节点执行路径，镜像仍可能不兼容。",
     "IMAGE_PARTITION_PROFILE_UNVERIFIED": "镜像 CANN {{framework_version}} × {{arch}} 的 dGPU 资产尚未经预置真机环境验证。",
-    "PD_CARD_NETWORK_UNREACHABLE": "网络 {{network}} 上所选 PD 卡口不互通：{{pairs}}（已验证卡对：{{available}}，— 表示暂无）。请改选互通卡对，并在部署前重跑卡矩阵测试。",
+    "PD_CARD_NETWORK_UNREACHABLE": "$t(common:apiError.PD_CARD_NETWORK_BLOCKED)",
     "PD_CARD_NETWORK_UNTESTED": "网络 {{network}} 的 PD 卡口尚未验证双向互通：{{pairs}}（已验证卡对：{{available}}，— 表示暂无）。请固定卡号并运行卡矩阵测试，结果 24 小时内有效。",
     "PD_UNVERIFIED_COMBINATION": "PD 与 {{feature}} 的组合是允许的，但尚未在真机上验证过。",
     "PD_GPU_MODELS_DIFFER": "PD 各角色使用了不同的 GPU 型号（{{models}}），各角色的吞吐与延迟会有差异。",
@@ -209,7 +209,8 @@
     "runtime_unreported": "{{vendor}} 需要 {{required_os}}/{{required_arch}} 和 {{required_runtime}}；此节点尚未上报完整的运行时信息。",
     "accelerator_feature_unsupported": "{{vendor}} 不支持{{feature}}。请调整启动选项或选择其他加速卡。",
     "accelerator_device_selection_required": "{{vendor}} 启动前必须明确分配 GPU。",
-    "launch_features_unknown": "无法检查 {{vendor}} 的启动命令功能，请提供可识别的引擎入口或结构化启动参数。"
+    "launch_features_unknown": "无法检查 {{vendor}} 的启动命令功能，请提供可识别的引擎入口或结构化启动参数。",
+    "dgpu_startup_memory": "$t(common:apiError.DGPU_STARTUP_MEMORY)"
   },
   "placementReason": {
     "node_cordoned": "该节点已停止调度。请恢复它的调度或选择其他节点。",

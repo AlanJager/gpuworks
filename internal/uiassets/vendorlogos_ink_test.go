@@ -19,12 +19,10 @@ import (
 )
 
 // Every vendor mark declares its ink tone in VENDOR_LOGO_INK, and the console
-// draws marks only through VendorMarkImage, which puts a plate behind a mark
-// whose ink would not read on the page: dark ink gets the light plate on the
-// dark theme, light ink gets the dark plate on both themes. These tests hold
-// the declaration to the artwork and the drawing to the component, so a mark
-// stays legible on every surface it is shown on (docs/dev/ui.md, "Vendor
-// marks").
+// draws marks only through VendorMarkImage, which styles light artwork for
+// the current surface and gives dark ink a light plate on dark surfaces.
+// These tests check the source artwork and shared renderer. The template
+// catalog's browser regression checks the renderer's computed theme styles.
 
 var (
 	stylesCSS = filepath.Join(uiRoot, "src", "styles.css")
@@ -42,7 +40,7 @@ const (
 	// legible when most of its ink clears that. The shipped marks measure
 	// 58-100% of ink weight at 3:1 or more on their surface: the colour
 	// accents keep the lowest two there (Kunlunxin's blue symbol, about
-	// 2.6:1 on the dark plate; NVIDIA's green eye, 2.4:1 on white, weighted
+	// roughly 3:1 on a dark surface; NVIDIA's green eye, 2.4:1 on white, weighted
 	// by its large bounding box), while their wordmarks read at 13.8:1 and
 	// 21:1. Half is the line where the wordmark, not the accent, carries it.
 	inkMinShareAt3 = 0.50
@@ -56,11 +54,11 @@ const (
 	inkMinAlpha = 128
 )
 
-const fixDrawer = "fix: draw the mark with VendorMarkImage from ui/src/components/VendorLogo.tsx, which gives it the plate its ink needs on each theme"
+const fixDrawer = "fix: draw the mark with VendorMarkImage from ui/src/components/VendorLogo.tsx, which styles the declared ink for the active theme"
 
 type rgb [3]float64 // sRGB channels, 0-1
 
-// vendorPlates are the two plate colours from ui/src/styles.css.
+// vendorPlates are the light and dark reference colours from ui/src/styles.css.
 type vendorPlates struct{ light, dark rgb }
 
 // TestVendorLogoInkIsDeclared: every mapped mark declares its ink tone, and
@@ -87,7 +85,7 @@ func vendorInkDeclarationProblems(refs, ink map[string]string) []string {
 	var problems []string
 	for _, k := range sortedKeys(refs) {
 		if _, ok := ink[k]; !ok {
-			problems = append(problems, fmt.Sprintf("ui/src/components/vendorAssets.ts: VENDOR_ASSETS.%s has no VENDOR_LOGO_INK entry, so the console cannot tell which plate it needs; fix: add %s: \"dark\" (dark artwork) or \"light\" (white or pale artwork) to VENDOR_LOGO_INK", k, k))
+			problems = append(problems, fmt.Sprintf("ui/src/components/vendorAssets.ts: VENDOR_ASSETS.%s has no VENDOR_LOGO_INK entry, so the console cannot select a theme treatment; fix: add %s: \"dark\" (dark artwork) or \"light\" (white or pale artwork) to VENDOR_LOGO_INK", k, k))
 		}
 	}
 	for _, k := range sortedKeys(ink) {
@@ -101,8 +99,8 @@ func vendorInkDeclarationProblems(refs, ink map[string]string) []string {
 }
 
 // TestVendorMarksAreDrawnThroughTheComponent: a mark drawn as a bare <img>
-// gets no plate, so dark ink vanishes on the dark theme and light ink on the
-// light one. Only the component files may name the map or the directory.
+// bypasses theme styling. Only the component files may name the map
+// or the directory.
 func TestVendorMarksAreDrawnThroughTheComponent(t *testing.T) {
 	files := map[string]string{}
 	err := filepath.WalkDir(uiSrcDir, func(p string, d fs.DirEntry, err error) error {
@@ -145,26 +143,27 @@ func vendorMarkDrawerProblems(files map[string]string) []string {
 		}
 		src := files[name]
 		if vendorAssetsRE.MatchString(src) {
-			problems = append(problems, fmt.Sprintf("ui/%s: uses VENDOR_ASSETS directly, so the mark is drawn without the plate its ink needs on one of the themes; %s", name, fixDrawer))
+			problems = append(problems, fmt.Sprintf("ui/%s: uses VENDOR_ASSETS directly, so the mark is drawn without theme styling; %s", name, fixDrawer))
 		}
 		if strings.Contains(src, "/vendor-logos/") {
-			problems = append(problems, fmt.Sprintf("ui/%s: names a /vendor-logos/ file directly, so the mark is drawn without the plate its ink needs on one of the themes; %s", name, fixDrawer))
+			problems = append(problems, fmt.Sprintf("ui/%s: names a /vendor-logos/ file directly, so the mark is drawn without theme styling; %s", name, fixDrawer))
 		}
 	}
 	return problems
 }
 
-// TestVendorLogoInkReadsOnItsSurfaces measures each shipped mark against the
-// surfaces it is shown on: dark ink against the light theme's page (taken to
-// be --vendor-logo-light; the light theme's surfaces run #F0F3F8 to #fff) and
-// the light plate it gets on the dark theme, which is the same colour; light
-// ink against --vendor-logo-dark, the plate it gets on both themes.
+// TestVendorLogoInkReadsOnItsSurfaces measures unfiltered ink where it is
+// displayed and repeats the check with the light-theme filter for pale marks.
 func TestVendorLogoInkReadsOnItsSurfaces(t *testing.T) {
 	css, err := os.ReadFile(stylesCSS)
 	if err != nil {
 		t.Fatal(err)
 	}
-	plates, err := parseVendorPlates(css)
+	theme, err := os.ReadFile(filepath.Join(uiSrcDir, "app.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plates, err := parseVendorPlates(css, theme)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,27 +198,28 @@ func TestVendorLogoInkReadsOnItsSurfaces(t *testing.T) {
 	}
 }
 
-var plateTokenRE = regexp.MustCompile(`--vendor-logo-(light|dark)\s*:\s*(#[0-9a-fA-F]{3,6})\s*;`)
+var (
+	lightPlateRE  = regexp.MustCompile(`--vendor-logo-light\s*:\s*(#[0-9a-fA-F]{3,6})\s*;`)
+	darkSurfaceRE = regexp.MustCompile(`(?s)\.dark\s*\{[^}]*?--surface-raised\s*:\s*(#[0-9a-fA-F]{3,6})\s*;`)
+)
 
-func parseVendorPlates(css []byte) (vendorPlates, error) {
+func parseVendorPlates(css, theme []byte) (vendorPlates, error) {
 	var p vendorPlates
-	found := map[string]bool{}
-	for _, m := range plateTokenRE.FindAllSubmatch(css, -1) {
-		c, alpha, ok := parseColour(string(m[2]))
-		if !ok || alpha != 1 {
-			continue
+	for _, ref := range []struct {
+		match  []string
+		name   string
+		colour *rgb
+	}{
+		{lightPlateRE.FindStringSubmatch(string(css)), "--vendor-logo-light", &p.light},
+		{darkSurfaceRE.FindStringSubmatch(string(theme)), ".dark --surface-raised", &p.dark},
+	} {
+		if len(ref.match) == 2 {
+			if c, alpha, ok := parseColour(ref.match[1]); ok && alpha == 1 {
+				*ref.colour = c
+				continue
+			}
 		}
-		if string(m[1]) == "light" {
-			p.light = c
-		} else {
-			p.dark = c
-		}
-		found[string(m[1])] = true
-	}
-	for _, k := range []string{"light", "dark"} {
-		if !found[k] {
-			return p, fmt.Errorf("ui/src/styles.css defines no --vendor-logo-%s: #rgb or #rrggbb, the plate colour vendor marks are measured against; fix: restore the token in :root as a hex colour, or update this test if the plates moved", k)
-		}
+		return p, fmt.Errorf("no opaque hex colour for %s; fix: restore the token or update the vendor ink reference surface", ref.name)
 	}
 	return p, nil
 }
@@ -279,16 +279,46 @@ func checkVendorInk(name string, data []byte, declared string, plates vendorPlat
 			m.darkShare += s.weight / total
 		}
 	}
-	surface, fixTone := plates.light, `"light"`
-	m.surface = "--vendor-logo-light"
+	surface, label := plates.light, "--vendor-logo-light"
 	if declared == "light" {
-		surface, fixTone = plates.dark, `"dark"`
-		m.surface = "--vendor-logo-dark"
+		surface, label = plates.dark, ".dark --surface-raised"
 	}
+	darkShare := m.darkShare
+	m = scoreVendorInk(samples, total, surface, label, false)
+	m.darkShare = darkShare
+	if got := m.tone(); got != declared {
+		problems = append(problems, fmt.Sprintf("%s: declared %q ink in VENDOR_LOGO_INK, but %.0f%% of its ink weight is %s, so it gets the wrong theme treatment; fix: declare it %q in VENDOR_LOGO_INK in ui/src/components/vendorAssets.ts, or re-export the mark in %s ink", name, declared, 100*max(m.darkShare, 1-m.darkShare), got, got, declared))
+	}
+	problems = append(problems, vendorContrastProblems(name, m, isPNG)...)
+	if declared == "light" {
+		filtered := scoreVendorInk(samples, total, plates.light, "--vendor-logo-light after the light-theme filter", true)
+		problems = append(problems, vendorContrastProblems(name, filtered, isPNG)...)
+	}
+	return m, problems
+}
+
+// vendorLightThemeInk mirrors invert(1) hue-rotate(180deg) brightness(0.8).
+// The browser regression asserts this filter on the real component.
+// Filter Effects 1 defines the 180-degree hue matrix as twice the luma
+// projection minus the identity. CSS filter functions operate in sRGB.
+func vendorLightThemeInk(c rgb) rgb {
+	inverted := rgb{1 - c[0], 1 - c[1], 1 - c[2]}
+	luma := 0.213*inverted[0] + 0.715*inverted[1] + 0.072*inverted[2]
+	for i, channel := range inverted {
+		c[i] = 0.8 * max(0, min(1, 2*luma-channel))
+	}
+	return c
+}
+
+func scoreVendorInk(samples []inkSample, total float64, surface rgb, label string, filtered bool) inkMeasure {
+	m := inkMeasure{surface: label}
 	type scored struct{ c, w float64 }
 	var all []scored
 	m.lowest = math.Inf(1)
 	for _, s := range samples {
+		if filtered {
+			s.colour = vendorLightThemeInk(s.colour)
+		}
 		c := contrast(over(s, surface), surface)
 		all = append(all, scored{c, s.weight})
 		if c >= 3 {
@@ -308,11 +338,13 @@ func checkVendorInk(name string, data []byte, declared string, plates vendorPlat
 			break
 		}
 	}
-	if got := m.tone(); got != declared {
-		problems = append(problems, fmt.Sprintf("%s: declared %q ink in VENDOR_LOGO_INK, but %.0f%% of its ink weight is %s, so it gets the wrong plate; fix: declare it %q in VENDOR_LOGO_INK in ui/src/components/vendorAssets.ts, or re-export the mark in %s ink", name, declared, 100*max(m.darkShare, 1-m.darkShare), got, got, declared))
-	}
+	return m
+}
+
+func vendorContrastProblems(name string, m inkMeasure, isPNG bool) []string {
+	var problems []string
 	if m.shareAt3 < inkMinShareAt3 {
-		problems = append(problems, fmt.Sprintf("%s: only %.0f%% of its ink weight reaches 3:1 contrast on %s (weighted median %.2f:1), at least %.0f%% must; fix: re-export the mark in stronger ink, or declare it %s in VENDOR_LOGO_INK if it is pale artwork", name, 100*m.shareAt3, m.surface, m.median, 100*inkMinShareAt3, fixTone))
+		problems = append(problems, fmt.Sprintf("%s: only %.0f%% of its ink weight reaches 3:1 contrast on %s (weighted median %.2f:1), at least %.0f%% must; fix: re-export the mark in stronger ink", name, 100*m.shareAt3, m.surface, m.median, 100*inkMinShareAt3))
 	}
 	if isPNG && m.faintShare > inkMaxFaintPNGShare {
 		problems = append(problems, fmt.Sprintf("%s: %.1f%% of its ink weight is below %.1f:1 contrast on %s and all but disappears, at most %.0f%% may be; fix: re-export the faint parts of the mark in a stronger colour", name, 100*m.faintShare, inkFaintContrast, m.surface, 100*inkMaxFaintPNGShare))
@@ -320,7 +352,7 @@ func checkVendorInk(name string, data []byte, declared string, plates vendorPlat
 	if !isPNG && m.lowest < inkFaintContrast {
 		problems = append(problems, fmt.Sprintf("%s: fill %q is %.2f:1 on %s and all but disappears, every painted colour must reach %.1f:1; fix: repaint that part of the mark in a stronger colour", name, m.lowestAt, m.lowest, m.surface, inkFaintContrast))
 	}
-	return m, problems
+	return problems
 }
 
 // pngInk is every pixel at inkMinAlpha or more, weighted by its alpha.

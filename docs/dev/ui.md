@@ -117,13 +117,17 @@ report (`ui-check-report/index.html`, a job artifact) is for a reviewer to
 confirm intended changes. Locally:
 
 ```sh
+python3 -m venv "$HOME/.venvs/gpuworks-ui-check"
+export UI_BROWSER_PYTHON="$HOME/.venvs/gpuworks-ui-check/bin/python"
+"$UI_BROWSER_PYTHON" -m pip install -r ui/tests/browser/requirements.txt
 scripts/ui_check_ci.sh                                    # every page
 UI_CHECK_BASE_REF=origin/master UI_CHECK_COMPARE=1 scripts/ui_check_ci.sh
 ```
 
-It needs Go, Node and Chrome (or `CHROME_PATH`), rebuilds the UI when sources
-are newer than the build, and refuses to start when its ports (8899, 8900) are
-taken. A new page, drawer, tab or header dialog is covered without registering
+本地检查需要 Go、Node、Python Playwright 和 Chrome 或 Chromium。首次运行时创建上面的虚拟环境并安装依赖，以后只需设置 `UI_BROWSER_PYTHON`。模板检查和页面巡检共用 `PATH` 中的浏览器。如果浏览器安装在其他位置，脚本会使用系统安装的稳定版 Chrome。也可以用 `CHROME_PATH` 指定可执行文件的绝对路径。
+
+The check rebuilds the UI when sources are newer than the build, and refuses to
+start when its ports (8899, 8900) are taken. A new page, drawer, tab or header dialog is covered without registering
 it; flows behind other buttons (row menus, multi-step forms) are not walked
 yet and still need a person or a dedicated E2E case.
 
@@ -169,12 +173,10 @@ Accelerator vendor marks (NVIDIA, AMD, Ascend, ...) live in
 transparent canvas: SVG (preferred) or PNG with an alpha channel, with no
 padding box, plate or background colour of its own.
 
-Each mark declares the tone of its ink in `VENDOR_LOGO_INK` (`"dark"` or
-`"light"`), and the plate behind it follows from that, never from the vendor:
-dark ink sits on the light theme's page as is and on the `--vendor-logo-light`
-plate in the dark theme; light ink (Kunlunxin's white wordmark) sits on the
-`--vendor-logo-dark` plate in both themes. The two plate colours are tokens in
-`ui/src/styles.css`, and the `.vendor-mark-ink-*` rules there apply them. Draw
+The `VENDOR_LOGO_INK` entry records the original ink tone. Light artwork
+such as Kunlunxin's white wordmark uses no background plate in either theme.
+The light theme darkens the ink with a CSS filter. Dark artwork keeps its
+original colours and uses a light plate on the dark theme. Draw
 a mark only with `VendorMarkImage` from `ui/src/components/VendorLogo.tsx`
 (`VendorLogo` and the dashboard's hardware panel both do): it wraps the image
 in the ink class, and the caller keeps its own sizing on the image. A plated
@@ -197,16 +199,16 @@ mark to declare its ink and every declaration to name a mapped mark.
 under `ui/src` (tests aside) other than `vendorAssets.ts` and `VendorLogo.tsx`
 that names `VENDOR_ASSETS` or a `/vendor-logos/` path.
 
-`TestVendorLogoInkReadsOnItsSurfaces` measures each mark with WCAG 2
-relative luminance and contrast against the surface its tone puts it on: dark
-ink against `--vendor-logo-light`, which is both the dark theme's plate and
-the light theme's page (taken to be white; the light theme's surfaces run
-`#F0F3F8` to `#fff`, within about 10% of white's contrast), and light ink
-against `--vendor-logo-dark`. A PNG's ink is every pixel at alpha 128/255 or
+`TestVendorLogoInkReadsOnItsSurfaces` measures the original artwork with WCAG 2
+relative luminance and contrast. It checks dark ink against
+`--vendor-logo-light` and pale ink against the dark theme’s `--surface-raised`.
+It also applies the light-theme filter to pale ink and checks the result
+against `--vendor-logo-light`. The UI check job runs the Chromium regression
+for the rendered Kunlunxin and NVIDIA marks in both themes. A PNG's ink is every pixel at alpha 128/255 or
 more, weighted by alpha and composited over the surface; an SVG's ink is each
 drawn, filled shape's colour, weighted by the area of the shape's bounding
 box (for a path, the box around its command end points; curve control points
-are ignored). The measured tone is whichever plate most of the ink weight
+are ignored). The measured tone is whichever reference surface most of the ink weight
 reads better on, and it must match the declaration. At least half the ink
 weight must reach 3:1 (the colour accents keep Kunlunxin and NVIDIA near
 60%); no SVG fill may fall below 1.5:1, and at most 2% of a PNG's ink may.

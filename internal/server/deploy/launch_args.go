@@ -23,6 +23,24 @@ func LaunchArgs(launch proto.ResolvedLaunch) (args, scriptArgs []string, ok bool
 	return args, scriptArgs, true
 }
 
+// LaunchEngineArgs returns assembled engine arguments or the one recognized
+// engine invocation in a manual command. An opaque command has no known args.
+func LaunchEngineArgs(engine string, launch ResolvedLaunch) []string {
+	switch CommandMode(launch.CommandMode) {
+	case CommandEngine:
+		args, _, _ := LaunchArgs(launch)
+		return args
+	case CommandManual:
+		if words, ok := manualScriptEngineCommand(engine, launch); ok {
+			return words
+		}
+		command := append(append([]string(nil), launch.Entrypoint...), launch.Argv...)
+		return engineInvocation(engine, command)
+	default:
+		return nil
+	}
+}
+
 // LaunchFlag is the value the last occurrence of flag takes in args, as
 // `flag value` or `flag=value`. A value the shell would still expand ($ or a
 // backtick) is not one the launch fixes, so it is not reported.
