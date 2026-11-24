@@ -125,7 +125,7 @@ func redactAccessLogValue(value any) {
 			case sensitiveAccessLogField(key):
 				typed[key] = "[REDACTED]"
 			case accessLogHeadersField(key):
-				redactAccessLogHeaders(child)
+				typed[key] = redactAccessLogHeaders(child)
 			case isText:
 				typed[key] = redactAccessLogUserinfo(text)
 			default:
@@ -153,16 +153,22 @@ func accessLogHeadersField(key string) bool {
 
 // redactAccessLogHeaders keeps the header names and drops every value,
 // whether the headers are a list of {name, value} or a map of name to value.
-func redactAccessLogHeaders(headers any) {
+// Headers in any other shape are dropped whole: where the names end and the
+// values begin is not known.
+func redactAccessLogHeaders(headers any) any {
 	switch typed := headers.(type) {
+	case nil:
+		return nil
 	case map[string]any:
 		for name := range typed {
 			typed[name] = "[REDACTED]"
 		}
+		return typed
 	case []any:
-		for _, header := range typed {
+		for i, header := range typed {
 			entry, ok := header.(map[string]any)
 			if !ok {
+				typed[i] = "[REDACTED]"
 				continue
 			}
 			for key, value := range entry {
@@ -171,12 +177,15 @@ func redactAccessLogHeaders(headers any) {
 				}
 			}
 		}
+		return typed
 	}
+	return "[REDACTED]"
 }
 
-// accessLogUserinfo is the user and password of a URL (a proxy given as
-// http://user:password@host).
-var accessLogUserinfo = regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*://)[^/@\s]+@`)
+// accessLogUserinfo is the user and password of a URL: what stands between
+// the scheme and the last @ before the path, query or fragment begins (a
+// password may itself hold an @).
+var accessLogUserinfo = regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*://)[^/?#\s]*@`)
 
 func redactAccessLogUserinfo(text string) string {
 	return accessLogUserinfo.ReplaceAllString(text, "${1}[REDACTED]@")

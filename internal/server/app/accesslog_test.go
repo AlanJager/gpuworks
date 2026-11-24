@@ -306,6 +306,22 @@ func TestAccessLogLeavesOutCollectorHeadersAndProxyCredentials(t *testing.T) {
 			t.Fatalf("the request record lost the proxy's address:\n%s", out)
 		}
 	}
+	// A password may itself hold an @: everything up to the last one goes.
+	for _, body := range []string{
+		`{"proxy_mode":"custom","proxy_url":"http://proxyuser:PROXY@PASS-e8f1@proxy.example:3128"}`,
+		`{"source":"https://proxyuser:PROXY@PASS-e8f1@proxy.example:3128/v2/?next=a@b"}`,
+	} {
+		out := accessLogOf(t, http.MethodPut, "/api/v1/ai/config", body)
+		if strings.Contains(out, "PASS-e8f1") || strings.Contains(out, "proxyuser") || !strings.Contains(out, "://[REDACTED]@proxy.example:3128") {
+			t.Fatalf("%s:\n%s", body, out)
+		}
+	}
+	// Headers in a shape that is not name and value are dropped whole.
+	for _, headers := range []string{`"Authorization: Bearer OTELTOKEN-7a31"`, `["Authorization: Bearer OTELTOKEN-7a31"]`, `{"Authorization":"Bearer OTELTOKEN-7a31"}`, `[["Authorization","Bearer OTELTOKEN-7a31"]]`} {
+		if out := accessLogOf(t, http.MethodPut, "/api/v1/telemetry/export", `{"endpoint":"https://otel.example:4318","headers":`+headers+`}`); strings.Contains(out, "OTELTOKEN-7a31") || !strings.Contains(out, "otel.example:4318") {
+			t.Fatalf("headers %s:\n%s", headers, out)
+		}
+	}
 	// An address without credentials, and text that only looks like one, are left alone.
 	out = accessLogOf(t, http.MethodPost, "/api/v1/models", `{"repo":"org/model@main","url":"https://hub.example/org/model","note":"mail ops@example.com"}`)
 	for _, kept := range []string{"org/model@main", "https://hub.example/org/model", "ops@example.com"} {

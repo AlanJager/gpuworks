@@ -197,7 +197,11 @@ func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add
 			cut := map[string]bool{}
 			if facts, ferr := readMemberFacts(dir); ferr == nil {
 				for _, name := range facts.Truncated {
-					cut[name] = true
+					// Only what a part can cut: another member's bytes do
+					// not name the items of this collection.
+					if memberCutName(name) {
+						cut[name] = true
+					}
 				}
 			}
 			for _, f := range files {
@@ -285,4 +289,13 @@ func (m *Manager) askMember(ctx context.Context, entry *MemberIndexEntry, member
 		}
 	}
 	return files, err
+}
+
+// memberCutName is a name a member's member.json may list as cut.
+func memberCutName(name string) bool {
+	switch name {
+	case MemberLogFile, MemberRoleEventsFile, MemberLeaderChangesFile, strings.TrimSuffix(memberStallPrefix, "/"):
+		return true
+	}
+	return false
 }

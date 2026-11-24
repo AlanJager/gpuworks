@@ -262,3 +262,34 @@ func TestAMembersIndexThatCannotBeWrittenIsReported(t *testing.T) {
 		t.Fatal("the collection lost its members with the index")
 	}
 }
+
+// A member's member.json is another machine's bytes: the names it lists as
+// cut become items only when they are a part's own.
+func TestAMemberCannotNameItemsThroughItsCutList(t *testing.T) {
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	m, c := clusterFixture(t, now)
+	c.rewriteFacts = func(f *MemberFacts) {
+		f.Truncated = []string{"../../manifest.json", "db/settings.json", MemberRoleEventsFile, strings.Repeat("x", 4096)}
+	}
+	b, files := collect(t, m)
+	var index MemberIndex
+	if err := json.Unmarshal([]byte(files["members/index.json"]), &index); err != nil {
+		t.Fatal(err)
+	}
+	for _, member := range index.Members {
+		if member.Self {
+			continue
+		}
+		if strings.Join(member.Truncated, ",") != MemberRoleEventsFile {
+			t.Fatalf("%s truncated = %v, want the role records alone", member.Name, member.Truncated)
+		}
+	}
+	for _, it := range b.Items {
+		if strings.Contains(it.Path, "..") || strings.Contains(it.Path, "xxxx") || strings.HasSuffix(it.Path, "/db/settings.json") {
+			t.Fatalf("a member named the item %q", it.Path)
+		}
+	}
+	if it := itemsByPath(b)["members/10.0.0.2_9001/role-events.log"]; it.Status != proto.CheckWarn {
+		t.Fatalf("role records item = %+v", it)
+	}
+}

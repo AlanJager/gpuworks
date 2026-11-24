@@ -78,6 +78,8 @@ type fakeCluster struct {
 	fail    map[string]error
 	// cut ends a member's part after this many bytes.
 	cut map[string]int
+	// rewriteFacts changes the member.json of every part on its way.
+	rewriteFacts func(*MemberFacts)
 	// hang makes a member never answer within the caller's deadline.
 	hang map[string]bool
 	// busy makes a member answer busy this many times first.
@@ -112,6 +114,9 @@ func (c *fakeCluster) OpenMemberPart(ctx context.Context, member ClusterMember, 
 		return MemberAnswer{}, err
 	}
 	raw := buf.Bytes()
+	if c.rewriteFacts != nil {
+		raw = rewritePartFacts(c.t, raw, c.rewriteFacts)
+	}
 	if n, ok := c.cut[member.Address]; ok {
 		raw = raw[:n]
 	}
@@ -490,4 +495,43 @@ func TestAClusterCollectionIsNamedFilesNotADirectorySweep(t *testing.T) {
 			}
 		}
 	}
+}
+
+// rewritePartFacts repacks a part with its member.json changed.
+func rewritePartFacts(t *testing.T, raw []byte, change func(*MemberFacts)) []byte {
+	t.Helper()
+	gz, err := gzip.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	zw := gzip.NewWriter(&out)
+	tw := tar.NewWriter(zw)
+	tr := tar.NewReader(gz)
+	for {
+		h, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(tr)
+		if h.Name == MemberFactsFile {
+			var facts MemberFacts
+			if err := json.Unmarshal(body, &facts); err != nil {
+				t.Fatal(err)
+			}
+			change(&facts)
+			body, _ = json.Marshal(facts)
+		}
+		h.Size = int64(len(body))
+		if err := tw.WriteHeader(h); err != nil {
+			t.Fatal(err)
+		}
+		_, _ = tw.Write(body)
+	}
+	_ = tw.Close()
+	_ = zw.Close()
+	return out.Bytes()
 }
