@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/server/cluster"
 	"gpuworks.ai/gpuworks/internal/server/enrollment"
 	"gpuworks.ai/gpuworks/internal/server/hub"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -75,6 +76,11 @@ func TestClusterUpgradeStatusReportsHeldAgentConnections(t *testing.T) {
 	code, response, body := upgradeStepCall(t, handler, fixture.requesterPair.Leaf, enrollment.ClusterUpgradeStatus)
 	if code != http.StatusOK || response.AgentConnections != nil || strings.Contains(body, "agent_connections") {
 		t.Fatalf("a member that cannot say answered %d %s; want no count", code, body)
+	}
+	// The answer names the tier this process runs, not what the record
+	// may say by now.
+	if response.StorageTier != string(cluster.ProcessStorageTier()) || !strings.Contains(body, `"storage_tier":"`+string(cluster.ProcessStorageTier())+`"`) {
+		t.Fatalf("the member answered %s; want the tier it runs, %s", body, cluster.ProcessStorageTier())
 	}
 	known = true
 	code, response, body = upgradeStepCall(t, handler, fixture.requesterPair.Leaf, enrollment.ClusterUpgradeStatus)

@@ -75,7 +75,10 @@ func TestATierRunsAtALatencyOfItsOwn(t *testing.T) {
 		{"standard@10ms", Standard, 10 * ms, 150 * ms, 15 * ms, 800 * ms, 10000 * ms, "", false},
 		// A tier run faster than itself keeps its measured recovery target.
 		{"slow-storage@20ms", "slow-storage@20ms", 20 * ms, 300 * ms, 30 * ms, 1100 * ms, 6000 * ms, "slow-storage@20ms", false},
-		{"standard@50ms", "standard@50ms", 50 * ms, 750 * ms, 75 * ms, 2000 * ms, 11200 * ms, "standard@50ms", true},
+		// One timing has one spelling, whichever name it was asked on.
+		{"standard@50ms", SlowStorage, 50 * ms, 750 * ms, 75 * ms, 2000 * ms, 6000 * ms, "slow-storage", false},
+		{"slow-storage@10ms", Standard, 10 * ms, 150 * ms, 15 * ms, 800 * ms, 10000 * ms, "", false},
+		{"standard@100ms", "slow-storage@100ms", 100 * ms, 1500 * ms, 150 * ms, 3500 * ms, 7500 * ms, "slow-storage@100ms", true},
 	}
 	for _, tc := range cases {
 		tier, err := Parse(tc.name)

@@ -70,9 +70,13 @@ type ClusterUpgradeResponse struct {
 	// AgentConnections is how many agent control connections the answering
 	// member holds itself; absent when it cannot say. Stopping that member
 	// makes those agents connect again.
-	AgentConnections *int   `json:"agent_connections,omitempty"`
-	Refused          string `json:"refused,omitempty"`
-	Error            string `json:"error,omitempty"`
+	AgentConnections *int `json:"agent_connections,omitempty"`
+	// StorageTier is the storage tier the answering member runs (the one
+	// it started with, not the one it records by now); absent from a
+	// member whose program does not say.
+	StorageTier string `json:"storage_tier,omitempty"`
+	Refused     string `json:"refused,omitempty"`
+	Error       string `json:"error,omitempty"`
 }
 
 // ValidClusterUpgradeAction reports a step this protocol knows.

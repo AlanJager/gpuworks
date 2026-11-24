@@ -73,8 +73,9 @@ func All() []Tier { return []Tier{Standard, SlowStorage} }
 
 // Parse reads a recorded or configured tier. The empty string is Standard: a
 // cluster installed before tiers existed records none. A name may carry the
-// latency the tier is run at ("slow-storage@100ms"); one that names the
-// tier's own latency is the tier itself.
+// latency the tier is run at ("slow-storage@100ms"). The result is the one
+// spelling of that timing (WithLatency): "slow-storage@50ms" is slow-storage,
+// and "standard@50ms" is slow-storage too.
 func Parse(name string) (Tier, error) {
 	if name == "" {
 		return Standard, nil
@@ -103,17 +104,19 @@ func ValidLatency(latency time.Duration) bool {
 // latency.
 func ElectionTimeoutFor(latency time.Duration) time.Duration { return latency * electionFactor }
 
-// WithLatency is this tier run at another latency. The tier's own latency
-// gives the tier itself, so two spellings of one timing do not exist.
+// WithLatency is the tier run at another latency. One timing has one
+// spelling: a named tier's own latency gives that tier, whichever name it
+// was asked on, and any other latency is written on slow-storage. Members
+// compare their recorded tiers as text, and "standard@50ms" beside
+// "slow-storage" would be one timing taken for two.
 func (t Tier) WithLatency(latency time.Duration) (Tier, error) {
-	base := t.Base()
 	if !ValidLatency(latency) {
-		return "", fmt.Errorf("storage tier %s: latency %s is outside %s to %s in whole milliseconds", base, latency, MinLatency, MaxLatency)
+		return "", fmt.Errorf("storage tier %s: latency %s is outside %s to %s in whole milliseconds", t.Base(), latency, MinLatency, MaxLatency)
 	}
-	if latency == profiles[base].latency {
-		return base, nil
+	if named, ok := ForNetworkLatency(latency); ok {
+		return named, nil
 	}
-	return Tier(string(base) + latencySeparator + strconv.FormatInt(latency.Milliseconds(), 10) + "ms"), nil
+	return Tier(string(SlowStorage) + latencySeparator + strconv.FormatInt(latency.Milliseconds(), 10) + "ms"), nil
 }
 
 // Base is the named tier without a latency of its own.

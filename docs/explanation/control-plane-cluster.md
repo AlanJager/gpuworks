@@ -45,7 +45,7 @@
 
 恢复目标来自小样本实测，不是对其他存储的保证。三个成员的存储同时停顿数秒时，两个档位都会有请求失败。
 
-档位名之后可以写它运行的数据库延迟，例如 `slow-storage@100ms`：整数毫秒，10 到 200，等于档位原值（`standard` 10 ms、`slow-storage` 50 ms）时就是档位本身。数据库的其余时间都从延迟得出：心跳间隔是延迟的 1.5 倍，选举超时是 15 倍（leader 这么久收不到多数应答就让位，follower 等一到两个选举超时后发起选举）。跟着变的还有成员资格授权的重试时间（两个选举超时加一次提交，不少于 2.2 秒，不超过 4.7 秒；延迟约 140 ms 以上时一次选举可能比它长）和恢复目标（加上两个多出来的选举超时）。不随延迟变化的是成员之间连接的 3 秒存活检测和成员资格授权本身的 5 秒时限。成员的 server 启动时读记录，所以改记录后要重启该成员才生效；三个成员应当记录相同的值，逐个重启期间允许并存的条件是较慢一方的三个心跳间隔不超过较快一方的选举超时。企业版的 `gpuworks cluster-storage-tier` 命令显示和更换这个记录。
+档位名之后可以写它运行的数据库延迟，例如 `slow-storage@100ms`：整数毫秒，10 到 200，一种时间只有一种写法：延迟等于某个档位的原值（`standard` 10 ms、`slow-storage` 50 ms）时就是那个档位，其他延迟一律写在 `slow-storage` 上（`standard@50ms` 记录为 `slow-storage`）。只有本版本及之后的程序认识带延迟的写法，更早的 server 读到它会拒绝启动。数据库的其余时间都从延迟得出：心跳间隔是延迟的 1.5 倍，选举超时是 15 倍（leader 这么久收不到多数应答就让位，follower 等一到两个选举超时后发起选举）。跟着变的还有成员资格授权的重试时间（两个选举超时加一次提交，不少于 2.2 秒，不超过 4.7 秒；延迟约 140 ms 以上时一次选举可能比它长）和恢复目标（加上两个多出来的选举超时）。不随延迟变化的是成员之间连接的 3 秒存活检测和成员资格授权本身的 5 秒时限。成员的 server 启动时读记录，所以改记录后要重启该成员才生效；三个成员应当记录相同的值，逐个重启期间允许并存的条件是较慢一方的三个心跳间隔不超过较快一方的选举超时。企业版的 `gpuworks cluster-storage-tier` 命令显示和更换这个记录。
 
 ## 数据库 leader 为什么换了：角色记录
 
@@ -76,8 +76,8 @@
 | `slow_log_write` | 每个成员 | 一次 Raft 日志落盘用了 `ms` 毫秒；达到 500 毫秒才写 |
 | `peer_connect_failed`、`peer_send_failed` | 每个成员 | 到另一个成员（`peer`、`peer_address`）的连接失败（第 `attempts` 次）、发送失败 |
 | `peer_connected`、`peer_accepted`、`peer_disconnected` | 每个成员 | 到另一个成员的连接建立（试了 `attempts` 次，用时 `took_ms`）、接受了它连过来的连接、连接断开（`dir=out` 是本成员连出去的，`dir=in` 是对方连进来的） |
-| `peer_io` | 原 leader；发起选举的成员 | 紧跟 `step_down reason=no_majority_contact`（`trigger=step_down`）和 `election_start reason=election_timeout`（`trigger=election_start`）：每个其他成员 `id:send=…:sent=…:recv=…:out=<状态>/<毫秒>:in=<条数>/<毫秒>`。`send` 是上一条给它的消息交给连接距今多少毫秒，`sent` 是上一次写完成距今，`recv` 是上一次从它读到消息距今（`-1` 为从未）；`out` 是连出去的连接的状态（`up`、`trying`、`down`）和进入该状态多久，`in` 是它连进来的连接数和上次变化多久 |
-| `tcp` | 每个成员 | 内核对本成员与每个成员之间 TCP 连接的记录，`peers=<地址>/<out 或 in>;…`：连接数 `n`，上次发出数据、收到数据、收到确认距今的毫秒（`sent`、`recv`、`ack`），重传定时器 `rto`（毫秒）与已退避的次数 `backoff`，未确认的包数 `unacked`，往返时间 `rtt_us`；`max_rto`、`max_backoff`、`max_unacked`、`retrans`（重传包数）是上一条 `tcp` 记录以来的最大值和累计。角色变化之后必写一条（`trigger=role_change`）；平时只在有连接正在重传，或重传定时器达到半个选举超时时写，每 10 秒至多一条（`trigger=interval`） |
+| `peer_io` | 原 leader；发起选举的成员 | 每条记录最多两个成员，成员多时连写几条；数据库进程记住最先见到的八个成员。紧跟 `step_down reason=no_majority_contact`（`trigger=step_down`）和 `election_start reason=election_timeout`（`trigger=election_start`）：每个其他成员 `id:send=…:sent=…:recv=…:out=<状态>/<毫秒>:in=<条数>/<毫秒>`。`send` 是上一条给它的消息交给连接距今多少毫秒，`sent` 是上一次写完成距今，`recv` 是上一次从它读到消息距今（`-1` 为从未）；`out` 是连出去的连接的状态（`up`、`trying`、`down`）和进入该状态多久，`in` 是它连进来的连接数和上次变化多久 |
+| `tcp` | 每个成员 | 内核对本成员与每个成员之间 TCP 连接的记录，`peers=<地址>/<out 或 in>;…`：连接数 `n`，上次发出数据、收到数据、收到确认距今的毫秒（`sent`、`recv`、`ack`），重传定时器 `rto`（毫秒）与已退避的次数 `backoff`，未确认的包数 `unacked`，往返时间 `rtt_us`；`max_rto`、`max_backoff`、`max_unacked`、`retrans`（重传包数）是上一条 `tcp` 记录以来的最大值和累计。角色变化之后必写一条（`trigger=role_change`）；平时只在有连接正在重传，或重传定时器达到半个选举超时（不低于 400 毫秒，内核的最小值是 200 毫秒）时写，每 10 秒至多一条（`trigger=interval`） |
 | `health` | 每个成员 | 一段时间内量到的最大延迟：主循环晚到（`loop_late_max_ms`）、日志落盘（`log_write_max_ms`）、某个跟随成员两次应答的间隔（`ack_gap_max_ms`，`ack_gap_peer_<id>_max_ms`）、leader 两条消息的间隔（`leader_gap_max_ms`）；`*_over=a/b/c/d` 是达到 100、250、750、3000 毫秒的次数。角色变化之后必写一条（`trigger=role_change`），平时每分钟只在超过选举超时的一部分时写（`trigger=interval`） |
 | `app` | 每个成员 | 数据库进程自己的告警（调整角色、加入集群） |
 | `proxy_closed` | 每个成员 | 一条经本成员到它自己数据库节点的连接没有道别就断了；健康的集群每秒有好几条，所以每 10 分钟只写一条并带略去的条数 |
