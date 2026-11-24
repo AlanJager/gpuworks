@@ -263,6 +263,8 @@ A template spec's own `docker_args` (an inference catalog field; see [Inference 
 2. The deployment's own `docker_args` (container override field)
 3. Platform-appended arguments (topology RDMA options, the `--ulimit` from `memlock_unlimited`; see "Locked Memory")
 
+An entry in the first two layers that holds an option and its value together (such as `--group-add video`) is split into two arguments when the launch is sent; a space after `=` belongs to the value.
+
 Validation is identical to the deployment's own `docker_args` (`deploy.ValidateDockerArgs`, see "Disallowed Docker Arguments" below), and applies to this same spec's own `shm_bytes`: a spec that states both `--ipc=host` and `shm_bytes` is already rejected on import.
 
 If the deployment itself does not state `--ipc=host` but the selected template spec does, the deployment's own `shm_bytes` has no effect; the platform rejects this (`SHM_SIZE_WITH_HOST_IPC`) rather than silently ignoring it, because that size would never apply - see "`/dev/shm` Size".
@@ -403,7 +405,7 @@ For example `docker ps -a --filter label=gpuworks.server=https://gpuworks.exampl
 <!-- translation-source-sha256: 7ad5feb68f5fb7e97bea822ef9bc92dbbf3196ec6dcadbf32869b668a0561f7b ### Container Override Fields -->
 <!-- translation-source-sha256: 7cc2b6f33347b0d9b66ba63c9c4a0fb6af8b5a417fdc665815d0d36051f8a48f ### `/dev/shm` Size -->
 <!-- translation-source-sha256: 48a7b71d1828df37d9707175d380a78ceddfc7234253976351bd0422b9d84871 ### Locked Memory (memlock) -->
-<!-- translation-source-sha256: 3b65db7c208f4f8d4a7be3cfddcddb58fef55416c35eedf80c20670ccdec8f3c ### The three-layer order of docker run arguments -->
+<!-- translation-source-sha256: eff371b0fb65c4ff21140a51c92e187284d66a31bf159ce7c23c8b83f580eed6 ### The three-layer order of docker run arguments -->
 <!-- translation-source-sha256: bb76c53128ef748f329a936fc30e01364f210b6131b22706f35e54547cf938a5 ### Disallowed Docker Arguments -->
 <!-- translation-source-sha256: 99b335171c079ef2ccccf80c3e3dd11b85713797d865528d365392695d2b9565 ## Startup Wait Limit -->
 <!-- translation-source-sha256: d3a20fa47676a3d0fcf5336ad13fd98385bf4db45f58abbc09495f8793deed29 ## Environment Variable Layers -->
