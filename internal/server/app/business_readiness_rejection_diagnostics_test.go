@@ -121,7 +121,13 @@ func TestReadinessRejectionDiagnosticsPreserveAdmission(t *testing.T) {
 			if rec.Body.String() != "member business service is not ready\n" {
 				t.Fatal("rejection response changed")
 			}
-			wantHeaders := map[string]string{"Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8", "X-Content-Type-Options": "nosniff"}
+			// The rejection names its reason; the log line keeps the gate's own word.
+			refusal := map[string]string{"proof_missing": refusalProofMissing, "no_business_generation": refusalNoGeneration,
+				"epoch_changed": refusalProofEpochChanged, "headroom": refusalProofHeadroom}[tc.reason]
+			if refusal == "" {
+				t.Fatalf("no refusal code expected for the reason %q", tc.reason)
+			}
+			wantHeaders := map[string]string{"Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8", "X-Content-Type-Options": "nosniff", businessRefusalHeader: refusal}
 			if len(rec.Header()) != len(wantHeaders) {
 				t.Fatalf("diagnostic changed rejection headers: %v", rec.Header())
 			}
