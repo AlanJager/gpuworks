@@ -756,7 +756,7 @@ func (s *Store) ApplyImageNodeStatus(imageID, nodeID uint, st proto.ImageNodeSta
 	if st.SizeBytes > 0 {
 		updates["size_bytes"] = st.SizeBytes
 	}
-	if st.TransferredBytes > 0 {
+	if imageStatusAdvancesCount(current, st) {
 		updates["transferred_bytes"] = st.TransferredBytes
 	}
 	if st.RateBPS > 0 {

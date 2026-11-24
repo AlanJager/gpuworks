@@ -214,6 +214,13 @@ func TestRecordImageTransferBytesFinishesAPeerSyncWithTheSendersCount(t *testing
 			}
 			if c.recordFirst {
 				record()
+				// A sample the node sent earlier, handled after the final count.
+				if err := st.ApplyImageNodeStatus(image.ID, node.ID, sample); err != nil {
+					t.Fatal(err)
+				}
+				if row, _ := st.ImageNode(image.ID, node.ID); row.TransferredBytes != archive {
+					t.Fatalf("a late sample lowered the count to %d", row.TransferredBytes)
+				}
 			}
 			if err := st.ApplyImageNodeStatus(image.ID, node.ID, loaded); err != nil {
 				t.Fatal(err)
@@ -223,6 +230,12 @@ func TestRecordImageTransferBytesFinishesAPeerSyncWithTheSendersCount(t *testing
 					t.Fatalf("before the sender's result the row holds %d, want the sample", row.TransferredBytes)
 				}
 				record()
+			}
+			// Nothing the node can still send for this transfer changes it.
+			for _, late := range []proto.ImageNodeStatus{sample, loaded} {
+				if err := st.ApplyImageNodeStatus(image.ID, node.ID, late); err != nil {
+					t.Fatal(err)
+				}
 			}
 			row, _ := st.ImageNode(image.ID, node.ID)
 			if row.State != ImageStatePresent || row.TransferredBytes != archive || row.SizeBytes != c.wantSizeBytes {

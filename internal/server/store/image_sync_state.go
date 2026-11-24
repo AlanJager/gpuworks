@@ -4,6 +4,8 @@ import (
 	"errors"
 
 	"gorm.io/gorm"
+
+	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // UpdateImageSyncProgressIfActive records progress only for the currently
@@ -74,4 +76,18 @@ func (s *Store) RecordImageTransferBytes(imageID, nodeID uint, transferID string
 		s.Bus.PublishChange("image", uintKey(imageID), "node")
 	}
 	return res.RowsAffected > 0, nil
+}
+
+// imageStatusAdvancesCount reports whether a node's status carries a byte
+// count the row should take. Within one transfer the count only grows: the
+// node's samples and the sending side's final count reach the server on
+// different streams, and a sample handled after the final count must not
+// replace it. A status of another transfer, or one that names none, is taken
+// as it was before.
+func imageStatusAdvancesCount(current ImageNode, st proto.ImageNodeStatus) bool {
+	if st.TransferredBytes <= 0 {
+		return false
+	}
+	sameTransfer := st.TransferID != "" && st.TransferID == current.TransferID
+	return !sameTransfer || st.TransferredBytes > current.TransferredBytes
 }

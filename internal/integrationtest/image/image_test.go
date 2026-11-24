@@ -100,6 +100,13 @@ func TestImageRelayTransfersArchiveAndVerifiesLoad(t *testing.T) {
 			row = *got
 			return row.State != store.ImageStatePresent || row.TransferredBytes == archiveSize
 		})
+		// Once whole, the count stays: nothing later lowers it.
+		for i := 0; i < 20 && row.TransferredBytes == archiveSize; i++ {
+			time.Sleep(25 * time.Millisecond)
+			if got, getErr := env.Store().ImageNode(img.ID, node.ID); getErr == nil {
+				row = *got
+			}
+		}
 		return row
 	}
 	got := counted(targetNode, sync(targetNode))
