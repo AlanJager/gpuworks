@@ -55,6 +55,3 @@ var admissionCloseCauses = map[admissionCloseCause]bool{
 	closeWriterRefused:     false,
 	closeOther:             false,
 }
-
-// byProof reports a close the proof worker made itself.
-func (c admissionCloseCause) byProof() bool { return admissionCloseCauses[c] }
