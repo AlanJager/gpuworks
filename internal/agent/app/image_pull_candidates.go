@@ -15,15 +15,15 @@ import (
 // cooldown), with the first source that works tagged back to the canonical
 // reference. It reports through image.node status like the single-reference
 // pull, and names the source that worked in Source.
-func (n *NodeRuntime) pullImageCandidates(ctx context.Context, d runtime.Driver, p proto.ImagePullParams) {
+func (i *nodeImages) pullImageCandidates(ctx context.Context, d runtime.Driver, p proto.ImagePullParams) {
 	status := func(state, source, message string) {
-		n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: state, TransferID: p.TransferID, Source: source, Message: message})
+		i.deps.report(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: state, TransferID: p.TransferID, Source: source, Message: message})
 	}
 	// One pulling state is overwritten by its successor on the wire, so what
 	// the walk learns on the way (the probed order, a source that failed) is
 	// also kept for the final message.
 	var notes []string
-	res, err := n.puller.Walk(ctx, d, p.Candidates, imagepull.Options{NodeProxy: true}, imagepull.Hooks{
+	res, err := i.deps.puller().Walk(ctx, d, p.Candidates, imagepull.Options{NodeProxy: true}, imagepull.Hooks{
 		Ordered: func(summary string) {
 			notes = append(notes, "image sources by probe: "+summary)
 			status("pulling", "", "image sources by probe: "+summary)
@@ -32,13 +32,13 @@ func (n *NodeRuntime) pullImageCandidates(ctx context.Context, d runtime.Driver,
 		// Every line is offered to the egress gate, which keeps at most one
 		// per second for this image and always delivers the last one.
 		Line: func(ref, line string, s imagepull.Snapshot, _ bool) {
-			n.reportImageNode(proto.ImageNodeStatus{
+			i.deps.report(proto.ImageNodeStatus{
 				ImageRef: p.CanonicalRef, State: "pulling", TransferID: p.TransferID, Source: ref, Message: line,
 				TransferredBytes: s.Done, SizeBytes: s.Total, RateBPS: s.Rate,
 			})
 		},
 		Failed: func(ref string, err error) {
-			n.log.Warn("image pull source failed", "image", p.CanonicalRef, "ref", ref, "err", err)
+			i.deps.log().Warn("image pull source failed", "image", p.CanonicalRef, "ref", ref, "err", err)
 			notes = append(notes, "image source failed: "+ref+": "+err.Error())
 			status("pulling", ref, "image source failed: "+ref+": "+err.Error())
 		},
@@ -77,7 +77,7 @@ func (n *NodeRuntime) pullImageCandidates(ctx context.Context, d runtime.Driver,
 			done.ImageID = inspected.ID
 		}
 	}
-	n.reportImageNode(done)
+	i.deps.report(done)
 }
 
 // validPullCandidates trims the candidate list an image.pull carries and

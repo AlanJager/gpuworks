@@ -67,7 +67,7 @@ func (o *imageOperations) cancel(canonicalRef, transferID string) bool {
 // rpcImageCancel stops one image operation. The work itself reports the
 // terminal state (failed, with the cancellation as the reason), so this only
 // has to name the right operation and acknowledge.
-func (n *NodeRuntime) rpcImageCancel(_ context.Context, raw json.RawMessage) (any, error) {
+func (i *nodeImages) rpcImageCancel(_ context.Context, raw json.RawMessage) (any, error) {
 	var p proto.ImageCancelParams
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func (n *NodeRuntime) rpcImageCancel(_ context.Context, raw json.RawMessage) (an
 		return nil, errors.New("image cancel requires a canonical_ref or a transfer_id")
 	}
 	state := "not_running"
-	if n.imageOps.cancel(p.CanonicalRef, p.TransferID) {
+	if i.ops.cancel(p.CanonicalRef, p.TransferID) {
 		state = "cancelling"
 	}
 	return proto.ImageCancelResult{State: state, Cancelled: state == "cancelling"}, nil

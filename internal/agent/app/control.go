@@ -13,9 +13,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/conn"
 	"gpuworks.ai/gpuworks/internal/agent/hostsim"
-	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/agent/runtime/hostproc"
-	"gpuworks.ai/gpuworks/internal/commandlog"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/pkg/bench/loadgen"
 )
@@ -149,23 +147,6 @@ func (n *NodeRuntime) reportImageNode(st proto.ImageNodeStatus) {
 	})
 }
 
-// lockImageOperation serializes the node's image work, and reports that it is
-// waiting when another operation already holds the slot.
-//
-// A queued transfer that says nothing is indistinguishable from a stalled one:
-// both show up as a progress bar that never moves. Saying which one it is is
-// the difference between "wait, the node is busy" and "this is broken".
-func (n *NodeRuntime) lockImageOperation(imageRef, state string) {
-	if n.imagePullMu.TryLock() {
-		return
-	}
-	n.reportImageNode(proto.ImageNodeStatus{
-		ImageRef: imageRef, State: state,
-		Message: "waiting for another image operation on this node to finish",
-	})
-	n.imagePullMu.Lock()
-}
-
 func (n *NodeRuntime) reportBenchmark(st proto.BenchmarkStatus) {
 	n.sendMu.Lock()
 	send := n.send
@@ -207,10 +188,7 @@ func (n *NodeRuntime) OnStateSync(ctx context.Context, ds proto.DesiredState) {
 		n.setModelsRoot(ds.ModelsRoot)
 	}
 	n.applyStorages(ds.Storages)
-	n.imageRefsMu.Lock()
-	n.imageRefs = append([]string(nil), ds.ImageRefs...)
-	n.imageRefsMu.Unlock()
-	n.imageSeen.forget(ds.ImageRefs)
+	n.imageWork().replaceCatalog(ds.ImageRefs)
 	if n.engine != nil {
 		n.engine.SetDesiredFull(ctx, ds.Instances)
 		// After the desired set is known, so a group an instance still
@@ -257,13 +235,7 @@ func (n *NodeRuntime) OnStateUpdate(ctx context.Context, su proto.StateUpdate) b
 		n.setModelsRoot(su.ModelsRoot)
 	}
 	if su.ImageRefs != nil {
-		n.imageRefsMu.Lock()
-		if !sameImageRefSet(n.imageRefs, su.ImageRefs) {
-			n.imageRefs = append([]string(nil), su.ImageRefs...)
-			imageRefsChanged = true
-		}
-		n.imageRefsMu.Unlock()
-		n.imageSeen.forget(su.ImageRefs)
+		imageRefsChanged = n.imageWork().updateCatalog(su.ImageRefs)
 	}
 	if n.engine != nil {
 		n.engine.ApplyUpdate(ctx, su.Instances, su.RemovedInstances)
@@ -283,32 +255,7 @@ func (n *NodeRuntime) OnStateUpdate(ctx context.Context, su proto.StateUpdate) b
 // it outside conn preserves the lightweight connection package and lets older
 // test handlers continue to implement the original interface unchanged.
 func (n *NodeRuntime) StatusSnapshot(ctx context.Context, refs []string) ([]proto.ImagePresence, []proto.PathUsage) {
-	var images []proto.ImagePresence
-	if len(refs) == 0 {
-		n.imageRefsMu.RLock()
-		refs = append([]string(nil), n.imageRefs...)
-		n.imageRefsMu.RUnlock()
-	}
-	if d := n.runtimeDriver(); d != nil {
-		for _, ref := range refs {
-			var present bool
-			var imageID string
-			var size *int64
-			var err error
-			if reporter, ok := d.(runtime.ImagePresenceReporter); ok {
-				present, imageID, size, err = reporter.ImagePresence(ctx, ref)
-			} else {
-				present, err = d.ImageExists(ctx, ref)
-			}
-			if err != nil {
-				n.log.Warn("image presence inspection failed", "image", ref, "runtime", d.Name(), "err", err)
-				continue
-			}
-			n.imageSeen.observe(ctx, n.log, d, ref, present)
-			images = append(images, proto.ImagePresence{ImageRef: ref, Present: present, ImageID: imageID, RuntimeSizeBytes: size})
-		}
-	}
-	return images, n.pathUsage()
+	return n.imageWork().presence(ctx, refs), n.pathUsage()
 }
 
 // pathUsage measures the paths the node depends on: the models root, the
@@ -336,21 +283,10 @@ func (n *NodeRuntime) pathUsage() []proto.PathUsage {
 	return append(paths, n.storagePathUsage()...)
 }
 
-var imageArchiveHandlers = map[string]func(*NodeRuntime, context.Context, json.RawMessage) (any, error){
-	proto.RPCImageLoadURL:  (*NodeRuntime).rpcImageLoadURL,
-	proto.RPCImageLoadPath: (*NodeRuntime).rpcImageLoadPath,
-
-	proto.RPCImagePreviewPath: (*NodeRuntime).rpcImagePreviewPath,
-}
-
 // OnRPC handles short-action RPCs.
 func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawMessage) (any, error) {
-	if handle := runtimeImageHandlers[method]; handle != nil {
-		images := runtimeImageRPC{driver: n.runtimeDriver(), lock: &n.imagePullMu, ops: &n.imageOps, stateDir: n.stateDir, report: n.reportImageNode}
-		return handle(images, ctx, method, params)
-	}
-	if handle := imageArchiveHandlers[method]; handle != nil {
-		return handle(n, ctx, params)
+	if handle := n.imageWork().handler(method); handle != nil {
+		return handle(ctx, params)
 	}
 	switch method {
 	case proto.RPCDebugStart:
@@ -517,46 +453,11 @@ func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawM
 		return n.rpcModelSyncStop(params)
 	case proto.RPCModelSyncProbe:
 		return n.rpcModelSyncProbe(ctx, params)
-	case proto.RPCImageSyncListen:
-		return n.rpcImageSyncListen(params)
-	case proto.RPCImageSyncSend:
-		return n.rpcImageSyncSend(ctx, params)
-	case proto.RPCImageSyncProbe:
-		return n.rpcImageSyncProbe(ctx, params)
-	case proto.RPCImageSyncStop:
-		return n.rpcImageSyncStop(ctx, params)
-	case proto.RPCImagePull:
-		return n.rpcImagePull(ctx, params)
 	case proto.RPCRuntimeRestart:
 		return n.rpcRuntimeRestart(ctx)
-	case proto.RPCImageCancel:
-		return n.rpcImageCancel(ctx, params)
-	case proto.RPCImageRemove:
-		return n.rpcImageRemove(ctx, params)
-	case proto.RPCImageInspect:
-		return n.rpcImageInspect(ctx, params)
-	case proto.RPCImageExists:
-		return n.rpcImageExists(ctx, params)
 	default:
 		return nil, errUnknownRPC(method)
 	}
-}
-
-func (n *NodeRuntime) rpcImageInspect(ctx context.Context, raw json.RawMessage) (any, error) {
-	var p proto.ImageInspectParams
-	if err := json.Unmarshal(raw, &p); err != nil || strings.TrimSpace(p.ImageRef) == "" {
-		return nil, errors.New("image inspect requires image_ref")
-	}
-	d := n.runtimeDriver()
-	inspector, ok := d.(runtime.ImageInspector)
-	if !ok {
-		return nil, errors.New("runtime does not support image inspection")
-	}
-	inspected, err := inspector.InspectImage(ctx, strings.TrimSpace(p.ImageRef))
-	if err != nil {
-		return nil, err
-	}
-	return proto.ImageInspectResult{ImageRef: strings.TrimSpace(p.ImageRef), ImageID: inspected.ID, Entrypoint: inspected.Entrypoint, Cmd: inspected.Cmd, Env: commandlog.RedactEnv(inspected.Env), Volumes: inspected.Volumes}, nil
 }
 
 // StreamLogs streams an instance's container logs into w (logtail data plane).

@@ -9,7 +9,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
-func (s runtimeImageRPC) startCopy(ctx context.Context, _ string, raw json.RawMessage) (any, error) {
+func (i *nodeImages) startLocalCopy(ctx context.Context, _ string, raw json.RawMessage) (any, error) {
 	var p proto.RuntimeImageCopyRequest
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return nil, err
@@ -17,20 +17,20 @@ func (s runtimeImageRPC) startCopy(ctx context.Context, _ string, raw json.RawMe
 	if p.TransferID == "" || p.Namespace == "" || p.Namespace == p.TargetNamespace || !runtime.ValidLocalImageRef(p.Ref) || !runtime.ValidImageDigest(p.Identity) {
 		return nil, localImageError(proto.RPCImageRuntimeCopy, p.RuntimeImageSelection, runtime.ErrLocalImageChanged)
 	}
-	d, ok := s.driver.(runtime.LocalImageStore)
+	d, ok := i.deps.driver().(runtime.LocalImageStore)
 	if !ok {
 		return nil, localImageError(proto.RPCImageRuntimeCopy, p.RuntimeImageSelection, runtime.ErrLocalImageUnsupported)
 	}
-	if !s.lock.TryLock() {
+	if !i.slot.TryLock() {
 		return nil, &proto.RPCError{Code: proto.ErrorLocalImageBusy, Message: "another node image operation is in progress"}
 	}
 	work, cancel := context.WithTimeout(context.WithoutCancel(ctx), proto.ImageOperationTimeout)
-	unregister := s.ops.begin(p.Ref, p.TransferID, cancel)
+	unregister := i.ops.begin(p.Ref, p.TransferID, cancel)
 	go func() {
-		defer s.lock.Unlock()
+		defer i.slot.Unlock()
 		defer unregister()
 		defer cancel()
-		job := &runtime.LocalImageCopy{StateDir: s.stateDir}
+		job := &runtime.LocalImageCopy{StateDir: i.deps.stateDir()}
 		done := make(chan struct{})
 		heartbeatDone := make(chan struct{})
 		go func() {
@@ -38,7 +38,7 @@ func (s runtimeImageRPC) startCopy(ctx context.Context, _ string, raw json.RawMe
 			ticker := time.NewTicker(2 * time.Second)
 			defer ticker.Stop()
 			for {
-				s.report(proto.ImageNodeStatus{ImageRef: p.Ref, TransferID: p.TransferID, Source: proto.RuntimeImageCopySource, State: "syncing", TransferredBytes: job.Bytes.Load()})
+				i.deps.report(proto.ImageNodeStatus{ImageRef: p.Ref, TransferID: p.TransferID, Source: proto.RuntimeImageCopySource, State: "syncing", TransferredBytes: job.Bytes.Load()})
 				select {
 				case <-done:
 					return
@@ -56,7 +56,7 @@ func (s runtimeImageRPC) startCopy(ctx context.Context, _ string, raw json.RawMe
 			}
 			status.ImageID, status.State, status.Message = "", "failed", localImageError(proto.RPCImageRuntimeCopy, p.RuntimeImageSelection, err).Code
 		}
-		s.report(status)
+		i.deps.report(status)
 	}()
 	return proto.ImageLoadPathResult{State: "syncing", CanonicalRef: p.Ref}, nil
 }

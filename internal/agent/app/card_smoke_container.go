@@ -349,10 +349,7 @@ func (n *NodeRuntime) cardRuntimeCheck(vendor string) (gpu.HostRuntimeCheck, boo
 		vendor: accelerator.NormalizeVendor(vendor), framework: framework,
 		driver: n.runtimeDriver, builder: n.engine,
 		images: func() []string {
-			n.imageRefsMu.RLock()
-			catalog := append([]string(nil), n.imageRefs...)
-			n.imageRefsMu.RUnlock()
-			return append(n.engine.DesiredImages(), catalog...)
+			return append(n.engine.DesiredImages(), n.imageWork().catalog()...)
 		},
 	}
 	return composeCardRuntimeCheck(vendor, host, hasHost, c), true

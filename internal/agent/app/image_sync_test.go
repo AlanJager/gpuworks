@@ -31,7 +31,7 @@ func TestImageSyncReceiverReportsNothingAfterTerminal(t *testing.T) {
 		return nil
 	}
 	params, _ := json.Marshal(proto.ImageSyncListenParams{TransferID: "t1", ImageRef: ref, Token: "secret", BindIP: "127.0.0.1"})
-	raw, err := node.rpcImageSyncListen(params)
+	raw, err := node.imageWork().rpcImageSyncListen(context.Background(), params)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestImageSyncStopDoesNotReportHeaderReadFailure(t *testing.T) {
 	}
 	t.Cleanup(receiver.Stop)
 	active := &activeImageSync{transferID: "cancel-header", imageRef: ref, receiver: receiver}
-	node.imageSyncs[ref] = active
+	node.imageWork().syncs[ref] = active
 	// This fixture's ephemeral TLS certificate belongs to the local receiver.
 	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 3 * time.Second}, "tcp", receiver.Endpoints[0], &tls.Config{InsecureSkipVerify: true})
 	if err != nil {
@@ -97,17 +97,17 @@ func TestImageSyncStopDoesNotReportHeaderReadFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	params, _ := json.Marshal(proto.ImageSyncStopParams{TransferID: active.transferID})
-	if _, err := node.rpcImageSyncStop(context.Background(), params); err != nil {
+	if _, err := node.imageWork().rpcImageSyncStop(context.Background(), params); err != nil {
 		t.Fatal(err)
 	}
-	node.waitImageSync(active, proto.ImageSyncListenParams{ImageRef: ref, TransferID: active.transferID})
+	node.imageWork().waitImageSync(active, proto.ImageSyncListenParams{ImageRef: ref, TransferID: active.transferID})
 	if len(statuses) != 0 {
 		t.Fatalf("cancelled transfer emitted statuses that overwrite cancellation: %+v", statuses)
 	}
-	if len(node.imageSyncs) != 0 {
-		t.Fatalf("cancelled transfer still occupies the image sync slot: %+v", node.imageSyncs)
+	if len(node.imageWork().syncs) != 0 {
+		t.Fatalf("cancelled transfer still occupies the image sync slot: %+v", node.imageWork().syncs)
 	}
-	raw, err := node.rpcImageSyncStop(context.Background(), params)
+	raw, err := node.imageWork().rpcImageSyncStop(context.Background(), params)
 	if err != nil || raw.(map[string]string)["status"] != "not_running" {
 		t.Fatalf("stopping completed cancellation = %+v, %v", raw, err)
 	}

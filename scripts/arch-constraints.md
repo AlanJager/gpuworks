@@ -345,16 +345,26 @@ grep -rnE '\.ListInstances\(\)' internal pkg cmd --include='*.go' | grep -v '_te
 
 ```sh
 # scripts/structcount 解析非测试文件的语法树，打印一个数
-go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure fields    # 77
-go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure mutexes   # 12
-go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure methods   # 233
-go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure rpcs      # 51
+go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure fields    # 70
+go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure mutexes   # 9
+go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure methods   # 218
+go run ./scripts/structcount -dir internal/agent/app    -type NodeRuntime -measure rpcs      # 43
 go run ./scripts/structcount -dir internal/agent/engine -type Engine      -measure maps      # 9
 ```
 
 口径（`scripts/structcount/main_test.go` 的夹具逐条覆盖）：一行多个名字按名字计；指针锁、`sync.Map`、包内声明的 map 类型都计；匿名 struct 里的字段、锁与 map 照样计（包一层不算离开）；具名类型的字段只计这一个字段（移进具名子系统类型才算离开）；方法按接收者计，值与指针都算；`rpcs` 是包内所有 switch 的 case 里出现的不同 `proto.RPC*` 常量数，`OnRPC` 转交给辅助 switch（`kubeRPC`）的也计。
 
 初值是 R-23 第一个 MR（GWKS-321）之后的值：`Engine` 的 12 张按 UUID 的 map 中，描述引擎进程的四张（睡眠级别、预热、L1 主机缓冲、卡上进程）收成 `processes map[string]*processFacts`，12 → 9。
+
+77 / 12 / 233 / 51 → 70 / 9 / 218 / 43（2026-11-25，GWKS-503）：镜像成为第一个有自己类型的所有者 `nodeImages`，带走 8 个字段、3 把锁；镜像的 17 个 RPC 走它自己的两张表。同一次改动扩大了统计范围：`methods` 把以该类型为参数的函数也算作方法，不论它挂在谁身上（当时 4 个：`storageUsers`、`startSlurm`、`Agent.runServerDial`、`Agent.handlers`）；`rpcs` 把 `==` / `!=` 比较、值类型提到该类型的 map 字面量的键、以该类型为接收者或参数的函数里任何 map 字面量的键也算进去，另一个具名类型的、不接该类型的方法里的分发不算。按旧口径方法数是 214。
+
+### agent_image_deps_fields（初值 9，2026-11-25）
+
+意图：`nodeImages` 向 `NodeRuntime` 要的东西只降不升（ADR 0066 决策 4：依赖收窄）。依赖一多，子系统就是换了名字的 `NodeRuntime`。
+
+```sh
+go run ./scripts/structcount -dir internal/agent/app -type imageDeps -measure fields    # 9
+```
 
 ### store_concrete_importers（初值 17）
 

@@ -32,7 +32,7 @@ func imageRemoveNode(t *testing.T) (*NodeRuntime, *recording.Driver, chan proto.
 func TestRPCImageRemoveDeletesTheImageAndReportsAbsent(t *testing.T) {
 	node, driver, statuses := imageRemoveNode(t)
 	const ref = "gpustack/runner:cann8.5-910b-vllm0.18.0"
-	raw, err := node.rpcImageRemove(context.Background(), json.RawMessage(`{"image_ref":"`+ref+`"}`))
+	raw, err := node.imageWork().rpcImageRemove(context.Background(), json.RawMessage(`{"image_ref":"`+ref+`"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestRPCImageRemoveReportsARuntimeRefusal(t *testing.T) {
 	node, driver, statuses := imageRemoveNode(t)
 	refusal := errors.New("conflict: unable to delete image (must be forced) - image is being used by running container")
 	driver.InjectRemoveFailure(refusal)
-	if _, err := node.rpcImageRemove(context.Background(), json.RawMessage(`{"image_ref":"registry.example/team/runner:v1"}`)); !errors.Is(err, refusal) {
+	if _, err := node.imageWork().rpcImageRemove(context.Background(), json.RawMessage(`{"image_ref":"registry.example/team/runner:v1"}`)); !errors.Is(err, refusal) {
 		t.Fatalf("err = %v, want the runtime's own refusal", err)
 	}
 	if len(statuses) != 0 {
@@ -69,7 +69,7 @@ func TestRPCImageRemoveReportsARuntimeRefusal(t *testing.T) {
 
 func TestRPCImageRemoveRequiresAReference(t *testing.T) {
 	node, _, _ := imageRemoveNode(t)
-	if _, err := node.rpcImageRemove(context.Background(), json.RawMessage(`{"image_ref":"  "}`)); err == nil ||
+	if _, err := node.imageWork().rpcImageRemove(context.Background(), json.RawMessage(`{"image_ref":"  "}`)); err == nil ||
 		!strings.Contains(err.Error(), "image_ref") {
 		t.Fatalf("err = %v", err)
 	}

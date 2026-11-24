@@ -62,7 +62,7 @@ func TestImageLoadPathLifecycle(t *testing.T) {
 				if _, err := n.OnRPC(requestCtx, proto.RPCImageLoadPath, loadPathParams(path)); err != nil {
 					t.Fatal(err)
 				}
-				defer n.imageOps.cancel(loadURLCanonical, "local-import")
+				defer n.imageWork().ops.cancel(loadURLCanonical, "local-import")
 				loadCtx := <-started
 				requestDone()
 				synctest.Wait()
@@ -118,7 +118,7 @@ func TestImageLoadPathLifecycle(t *testing.T) {
 				}
 				time.Sleep(time.Minute)
 				synctest.Wait()
-				if len(statuses) != 0 || n.imageOps.cancel(loadURLCanonical, "local-import") {
+				if len(statuses) != 0 || n.imageWork().ops.cancel(loadURLCanonical, "local-import") {
 					t.Fatal("finished import retained a heartbeat or cancellation registration")
 				}
 				if data, err := os.ReadFile(path); err != nil || string(data) != string(original) {
@@ -152,12 +152,12 @@ func TestImageLoadPathKeepsQueuedTransferAlive(t *testing.T) {
 	path, original := localArchive(t)
 	d := recording.New("")
 	n, statuses := localImportNode(t, d)
-	n.imagePullMu.Lock()
+	n.imageWork().slot.Lock()
 	locked := true
 	defer func() {
 		if locked {
-			n.imageOps.cancel(loadURLCanonical, "local-import")
-			n.imagePullMu.Unlock()
+			n.imageWork().ops.cancel(loadURLCanonical, "local-import")
+			n.imageWork().slot.Unlock()
 		}
 	}()
 	if _, err := n.OnRPC(context.Background(), proto.RPCImageLoadPath, loadPathParams(path)); err != nil {
@@ -174,7 +174,7 @@ func TestImageLoadPathKeepsQueuedTransferAlive(t *testing.T) {
 			if st.State != "syncing" || st.TransferID != "local-import" || st.SizeBytes != int64(len(original)) || st.TransferredBytes != 0 || len(d.LoadedPaths()) != 0 {
 				t.Fatalf("queued heartbeat or premature load: %+v paths=%v", st, d.LoadedPaths())
 			}
-			n.imagePullMu.Unlock()
+			n.imageWork().slot.Unlock()
 			locked = false
 		case <-deadline:
 			t.Fatal("queued transfer stopped reporting while waiting for the image slot")
@@ -251,7 +251,7 @@ func TestImageLoadPathCancellationDuringFileCheck(t *testing.T) {
 				started <- err
 			}()
 			checkCtx := <-d.entered
-			if n.imageOps.cancel(loadURLCanonical, "another-attempt") {
+			if n.imageWork().ops.cancel(loadURLCanonical, "another-attempt") {
 				t.Fatal("unrelated transfer ID cancelled the check")
 			}
 			if source == "operator" {
@@ -272,7 +272,7 @@ func TestImageLoadPathCancellationDuringFileCheck(t *testing.T) {
 			if err := <-started; !errors.Is(err, context.Canceled) {
 				t.Fatalf("start returned %v after cancellation", err)
 			}
-			if len(statuses) != 0 || len(d.LoadedPaths()) != 0 || n.imageOps.cancel(loadURLCanonical, "local-import") {
+			if len(statuses) != 0 || len(d.LoadedPaths()) != 0 || n.imageWork().ops.cancel(loadURLCanonical, "local-import") {
 				t.Fatal("cancelled preflight started a load or retained its registration")
 			}
 		})

@@ -5,8 +5,11 @@ import "testing"
 // The fixture holds every way of hiding state the line-matching ratchet let
 // through: several names on one line, a lock by pointer, sync.Map, a map type
 // of the package, fields wrapped in an anonymous struct, RPC cases with
-// several values or moved to a helper switch, methods on a value receiver.
-// Methods in test files and a named subsystem's own fields do not count.
+// several values or moved to a helper switch, compared with == or keyed in a
+// table of handlers on the type or of closures over it, methods on a value
+// receiver, a function or another type's method that takes the type. Methods
+// in test files, a constructor, and a named subsystem's own fields, handler
+// table and methods that do not take the type do not count.
 func TestCountSeesHiddenState(t *testing.T) {
 	for _, tc := range []struct {
 		measure string
@@ -18,10 +21,10 @@ func TestCountSeesHiddenState(t *testing.T) {
 		{"mutexes", 5},
 		// m1 m2 cache seen nested.byID
 		{"maps", 5},
-		// OnRPC more
-		{"methods", 2},
-		// Ping Doctor Smoke
-		{"rpcs", 3},
+		// OnRPC more testOnlyTarget helper route table
+		{"methods", 6},
+		// Ping Doctor Smoke Restart Upgrade Route Closure
+		{"rpcs", 7},
 	} {
 		got, err := count("testdata/root", "Root", tc.measure)
 		if err != nil {

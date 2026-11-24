@@ -70,7 +70,7 @@ func pullRun(t *testing.T, n *NodeRuntime, raw string) []proto.ImageNodeStatus {
 		}
 		return nil
 	}
-	if _, err := n.rpcImagePull(context.Background(), json.RawMessage(raw)); err != nil {
+	if _, err := n.imageWork().rpcImagePull(context.Background(), json.RawMessage(raw)); err != nil {
 		t.Fatal(err)
 	}
 	var got []proto.ImageNodeStatus
@@ -170,7 +170,7 @@ func TestRPCImagePullCandidatesWithoutTaggingSupportFails(t *testing.T) {
 
 func TestRPCImagePullRejectsDigestCandidates(t *testing.T) {
 	n := NewNodeRuntime(slog.Default(), newCandidateDriver(), t.TempDir())
-	_, err := n.rpcImagePull(context.Background(), json.RawMessage(`{"effective_ref":"a/b:v1","canonical_ref":"c/d:v1","candidates":[{"ref":"a/b:v1"},{"ref":"x/y@sha256:abc"}]}`))
+	_, err := n.imageWork().rpcImagePull(context.Background(), json.RawMessage(`{"effective_ref":"a/b:v1","canonical_ref":"c/d:v1","candidates":[{"ref":"a/b:v1"},{"ref":"x/y@sha256:abc"}]}`))
 	if err == nil || !strings.Contains(err.Error(), "digest") {
 		t.Fatalf("err = %v", err)
 	}

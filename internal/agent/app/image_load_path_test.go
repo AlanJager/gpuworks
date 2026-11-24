@@ -86,14 +86,14 @@ func TestImageLoadPathRejectsMissingFilesAndDirectories(t *testing.T) {
 func TestImageLoadPathCancelledInQueueDoesNotLoad(t *testing.T) {
 	h := newArchiveLoadHarness(t)
 	path, _ := localArchive(t)
-	h.node.imagePullMu.Lock()
+	h.node.imageWork().slot.Lock()
 	_, err := h.node.OnRPC(context.Background(), proto.RPCImageLoadPath, loadPathParams(path))
 	if err != nil {
-		h.node.imagePullMu.Unlock()
+		h.node.imageWork().slot.Unlock()
 		t.Fatal(err)
 	}
-	cancelled := h.node.imageOps.cancel(loadURLCanonical, "local-import")
-	h.node.imagePullMu.Unlock()
+	cancelled := h.node.imageWork().ops.cancel(loadURLCanonical, "local-import")
+	h.node.imageWork().slot.Unlock()
 	if !cancelled {
 		t.Fatal("accepted operation was not cancellable")
 	}
