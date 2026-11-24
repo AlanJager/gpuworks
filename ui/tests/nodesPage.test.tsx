@@ -211,10 +211,10 @@ afterEach(async () => {
   globalThis.fetch = originalFetch;
 });
 
-function renderPage(userID?: number) {
+function renderPage(userID?: number, entry = "/nodes") {
   return render(
     <I18nextProvider i18n={i18n}>
-      <MemoryRouter initialEntries={["/nodes"]}>
+      <MemoryRouter initialEntries={[entry]}>
         <SessionUserContext.Provider value={userID === undefined ? undefined : { id: userID, username: "preview", role: "admin" }}>
           <NodesPage />
         </SessionUserContext.Provider>
@@ -319,61 +319,89 @@ test("while a batch runs the fleet notice offers its progress, not a second batc
   assert.equal(screen.queryByRole("button", { name: "Upgrade all" }), null);
 });
 
-// alignServer answers the "align" filter the way the server does: it lists the nodes a batch may
-// still take, so the nodes a running batch has reserved are not in it.
-function alignServer(running: () => number | undefined) {
+// fleetServer answers the version filters the way the server does: each lists the nodes of its
+// group that a batch may still take, so a node a running batch has reserved is in none of them
+// and in none of their counts. reserved names the running batch and the groups it emptied.
+function fleetServer(reserved: () => { run_id: number; groups: string[] } | undefined, counts: { align?: number; upgrade?: number } = {}) {
   const nodes = api.nodesPage;
   api.nodesPage = async query => {
     const page = await nodes(query);
-    const run_id = running();
-    const agent_fleet = { target: "56cb84fa", align: 1, check: 0, ...(run_id ? { run_id } : {}) };
-    return query.extra?.agent_upgrade?.[0] === "align" && run_id ? { ...page, items: [], total: 0, agent_fleet } : { ...page, agent_fleet };
+    const batch = reserved();
+    const group = query.extra?.agent_upgrade?.[0] ?? "all";
+    const emptied = !!batch && batch.groups.includes(group);
+    const agent_fleet = {
+      target: "56cb84fa", check: 0,
+      align: batch?.groups.includes("align") ? 0 : counts.align ?? 1,
+      upgrade: batch?.groups.includes("upgrade") ? 0 : counts.upgrade ?? 1,
+      ...(batch ? { run_id: batch.run_id } : {}),
+    };
+    return emptied ? { ...page, items: [], total: 0, agent_fleet } : { ...page, agent_fleet };
   };
 }
 
-function renderAt(entry: string) {
-  return render(
-    <I18nextProvider i18n={i18n}>
-      <MemoryRouter initialEntries={[entry]}>
-        <SessionUserContext.Provider value={{ id: 101, username: "preview", role: "admin" }}>
-          <NodesPage />
-        </SessionUserContext.Provider>
-      </MemoryRouter>
-    </I18nextProvider>,
-  );
-}
+const batchRun = { id: 32, target_version: "56cb84fa", state: "running", counts: { total: 1, processed: 0, succeeded: 0, failed: 0, skipped: 0, cancelled: 0, interrupted: 0, unconfirmed: 0, queued: 0, active: 1 } };
 
-test("starting a batch from the differing-version filter returns the list to every node", async () => {
-  stubApi([onlineNode]);
-  let runID: number | undefined;
-  alignServer(() => runID);
-  const run = { id: 32, target_version: "56cb84fa", state: "running", counts: { total: 1, processed: 0, succeeded: 0, failed: 0, skipped: 0, cancelled: 0, interrupted: 0, unconfirmed: 0, queued: 0, active: 1 } };
+// startsBatch stubs a batch that reserves the fleet's one differing node once it is created.
+function startsBatch() {
+  let batch: { run_id: number; groups: string[] } | undefined;
+  fleetServer(() => batch);
   api.agentUpgradePreview = async () => ({ target_version: "56cb84fa", manifest_fingerprint: "sha256:sealed", node_uuids: [onlineNode.uuid!], counts: { eligible: 1 },
     nodes: [{ node_uuid: onlineNode.uuid!, name: onlineNode.name!, from_version: "old", os: "linux", arch: "amd64", transport: "push", eligibility: "eligible" }] }) as never;
-  api.createAgentUpgrade = async () => { runID = run.id; return run as never; };
-  api.agentUpgradeRuns = async () => ({ items: runID ? [run] : [], total: runID ? 1 : 0, page: 1, page_size: 20 }) as never;
-  api.agentUpgradeRun = async () => run as never;
+  api.createAgentUpgrade = async () => { batch = { run_id: batchRun.id, groups: ["align", "upgrade"] }; return batchRun as never; };
+  api.agentUpgradeRuns = async () => ({ items: batch ? [batchRun] : [], total: batch ? 1 : 0, page: 1, page_size: 20 }) as never;
+  api.agentUpgradeRun = async () => batchRun as never;
   api.agentUpgradeItems = async () => ({ items: [], total: 0, page: 1, page_size: 20 }) as never;
-  const user = userEvent.setup();
-  renderAt("/nodes?agent_upgrade=align");
-  await waitFor(() => assert.deepEqual(pageQueries.at(-1)?.extra?.agent_upgrade, ["align"]));
-  await user.click(await screen.findByRole("button", { name: "Upgrade all" }));
+}
+
+async function confirmBatch(user: ReturnType<typeof userEvent.setup>) {
   const modal = await screen.findByRole("dialog");
   await user.click(await within(modal).findByRole("checkbox", { name: /maintenance window/ }));
   await user.click(within(modal).getByRole("button", { name: "Update to this version" }));
-  assert.ok(await screen.findByRole("dialog", { name: "Agent upgrade batch 32" }));
-  // The batch reserved its node: the "align" list would now be empty, so the page asks for every node.
-  await waitFor(() => assert.deepEqual(pageQueries.at(-1)?.extra?.agent_upgrade, ["all"]));
+  return screen.findByRole("dialog", { name: "Agent upgrade batch 32" });
+}
+
+for (const group of ["align", "upgrade"]) {
+  test(`starting a batch from the ${group} filter returns the list to every node and keeps the other filters`, async () => {
+    stubApi([onlineNode]);
+    startsBatch();
+    const user = userEvent.setup();
+    renderPage(101, `/nodes?source=manual&agent_upgrade=${group}`);
+    await waitFor(() => assert.deepEqual(pageQueries.at(-1)?.extra, { agent_upgrade: [group], source: ["manual"] }));
+    await user.click(await screen.findByRole("button", { name: "Upgrade all" }));
+    const drawer = await confirmBatch(user);
+    // The batch reserved its node: the filter would now list nothing, so the page asks for every node.
+    await waitFor(() => assert.deepEqual(pageQueries.at(-1)?.extra, { agent_upgrade: ["all"], source: ["manual"] }));
+    // The name is in the closing preview too; the one that counts is in a row of the node table.
+    await waitFor(() => assert.ok(screen.getAllByText(onlineNode.name!).some(cell => cell.closest("tr[data-row-key]")?.getAttribute("data-row-key") === onlineNode.uuid)));
+    assert.ok(drawer.isConnected, "the batch stays open over the list");
+    assert.equal(screen.queryByText("No nodes match the search or the selected labels"), null);
+  });
+}
+
+test("a version filter a running batch emptied says so and leads to the batch, with or without the fleet notice", async () => {
+  stubApi([onlineNode]);
+  fleetServer(() => ({ run_id: 32, groups: ["align"] }));
+  const user = userEvent.setup();
+  renderPage(101, "/nodes?agent_upgrade=align");
+  assert.ok(await screen.findByText("An upgrade batch is running; its nodes are not listed under this filter"));
   assert.equal(screen.queryByText("No nodes match the search or the selected labels"), null);
+  assert.deepEqual(screen.getAllByRole("link", { name: "View upgrade progress" }).map(link => link.getAttribute("href")), ["/nodes?agent_run=32", "/nodes?agent_run=32"]);
+  // A user who dismissed the notice still has the way to the batch under the text.
+  await user.click(screen.getByRole("button", { name: "Dismiss this notice" }));
+  await waitFor(() => assert.equal(screen.getAllByRole("link", { name: "View upgrade progress" }).length, 1));
 });
 
-test("the differing-version filter says its nodes are in the running batch, not that nothing matches", async () => {
+test("a version filter that still has nodes blames the search, not the running batch", async () => {
   stubApi([onlineNode]);
-  alignServer(() => 32);
-  renderAt("/nodes?agent_upgrade=align");
-  assert.ok(await screen.findByText("The nodes with a different version are in the running upgrade batch. Open View upgrade progress to follow them."));
-  assert.equal(screen.queryByText("No nodes match the search or the selected labels"), null);
-  assert.equal(screen.getByRole("link", { name: "View upgrade progress" }).getAttribute("href"), "/nodes?agent_run=32");
+  // A batch of some nodes runs; others of the group can still be upgraded.
+  fleetServer(() => ({ run_id: 32, groups: [] }), { align: 14 });
+  renderPage(101, "/nodes?agent_upgrade=align");
+  assert.ok(await screen.findByText(onlineNode.name!));
+  const search = screen.getByRole("searchbox", { name: "Search by name, hostname or ID" });
+  fireEvent.change(search, { target: { value: "no-such-node" } });
+  fireEvent.keyDown(search, { key: "Enter", code: "Enter", keyCode: 13 });
+  assert.ok(await screen.findByText("No nodes match the search or the selected labels"));
+  assert.equal(screen.queryByText("An upgrade batch is running; its nodes are not listed under this filter"), null);
 });
 
 test("the latest-rejection column is gone from the table; the drawer keeps the detail", async () => {
