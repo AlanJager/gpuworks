@@ -320,6 +320,9 @@ func (h *Hub) runDirectImageSync(ctx context.Context, image *store.Image, target
 		_ = h.store.FailImageSyncIfActive(image.ID, nodeID, transferID, "image archive exceeded 500 GiB transfer limit")
 		return
 	}
+	// The target's own count is a sample taken about once a second; the
+	// sender's is the whole archive.
+	_, _ = h.store.RecordImageTransferBytes(image.ID, nodeID, transferID, result.Bytes)
 	h.awaitImageConfirmation(ctx, image.ID, nodeID, transferID, "image archive transferred, but target did not confirm completion", confirmationWait)
 }
 
@@ -368,6 +371,9 @@ func (h *Hub) trackImageTransfer(ctx context.Context, imageID, nodeID uint, tran
 		// Keep the ledger syncing here so io.Copy completion is not mistaken for
 		// a successful image import.
 		persistProgress(bytes, true)
+		// The target can report its load before the write above, which is then
+		// dropped because the row is no longer syncing.
+		_, _ = h.store.RecordImageTransferBytes(imageID, nodeID, transferID, bytes)
 		h.awaitImageConfirmation(copyCtx, imageID, nodeID, transferID, "image archive transferred, but target docker load did not confirm completion", confirmationWait)
 	})
 }

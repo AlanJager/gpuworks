@@ -1,6 +1,7 @@
 package store
 
 import (
+	"strings"
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -171,5 +172,90 @@ func TestApplyImageNodeStatusIgnoresLateProgressForFinishedTransfer(t *testing.T
 	}
 	if row, _ = st.ImageNode(image.ID, node.ID); row.State != ImageStateFailed {
 		t.Fatalf("terminal report after finish was dropped: %+v", row)
+	}
+}
+
+// A peer sync's progress comes from the receiving node, about once a second,
+// and its report of the loaded image carries no count; the sender's result
+// arrives last. The finished row must hold the sender's count, whichever of
+// the two the server handles first, and an archive size nobody knew.
+func TestRecordImageTransferBytesFinishesAPeerSyncWithTheSendersCount(t *testing.T) {
+	const archive = int64(8388608)
+	for _, c := range []struct {
+		name          string
+		size          int64
+		recordFirst   bool
+		wantSizeBytes int64
+	}{
+		{"load report first", archive, false, archive},
+		{"sender's result first", archive, true, archive},
+		{"archive size unknown", 0, false, archive},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			st, err := Open("file:"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared", bus.New())
+			if err != nil {
+				t.Fatal(err)
+			}
+			image, _ := st.UpsertImage(&Image{ImageRef: "example/image:count", Engine: "vllm", Enabled: true})
+			node, _ := st.RegisterNode("node-count", HashToken("t"), "count")
+			if _, err := st.UpsertImageNode(&ImageNode{ImageID: image.ID, NodeID: node.ID, State: ImageStateSyncing, TransferID: "relay", Source: "peer"}); err != nil {
+				t.Fatal(err)
+			}
+			// What the receiving node sends: a sample, then the loaded image.
+			sample := proto.ImageNodeStatus{State: ImageStateSyncing, TransferID: "relay", Source: "peer", SizeBytes: c.size, TransferredBytes: 5545984, RateBPS: 1000}
+			loaded := proto.ImageNodeStatus{State: ImageStatePresent, TransferID: "relay", Message: "image archive loaded"}
+			if err := st.ApplyImageNodeStatus(image.ID, node.ID, sample); err != nil {
+				t.Fatal(err)
+			}
+			record := func() {
+				if ok, err := st.RecordImageTransferBytes(image.ID, node.ID, "relay", archive); err != nil || !ok {
+					t.Fatalf("record = %v, %v", ok, err)
+				}
+			}
+			if c.recordFirst {
+				record()
+			}
+			if err := st.ApplyImageNodeStatus(image.ID, node.ID, loaded); err != nil {
+				t.Fatal(err)
+			}
+			if !c.recordFirst {
+				if row, _ := st.ImageNode(image.ID, node.ID); row.TransferredBytes != 5545984 {
+					t.Fatalf("before the sender's result the row holds %d, want the sample", row.TransferredBytes)
+				}
+				record()
+			}
+			row, _ := st.ImageNode(image.ID, node.ID)
+			if row.State != ImageStatePresent || row.TransferredBytes != archive || row.SizeBytes != c.wantSizeBytes {
+				t.Fatalf("finished row = %+v, want present with %d of %d", row, archive, c.wantSizeBytes)
+			}
+		})
+	}
+}
+
+// The count belongs to one transfer: it is not written on a row another
+// transfer owns or finished, nor on a failed one.
+func TestRecordImageTransferBytesLeavesOtherTransfersAlone(t *testing.T) {
+	st, err := Open("file:store_image_count_other?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, _ := st.UpsertImage(&Image{ImageRef: "example/image:other", Engine: "vllm", Enabled: true})
+	node, _ := st.RegisterNode("node-other", HashToken("t"), "other")
+	if _, err := st.UpsertImageNode(&ImageNode{ImageID: image.ID, NodeID: node.ID, State: ImageStateSyncing, TransferID: "second", Source: "peer", SizeBytes: 100, TransferredBytes: 10}); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"first", ""} {
+		if ok, err := st.RecordImageTransferBytes(image.ID, node.ID, id, 100); err != nil || ok {
+			t.Fatalf("record for %q on another transfer's row = %v, %v", id, ok, err)
+		}
+	}
+	if err := st.ApplyImageNodeStatus(image.ID, node.ID, proto.ImageNodeStatus{State: ImageStateFailed, TransferID: "second", Message: "load failed"}); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := st.RecordImageTransferBytes(image.ID, node.ID, "second", 100); err != nil || ok {
+		t.Fatalf("record on a failed row = %v, %v", ok, err)
+	}
+	if row, _ := st.ImageNode(image.ID, node.ID); row.TransferredBytes != 10 {
+		t.Fatalf("row = %+v, want the count untouched", row)
 	}
 }
