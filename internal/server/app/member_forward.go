@@ -438,6 +438,12 @@ func (f *memberForward) proxyTo(member uint64) *httputil.ReverseProxy {
 			if f.log != nil && r.Context().Err() == nil {
 				f.log.Debug("request not forwarded to the leader", "member", member, "err", err)
 			}
+			if r.Context().Err() != nil {
+				// The client went away; that says nothing about the leader.
+				w.Header().Set("Cache-Control", "no-store")
+				http.Error(w, "member business service is not ready", http.StatusServiceUnavailable)
+				return
+			}
 			refuseMemberBusiness(w, r, refusalLeaderUnreachable)
 		},
 		// The leader's answer, unless it is itself a refusal, ends a run of

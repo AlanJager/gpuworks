@@ -301,23 +301,29 @@ func TestMaterialEligibilityExpiresAtItsDeadlineWithoutARequest(t *testing.T) {
 // at the limit it closes once.
 func TestMaterialEligibilityProofReturningPastItsWindowBeforeItsContextEndsKeepsTheMember(t *testing.T) {
 	late := []struct {
-		name string
-		err  error
-		keep bool
+		name  string
+		ready bool
+		err   error
+		keep  bool
 	}{
-		{"deadline", context.DeadlineExceeded, true},
-		{"wrapped deadline", fmt.Errorf("membership grant: %w", context.DeadlineExceeded), true},
-		{"joined deadlines", errors.Join(context.DeadlineExceeded, fmt.Errorf("transport grant: %w", context.DeadlineExceeded)), true},
-		{"dropped connection", driver.ErrBadConn, true},
-		{"no leader read in time", store.ErrClusterMembershipObservationTimeout, true},
-		{"an unclassified error", errors.New("material manifest differs"), false},
-		{"deadline joined with an answer", errors.Join(context.DeadlineExceeded, errors.New("material manifest differs")), false},
+		// The reply had arrived before the process stood still and is read
+		// after the window: a success that proves nothing about now.
+		{"late success", true, nil, true},
+		{"late not ready", false, nil, false},
+		{"deadline", false, context.DeadlineExceeded, true},
+		{"wrapped deadline", false, fmt.Errorf("membership grant: %w", context.DeadlineExceeded), true},
+		{"joined deadlines", false, errors.Join(context.DeadlineExceeded, fmt.Errorf("transport grant: %w", context.DeadlineExceeded)), true},
+		{"dropped connection", false, driver.ErrBadConn, true},
+		{"no leader read in time", false, store.ErrClusterMembershipObservationTimeout, true},
+		{"an unclassified error", false, errors.New("material manifest differs"), false},
+		{"deadline joined with an answer", false, errors.Join(context.DeadlineExceeded, errors.New("material manifest differs")), false},
 	}
 	for _, tc := range late {
 		t.Run(tc.name, func(t *testing.T) {
 			clock := &materialTestClock{now: time.Unix(100, 0)}
 			var calls, invalidated atomic.Int32
 			var lateErr atomic.Pointer[error]
+			var lateReady atomic.Bool
 			var jump atomic.Int64
 			eligibility := newMaterialEligibility(clock.Now, func(ctx context.Context) (bool, error) {
 				if calls.Add(1) == 1 {
@@ -328,15 +334,16 @@ func TestMaterialEligibilityProofReturningPastItsWindowBeforeItsContextEndsKeeps
 				if ctx.Err() != nil {
 					t.Error("the proof context ended; this case needs it alive")
 				}
-				return false, *lateErr.Load()
+				return lateReady.Load(), *lateErr.Load()
 			}, time.Hour)
 			eligibility.setOnInvalidated(func() { invalidated.Add(1) })
 			if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready {
 				t.Fatalf("initial proof: ready=%t err=%v", ready, err)
 			}
 			confirmed := clock.Now()
-			// Unanswered proofs for 34 s, as on the hosts, each inside its window.
-			lateErr.Store(&tc.err)
+			// Unanswered proofs for 30 s, as on the hosts, each inside its window.
+			unanswered := error(context.DeadlineExceeded)
+			lateErr.Store(&unanswered)
 			if tc.keep {
 				jump.Store(int64(5 * time.Second))
 				for range 6 {
@@ -349,6 +356,8 @@ func TestMaterialEligibilityProofReturningPastItsWindowBeforeItsContextEndsKeeps
 				}
 			}
 			// The next one returns 16 s after it began.
+			lateErr.Store(&tc.err)
+			lateReady.Store(tc.ready)
 			jump.Store(int64(materialEligibilityWindow + time.Second))
 			if ready, _ := eligibility.Reprove(t.Context()); ready {
 				t.Fatal("a proof that returned past its window reported ready")

@@ -350,6 +350,16 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	e.bridging = false
 	// An answer of "not ready" is a verdict even when it arrives late.
 	verdict := err == nil && !ready
+	now := e.now()
+	attemptDeadline := started.Add(materialEligibilityWindow)
+	// The window is over when the clock says so, whether or not the proof
+	// context's own timer has run yet: a proof whose stages time out at the
+	// window's end, or a process that was not scheduled across it, returns
+	// here first. Deciding by the context alone closed such a member early.
+	pastWindow := !now.Before(attemptDeadline)
+	// A success that arrives after its window proves nothing about now; it
+	// is no answer, exactly as when the context had already ended.
+	lateSuccess := err == nil && ready && pastWindow
 	if err == nil && proofCtx.Err() != nil {
 		err = proofCtx.Err()
 	}
@@ -366,15 +376,8 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	//     no later attempt without an answer extends admission.
 	// Cancellation and an invalidation close at once. Only a successful proof
 	// reopens what an answer or an invalidation closed.
-	now := e.now()
-	attemptDeadline := started.Add(materialEligibilityWindow)
-	noAnswer := !verdict && materialProofUnanswered(err)
+	noAnswer := lateSuccess || (!verdict && materialProofUnanswered(err))
 	refused := errors.Is(err, store.ErrClusterAdmissionRejected) || errors.Is(err, store.ErrClusterIdentityConflict)
-	// The window is over when the clock says so, whether or not the proof
-	// context's own timer has run yet: a proof whose stages time out at the
-	// window's end, or a process that was not scheduled across it, returns
-	// here first. Deciding by the context alone closed such a member early.
-	pastWindow := !now.Before(attemptDeadline)
 	live := proofCtx.Err() == nil && !pastWindow && e.epoch == epoch && !e.stopped
 	unexpired := !e.deadline.IsZero() && now.Before(e.deadline)
 	outlived := noAnswer && (e.outlivedWindow(ctx, proofCtx, epoch) || (pastWindow && e.undisturbed(ctx, proofCtx, epoch))) && e.confirmedRecently(now)

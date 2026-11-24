@@ -122,17 +122,25 @@ func serveMemberHealth(w http.ResponseWriter, r *http.Request, next http.Handler
 }
 
 // businessRefusalReason is empty when this member's business is ready: the
-// same facts, in the same order, as memberService without the scheduling
-// answer.
+// facts memberService reads, without the scheduling answer.
 func (a *App) businessRefusalReason() string {
+	if a == nil || a.store == nil {
+		return memberRefusalReason(false, false, false, false)
+	}
+	return memberRefusalReason(true, a.materialsSurviveFault(), a.sessionsRoutable(), a.targetsCurrent())
+}
+
+// memberRefusalReason names the first fact EvaluateMemberService finds
+// missing for business; it is empty when that function says ready.
+func memberRefusalReason(live, materialsSurviveFault, sessionRoutable, targetCurrent bool) string {
 	switch {
-	case a == nil || a.store == nil:
+	case !live:
 		return refusalNoHandler
-	case !a.materialsSurviveFault():
-		return refusalProofPrefix + "not_eligible"
-	case !a.sessionsRoutable():
+	case !materialsSurviveFault:
+		return refusalProofNotEligible
+	case !sessionRoutable:
 		return refusalSessionsUnroutable
-	case !a.targetsCurrent():
+	case !targetCurrent:
 		return refusalTargetNotCurrent
 	}
 	return ""

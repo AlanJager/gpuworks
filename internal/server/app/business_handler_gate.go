@@ -7,7 +7,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -87,13 +86,10 @@ func newBusinessHandlerGate(loggers ...*slog.Logger) *businessHandlerGate {
 
 type gateRefusalKey struct{}
 
-// refuse answers as a closed member and names the reason; a reason that is a
-// proof's own is given its prefix.
-func (g *businessHandlerGate) refuse(w http.ResponseWriter, r *http.Request, reason string, proof bool) {
-	if proof && !strings.HasPrefix(reason, refusalProofPrefix) {
-		reason = refusalProofPrefix + reason
-	}
-	g.closed.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), gateRefusalKey{}, reason)))
+// refuse answers as a closed member and names the reason: the gate's own
+// reason, as its readiness log line has it, translated to its refusal code.
+func (g *businessHandlerGate) refuse(w http.ResponseWriter, r *http.Request, reason string) {
+	g.closed.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), gateRefusalKey{}, gateRefusalCode(reason))))
 }
 
 func (g *businessHandlerGate) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -115,7 +111,7 @@ func (g *businessHandlerGate) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 			ready, reason, _ = g.materialEligibility.Load().eligibleForResult(0)
 		}
 		if !ready {
-			g.refuse(w, r, reason, true)
+			g.refuse(w, r, reason)
 			if r.Method == http.MethodGet && r.URL.Path == "/api/v1/readyz" {
 				g.logReadinessRejection(r, "entry", reason, time.Time{}, 0, 0)
 			}
@@ -133,7 +129,7 @@ func (g *businessHandlerGate) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		active.ServeHTTP(w, r)
 		return
 	}
-	g.refuse(w, r, refusalNoGeneration, false)
+	g.refuse(w, r, refusalNoGeneration)
 	if r.Method == http.MethodGet && r.URL.Path == "/api/v1/readyz" {
 		g.logReadinessRejection(r, "entry", "no_business_generation", time.Time{}, 0, 0)
 	}
@@ -192,7 +188,7 @@ func (g *businessHandlerGate) setBusinessHandler(handler http.Handler) {
 				materialReady, reason, _ = g.materialEligibility.Load().eligibleForResult(0)
 			}
 			if !current || !materialReady {
-				g.refuse(w, r, reason, current)
+				g.refuse(w, r, reason)
 				if readiness {
 					g.logReadinessRejection(r, "post_admission", reason, started, 0, 0)
 				}
@@ -238,7 +234,7 @@ func (g *businessHandlerGate) setBusinessHandler(handler http.Handler) {
 					return valid
 				}
 				if !currentReady() {
-					g.refuse(w, r, currentReason, false)
+					g.refuse(w, r, currentReason)
 					g.logReadinessRejection(r, "post_sql", currentReason, started, 0, 0)
 					return
 				}
@@ -248,14 +244,14 @@ func (g *businessHandlerGate) setBusinessHandler(handler http.Handler) {
 					// timeout before its business closes. Ordinary business
 					// retains its existing eligibility and lifecycle.
 					if !currentReady() {
-						g.refuse(w, r, currentReason, false)
+						g.refuse(w, r, currentReason)
 						g.logReadinessRejection(r, "final_publish", currentReason, started, 0, 0)
 						return
 					}
 					if g.materialRequired.Load() {
 						valid, reason, remaining := g.materialEligibility.Load().eligibleForResult(store.ClusterMembershipGrantTimeout)
 						if !valid {
-							g.refuse(w, r, reason, true)
+							g.refuse(w, r, reason)
 							g.logReadinessRejection(r, "final_publish", reason, started, remaining, store.ClusterMembershipGrantTimeout)
 							return
 						}
@@ -273,7 +269,7 @@ func (g *businessHandlerGate) setBusinessHandler(handler http.Handler) {
 						// final five-second check remains. This never starts a
 						// proof or repeats the buffered SQL.
 						if err := eligibility.waitForReadinessRenewal(r.Context(), store.ClusterMembershipGrantTimeout, waitHeadroom, epoch, currentReady); err != nil {
-							g.refuse(w, r, currentReason, false)
+							g.refuse(w, r, currentReason)
 							reason := currentReason
 							if errors.Is(err, context.Canceled) {
 								reason = "request_canceled"

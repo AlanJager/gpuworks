@@ -18,7 +18,7 @@ import (
 )
 
 func TestBusinessReadinessWaitsForCapturedRenewalBeforePublishing(t *testing.T) {
-	for _, mode := range []string{"success", "failed", "invalidate", "stop", "cancel", "proof-cancel", "withdraw", "expired", "missing", "request-deadline", "wait-budget"} {
+	for _, mode := range []string{"success", "failed", "invalidate", "stop", "cancel", "proof-cancel", "withdraw", "expired", "expired-failed", "missing", "request-deadline", "wait-budget"} {
 		t.Run(mode, func(t *testing.T) {
 			st, err := store.Open(filepath.Join(t.TempDir(), "renewal.db"), bus.New())
 			if err != nil {
@@ -43,7 +43,7 @@ func TestBusinessReadinessWaitsForCapturedRenewalBeforePublishing(t *testing.T) 
 				select {
 				case <-release:
 					completed.Store(true)
-					return mode != "failed", nil
+					return mode != "failed" && mode != "expired-failed", nil
 				case <-ctx.Done():
 					return false, ctx.Err()
 				}
@@ -115,7 +115,8 @@ func TestBusinessReadinessWaitsForCapturedRenewalBeforePublishing(t *testing.T) 
 				stopProof()
 			case "withdraw":
 				gate.setBusinessHandler(nil)
-			case "expired":
+			case "expired", "expired-failed":
+				// The clock passes the renewal's whole window before it returns.
 				age.Store(int64(2*materialEligibilityWindow - store.ClusterMembershipGrantTimeout + time.Second + time.Nanosecond))
 			case "missing":
 				gate.setMaterialEligibility(nil)
@@ -131,14 +132,18 @@ func TestBusinessReadinessWaitsForCapturedRenewalBeforePublishing(t *testing.T) 
 			if mode == "wait-budget" && time.Since(waitStarted) < materialReproofInterval-100*time.Millisecond {
 				t.Fatal("readiness did not wait the original interval for its captured proof")
 			}
+			// A renewal that succeeds after its own window is no answer about
+			// the member: like a renewal that brought none, it keeps the last
+			// confirmation, so the member stays ready. One that answers "not
+			// ready" closes it, however late.
 			want := http.StatusServiceUnavailable
-			if mode == "success" {
+			if mode == "success" || mode == "expired" {
 				want = http.StatusOK
 			}
 			if rec.Code != want || reads.Load() != 1 || proofs.Load() != 2 {
 				t.Fatalf("readyz status=%d want%d reads=%d proofs=%d body=%s", rec.Code, want, reads.Load(), proofs.Load(), rec.Body.String())
 			}
-			if mode == "success" {
+			if mode == "success" || mode == "expired" {
 				if !completed.Load() || rec.Body.String() != "{\"status\":\"ready\"}\n" {
 					t.Fatalf("ready publication: renewal completed=%t body=%q", completed.Load(), rec.Body.String())
 				}

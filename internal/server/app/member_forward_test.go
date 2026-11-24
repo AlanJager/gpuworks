@@ -141,6 +141,11 @@ func (c *forwardCluster) newMember(id uint64) *forwardMember {
 			line, _ := rw.ReadString('\n')
 			fmt.Fprintf(rw, "member %d echoes %s", id, line)
 			_ = rw.Flush()
+		case "/slow":
+			select {
+			case <-r.Context().Done():
+			case <-time.After(5 * time.Second):
+			}
 		case "/die":
 			conn, _, _ := w.(http.Hijacker).Hijack()
 			_ = conn.Close()
@@ -375,6 +380,23 @@ func TestMemberForwardSurvivesTheLeaderDyingMidRequest(t *testing.T) {
 	}
 	if got := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]; got != unreachable+1 {
 		t.Fatalf("%s counted %d -> %d, want one more", refusalLeaderUnreachable, unreachable, got)
+	}
+	// A client that goes away while the leader is answering says nothing
+	// about the leader: it is not counted and opens no run of refusals.
+	before := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]
+	gone, cancel := context.WithCancel(context.Background())
+	req, err := http.NewRequestWithContext(gone, http.MethodGet, c.members[1].public.URL+"/slow", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.AfterFunc(50*time.Millisecond, cancel)
+	if resp, err := http.DefaultClient.Do(req); err == nil {
+		resp.Body.Close()
+		t.Fatal("the cancelled request was answered")
+	}
+	time.Sleep(200 * time.Millisecond)
+	if got := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]; got != before {
+		t.Fatalf("a client abort was counted as %s: %d -> %d", refusalLeaderUnreachable, before, got)
 	}
 	// The leader's route goes away entirely; requests are refused until the
 	// members observe the next leader, then served by it.
