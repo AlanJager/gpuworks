@@ -168,8 +168,9 @@ func StartClusterRaft(ctx context.Context, cfg Config, target ClusterJoinTarget)
 	if err != nil {
 		return nil, err
 	}
+	adoptJoinedStorageTier(hold.snapshot)
 	db, err := cluster.StartAuthorizedDatabase(ctx, cluster.DatabaseConfig{
-		Dir: raftDir, Address: hold.info.Address, Seeds: seeds, Name: filepath.Base(hold.path), StorageTier: joinedStorageTier(hold.snapshot),
+		Dir: raftDir, Address: hold.info.Address, Seeds: seeds, Name: filepath.Base(hold.path),
 	}, filepath.Join(hold.dir, "transport-policy.json"), trust, []byte(hold.snapshot.CertificatePEM), hold.key)
 	if err != nil {
 		return nil, err
@@ -231,9 +232,16 @@ func (h *clusterJoinHold) reconcileExactMembership(ctx context.Context, raftDir 
 	return err
 }
 
-// joinedStorageTier is the tier a joining member starts its node with: the one
-// the cluster told it. A node always names its tier here, so the join does not
-// depend on what else this process may have been told.
+// adoptJoinedStorageTier tells the joining process the cluster's tier, as a
+// server is told its installation's, before the join starts its node: the
+// node, the membership grants and the connections this process dials then
+// follow one timing.
+func adoptJoinedStorageTier(snapshot joinMaterialSnapshot) {
+	cluster.UseStorageTier(joinedStorageTier(snapshot))
+}
+
+// joinedStorageTier is the tier a joining member runs: the one the cluster
+// told it with its certificate.
 func joinedStorageTier(snapshot joinMaterialSnapshot) storagetier.Tier {
 	tier, err := storagetier.Parse(snapshot.StorageTier)
 	if err != nil {

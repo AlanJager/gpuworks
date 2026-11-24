@@ -61,7 +61,6 @@ func StartDatabase(ctx context.Context, cfg DatabaseConfig) (_ *Database, err er
 		args = append(args, "--seeds", strings.Join(cfg.Seeds, ","))
 	}
 	tier := cfg.storageTier()
-	runningStorageTier.Store(&tier)
 	args = append(args, storageTierArguments(tier)...)
 	process, info, err := startHelperUntilReady(ctx, args)
 	if err != nil {

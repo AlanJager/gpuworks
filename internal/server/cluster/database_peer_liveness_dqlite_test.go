@@ -207,8 +207,8 @@ func TestPeerLivenessGrowsWithTheStorageTier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	previous, previousRunning := processStorageTier.Load(), runningStorageTier.Load()
-	t.Cleanup(func() { processStorageTier.Store(previous); runningStorageTier.Store(previousRunning) })
+	previous := processStorageTier.Load()
+	t.Cleanup(func() { processStorageTier.Store(previous) })
 	UseStorageTier(at200)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -233,39 +233,5 @@ func TestPeerLivenessGrowsWithTheStorageTier(t *testing.T) {
 		if err := raw.Control(func(fd uintptr) { value, socketErr = unix.GetsockoptInt(int(fd), unix.IPPROTO_TCP, check[0]) }); err != nil || socketErr != nil || value != check[1] {
 			t.Errorf("%s = %d (%v, %v), want %d", name, value, err, socketErr, check[1])
 		}
-	}
-}
-
-// The tier the process reports is the one its database node was started
-// with. A joining member's node names the cluster's tier in its own
-// configuration while the process was told nothing; everything that follows
-// the process's tier must then follow the node's.
-func TestTheProcessTierIsTheOneItsNodeRuns(t *testing.T) {
-	previous, previousRunning := processStorageTier.Load(), runningStorageTier.Load()
-	t.Cleanup(func() { processStorageTier.Store(previous); runningStorageTier.Store(previousRunning) })
-	processStorageTier.Store(nil)
-	runningStorageTier.Store(nil)
-	if got := ProcessStorageTier(); got != storagetier.Standard {
-		t.Fatalf("a process told nothing reports %s", got)
-	}
-	UseStorageTier(storagetier.SlowStorage)
-	if got := ProcessStorageTier(); got != storagetier.SlowStorage {
-		t.Fatalf("a process told slow-storage reports %s before its node starts", got)
-	}
-	// What StartDatabase records when it resolves the node's tier.
-	joined := DatabaseConfig{StorageTier: "slow-storage@200ms"}.storageTier()
-	runningStorageTier.Store(&joined)
-	if got := ProcessStorageTier(); got != "slow-storage@200ms" {
-		t.Fatalf("with a node started at slow-storage@200ms the process reports %s", got)
-	}
-	if limit := ProcessStorageTier().Stretch(databasePeerLivenessTimeout); limit != 12*time.Second {
-		t.Fatalf("the dial-side liveness limit is %s, want the node's 12s", limit)
-	}
-	// A process told its tier after a node of it was started (a test
-	// binary that starts many nodes, a command that opens the database
-	// twice) follows what it was told, not the earlier node.
-	UseStorageTier(storagetier.SlowStorage)
-	if got := ProcessStorageTier(); got != storagetier.SlowStorage {
-		t.Fatalf("told slow-storage after a node ran slow-storage@200ms, the process reports %s", got)
 	}
 }

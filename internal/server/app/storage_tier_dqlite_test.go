@@ -14,7 +14,9 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
+	"gpuworks.ai/gpuworks/internal/server/cluster"
 	"gpuworks.ai/gpuworks/internal/server/cluster/storagetier"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // The seed records the tier once; a member that joins is told it with its
@@ -84,6 +86,38 @@ func TestRuntimeDqliteStorageTierIsRecordedBySeedAndAdoptedByJoiner(t *testing.T
 	})
 	if err != nil || adopted != "slow-storage" {
 		t.Fatalf("join materials record tier %q err %v, want the cluster's slow-storage", adopted, err)
+	}
+}
+
+// The join tells its process the cluster's tier before it starts the node,
+// so what the process does outside the node follows the cluster: the grant
+// retry window, how long a leader observation is acted on, and the tier the
+// dial-side liveness limit is taken from (the cluster package's test sets
+// the socket options from it). The process here was told another tier.
+func TestAJoiningProcessFollowsTheClustersTier(t *testing.T) {
+	previous := cluster.ProcessStorageTier()
+	t.Cleanup(func() { cluster.UseStorageTier(previous) })
+	cluster.UseStorageTier(storagetier.Standard)
+	adoptJoinedStorageTier(joinMaterialSnapshot{StorageTier: "slow-storage@200ms"})
+	tier := cluster.ProcessStorageTier()
+	if tier != "slow-storage@200ms" {
+		t.Fatalf("after the join adopted the cluster's tier the process reports %s", tier)
+	}
+	if window := store.GrantRetryWindowFor(tier); window != 4700*time.Millisecond {
+		t.Errorf("grant retry window %s, want the 4.7s of the cluster's tier", window)
+	}
+	if fresh := tier.Stretch(memberLeaderFresh); fresh != 12*time.Second {
+		t.Errorf("a leader observation is acted on for %s, want 12s", fresh)
+	}
+	f := &memberForward{}
+	f.observed.Store(&memberLeaderObservation{leader: 2, at: time.Now().Add(-8 * time.Second)})
+	if leader, ok := f.observedLeader(); !ok || leader != 2 {
+		t.Errorf("an observation 8s old is not acted on in the joining process: %d, %v", leader, ok)
+	}
+	// A cluster that records no tier is a standard one.
+	adoptJoinedStorageTier(joinMaterialSnapshot{})
+	if got := cluster.ProcessStorageTier(); got != storagetier.Standard {
+		t.Fatalf("a cluster without a recorded tier leaves the process at %s", got)
 	}
 }
 
