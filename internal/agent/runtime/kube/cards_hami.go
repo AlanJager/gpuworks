@@ -42,6 +42,7 @@ const (
 
 	resNVIDIAGPU       = "nvidia.com/gpu"
 	resNVIDIACores     = "nvidia.com/gpucores"
+	resNVIDIAMem       = "nvidia.com/gpumem"
 	resNVIDIAMemPct    = "nvidia.com/gpumem-percentage"
 	annNVIDIAUseUUID   = "nvidia.com/use-gpuuuid"
 	hamiAscendUsePart1 = "hami.io/use-"
@@ -257,7 +258,14 @@ func (p *cardPool) hamiHoldPod(v cardView, name, card string) kubeapi.Pod {
 		model := strings.TrimPrefix(v.resource, "huawei.com/")
 		pod.Metadata.Annotations[hamiAscendUsePart1+model+hamiAscendUsePart2] = card
 	} else {
-		limits[resNVIDIACores], limits[resNVIDIAMemPct] = "100", "100"
+		limits[resNVIDIACores] = "100"
+		// All of the card's memory, as the amount HAMi registered for it: a
+		// cluster's admission may refuse a pod that states only a percentage.
+		if devmem := v.hami.cards[card].devmem; devmem > 0 {
+			limits[resNVIDIAMem] = strconv.Itoa(devmem)
+		} else {
+			limits[resNVIDIAMemPct] = "100"
+		}
 		pod.Metadata.Annotations[annNVIDIAUseUUID] = card
 	}
 	c := &pod.Spec.Containers[0]

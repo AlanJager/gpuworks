@@ -27,9 +27,9 @@ func newHAMiRig(t *testing.T, gpus int) (*rig, *fakeSched) {
 }
 
 // The hold pod goes through HAMi's scheduler, names the card and asks for all
-// of it (the shape that worked on a real cluster); it is not bound with
-// nodeName, which would bypass the scheduler HAMi's device plugin depends on.
-// Only the wanted card is borrowed.
+// of it: every core, and the memory HAMi registered for the card. It is not
+// bound with nodeName, which would bypass the scheduler HAMi's device plugin
+// depends on. Only the wanted card is borrowed.
 func TestHAMiHoldPodNamesTheCardAndGoesThroughHAMisScheduler(t *testing.T) {
 	r, s := newHAMiRig(t, 2)
 	if _, err := r.d.Run(context.Background(), spec("gpuworks-aaaaaaaaaaaa", 1)); err != nil {
@@ -44,7 +44,7 @@ func TestHAMiHoldPodNamesTheCardAndGoesThroughHAMisScheduler(t *testing.T) {
 		t.Fatalf("hold pod placement: nodeName %q scheduler %q selector %v", h.Spec.NodeName, h.Spec.SchedulerName, h.Spec.NodeSelector)
 	}
 	res := h.Spec.Containers[0].Resources
-	if !maps.Equal(res.Limits, map[string]string{"nvidia.com/gpu": "1", "nvidia.com/gpucores": "100", "nvidia.com/gpumem-percentage": "100"}) {
+	if !maps.Equal(res.Limits, map[string]string{"nvidia.com/gpu": "1", "nvidia.com/gpucores": "100", "nvidia.com/gpumem": "46068"}) {
 		t.Fatalf("limits = %v", res.Limits)
 	}
 	if _, ok := res.Requests["nvidia.com/gpu"]; ok || res.Requests["cpu"] == "" {
@@ -83,6 +83,44 @@ func TestHAMiHoldPodNamesTheCardAndGoesThroughHAMisScheduler(t *testing.T) {
 		if strings.HasPrefix(name, "nvidia.com/") {
 			t.Fatalf("instance pod asks for %s", name)
 		}
+	}
+}
+
+// A cluster whose admission wants a card's memory stated as an amount (seen on
+// a Zaku cluster: "pod has no gpu mem resource") refuses a hold pod that
+// states a percentage, before HAMi's scheduler sees it. The hold pod states
+// the amount, so the card is borrowed there too.
+func TestHAMiHoldPodPassesAnAdmissionThatWantsTheMemoryAmount(t *testing.T) {
+	r, s := newHAMiRig(t, 2)
+	r.srv.Admission = func(p *kubeapi.Pod) (string, string) {
+		if _, ok := p.Spec.Containers[0].Resources.Limits["nvidia.com/gpu"]; !ok {
+			return "", "" // not a GPU pod
+		}
+		if p.Spec.Containers[0].Resources.Limits["nvidia.com/gpumem"] == "" {
+			return "nvidia.webhook.zsedge.io", "pod has no gpu mem resource"
+		}
+		return "", ""
+	}
+	if _, err := r.d.Run(context.Background(), spec("gpuworks-aaaaaaaaaaaa", 1)); err != nil {
+		t.Fatal(err)
+	}
+	holds := s.holdCreated()
+	if len(holds) != 1 {
+		t.Fatalf("hold pods created = %d", len(holds))
+	}
+	if got := r.srv.Pod(testNS, holds[0].Metadata.Name).Metadata.Annotations["hami.io/vgpu-devices-allocated"]; got != "GPU-b,NVIDIA,46068,100:;" {
+		t.Fatalf("allocation = %q, want the whole card", got)
+	}
+}
+
+// A card HAMi registered without a memory amount is asked for by percentage,
+// the only way left to ask for all of it.
+func TestHAMiHoldPodAsksByPercentageForACardWithoutARegisteredAmount(t *testing.T) {
+	pool := &cardPool{}
+	view := cardView{resource: resNVIDIAGPU, hostname: testNode, hami: &hamiNode{vendor: accelerator.VendorNVIDIA, scheduler: DefaultHAMiScheduler, cards: map[string]hamiCard{"GPU-a": {}}}}
+	limits := pool.hamiHoldPod(view, "gpuworks-hold-x", "GPU-a").Spec.Containers[0].Resources.Limits
+	if !maps.Equal(limits, map[string]string{"nvidia.com/gpu": "1", "nvidia.com/gpucores": "100", "nvidia.com/gpumem-percentage": "100"}) {
+		t.Fatalf("limits = %v", limits)
 	}
 }
 
