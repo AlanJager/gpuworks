@@ -113,6 +113,19 @@ func TestGateAndMemberHandlerRefusalsNameTheirReason(t *testing.T) {
 	}
 }
 
+// A member whose proof does not admit it is refused with the proof's own
+// reason under one prefix.
+func TestGateNamesTheProofReasonOnce(t *testing.T) {
+	gate := newBusinessHandlerGate()
+	for reason, want := range map[string]string{"expired": "proof_expired", "proof_missing": "proof_missing", "stopped": "proof_stopped"} {
+		rec := httptest.NewRecorder()
+		gate.refuse(rec, httptest.NewRequest(http.MethodGet, "/api/v1/nodes", nil), reason, true)
+		if got := rec.Header().Get(businessRefusalHeader); got != want || rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("%s: refusal %q status %d, want %q", reason, got, rec.Code, want)
+		}
+	}
+}
+
 // A request that reaches business closes a run of refusals and is not itself
 // counted; a probe that reaches it does not close the run.
 func TestServedBusinessEndsARunOfRefusals(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -89,7 +90,7 @@ type gateRefusalKey struct{}
 // refuse answers as a closed member and names the reason; a reason that is a
 // proof's own is given its prefix.
 func (g *businessHandlerGate) refuse(w http.ResponseWriter, r *http.Request, reason string, proof bool) {
-	if proof {
+	if proof && !strings.HasPrefix(reason, refusalProofPrefix) {
 		reason = refusalProofPrefix + reason
 	}
 	g.closed.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), gateRefusalKey{}, reason)))
