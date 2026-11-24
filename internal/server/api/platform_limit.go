@@ -251,19 +251,6 @@ var (
 		"this server is read-only; what runs keeps running and can be viewed, changes are refused", nil)
 )
 
-// platformServeRefusal is a refusal on the data plane, in the shape its
-// clients read (the gateway's own errors, proxy/api_errors.go): the same
-// code and message as everywhere else, under "error".
-type platformServeRefusal struct {
-	Error struct {
-		Message string         `json:"message"`
-		Type    string         `json:"type"`
-		Code    string         `json:"code"`
-		Param   *string        `json:"param"`
-		Params  map[string]any `json:"params,omitempty"`
-	} `json:"error"`
-}
-
 // allows reports whether a route of class is served under access.
 func (c platformClass) allows(access featuregate.Access) bool {
 	switch access {
@@ -343,9 +330,10 @@ func (a *apiHandlers) platformGuard(routes chi.Routes) func(http.Handler) http.H
 				writeErr(w, http.StatusForbidden, refusal)
 				return
 			}
-			var body platformServeRefusal
-			body.Error.Message, body.Error.Type, body.Error.Code, body.Error.Params = refusal.Error(), "permission_error", refusal.Code(), refusal.Params()
-			writeJSON(w, http.StatusForbidden, body)
+			// The data plane's clients read the gateway's error shape.
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write(append(refusal.GatewayBody("permission_error"), '\n'))
 		})
 	}
 }

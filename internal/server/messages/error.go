@@ -1,6 +1,7 @@
 package messages
 
 import (
+	"encoding/json"
 	"errors"
 
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -240,6 +241,20 @@ func (e *ProductError) Error() string          { return e.fallback }
 func (e *ProductError) Code() string           { return e.code }
 func (e *ProductError) Params() map[string]any { return e.params }
 func (e *ProductError) Unwrap() error          { return e.cause }
+
+// GatewayBody is e as the gateway's clients read an error: the OpenAI error
+// object under "error", with e's code, its English text and its params, and
+// typ as the error type (the gateway's own errors, proxy/api_errors.go).
+func (e *ProductError) GatewayBody(typ string) []byte {
+	body, _ := json.Marshal(map[string]struct {
+		Message string         `json:"message"`
+		Type    string         `json:"type"`
+		Code    string         `json:"code"`
+		Param   *string        `json:"param"`
+		Params  map[string]any `json:"params,omitempty"`
+	}{"error": {Message: e.fallback, Type: typ, Code: e.code, Params: e.params}})
+	return body
+}
 
 // NoStoragePath is the product error for two nodes that share no network
 // allowed to carry storage sync.
