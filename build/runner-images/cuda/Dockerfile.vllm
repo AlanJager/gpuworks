@@ -26,6 +26,8 @@ ARG ENGINE_VERSION=0.30.0
 ARG FRAMEWORK_VERSION=13.0
 # 矩阵显式声明「在本档 base 上不适用」的 vllm 补丁文件名（空格分隔），见补丁层。
 ARG PATCHES_NOT_APPLICABLE=""
+# 同上，针对 vllm-omni 的补丁（patches/vllm_omni/）：本档的 vllm_omni 上确实不适用或上游已修的补丁。
+ARG OMNI_PATCHES_NOT_APPLICABLE=""
 ARG IMAGE_ID=unknown
 ARG IMAGE_REVISION=unknown
 ARG REQUIRES="engine overlays"
@@ -43,6 +45,11 @@ ARG APT_MIRROR=mirrors.aliyun.com
 ARG VOXCPM_SPEC=""
 ARG DECORD_SPEC=""
 ARG MOVIEPY_SPEC=""
+# 遥测栈对齐的 pip 规格（空格分隔的 name==version，可选；空 = 不动 base 的 opentelemetry-*），见「遥测栈对齐」一节。
+ARG OTEL_SPECS=""
+# "1" = 装 vllm-omni 时把 opencv-python 约束到 base 的 opencv-python-headless 版本（见 omni 安装一节）。
+# 不传则保持旧档的装法，旧档重建结果不变。
+ARG OMNI_OPENCV_ALIGN=""
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -254,7 +261,18 @@ RUN <<EOF
     set -eux
     PIP="python3 -m pip"
     if [ -n "${VLLM_OMNI_VERSION}" ]; then
-        ${PIP} install --no-cache-dir "vllm-omni==${VLLM_OMNI_VERSION}"
+        # opencv：base 带 opencv-python-headless，omni 栈（cosmos-guardrail 等）再要 opencv-python，
+        # 两个发行包共用 cv2/，必须同版本（requires 的 opencv 一致性断言）。把 opencv-python 约束到
+        # base 的 headless 版本，pip 才不会另选一个更新的版本装进来。
+        headless=""
+        if [ "${OMNI_OPENCV_ALIGN}" = "1" ]; then
+            headless="$(python3 -c "import importlib.metadata as m; print(m.version('opencv-python-headless'))" 2>/dev/null || true)"
+        fi
+        : > /tmp/omni-constraints.txt
+        if [ -n "${headless}" ]; then echo "opencv-python==${headless}" > /tmp/omni-constraints.txt; fi
+        cat /tmp/omni-constraints.txt
+        ${PIP} install --no-cache-dir -c /tmp/omni-constraints.txt "vllm-omni==${VLLM_OMNI_VERSION}"
+        rm -f /tmp/omni-constraints.txt
         # IndexTTS 2.5 的文本前端（vllm-omni 的 indextts2 extra）：日文分词 fugashi + unidic-lite，
         # 中英文规范化 WeTextProcessing（import 名 tn）。缺了它们 IndexTTS 2.5 的每个请求都会报
         # "text normalization backend ... is unavailable"。WeTextProcessing 依赖的 pynini 在 PyPI 上
@@ -303,6 +321,29 @@ PY
     fi
     if [ -n "${MOVIEPY_SPEC}" ]; then
         python3 -m pip install --no-cache-dir "${MOVIEPY_SPEC}"
+    fi
+EOF
+
+## 遥测栈对齐（按档声明，默认不执行）
+#
+# vllm 0.34 的上游 base 自带的 opentelemetry-api/sdk/exporter-otlp 是 1.40.0，而 vllm 0.34 与
+# vllm-omni 0.34 自己都要求 >=1.45.1：base 的 `pip check` 本来就带这几行（审计门按基线放行），
+# 原因是 base 里预装的 lmcache 把 opentelemetry-api 钉在 <=1.40.0。装 vllm-omni 时 pip 把 api 升到
+# 1.45.x，随后 ray[default] 因已装的 sdk 1.40.0 要求 api==1.40.0 又把它降回去，于是「vllm-omni
+# 要求 >=1.45.1，实际 1.40.0」成了基线之外的新问题。上游官方 omni 镜像用的是 1.45.2 一整套
+# （vllm-omni 的 cuda-telemetry-overrides.txt），这里对齐：api、sdk、exporter-otlp 与随 ray 装进来的
+# exporter-prometheus（它钉 sdk~=1.40）一起装到 OTEL_SPECS 声明的版本，放在 ray 之后，避免再被降回去。
+# lmcache 的 <=1.40.0 钉子于是成了新增的
+# `pip check` 行：lmcache 是 base 自带的可选 KV 卸载组件，它对 opentelemetry 只用稳定的 api，
+# 这里把它按「声明过的冲突」记进 pip-nodeps.json（审计门只放行这个包、这个版本的 pip check 行）。
+COPY shared/nodeps_declare.py /opt/gpuworks/shared/nodeps_declare.py
+RUN <<EOF
+    set -eux
+    if [ -n "${OTEL_SPECS}" ]; then
+        # shellcheck disable=SC2086  # intentional word splitting: one pip requirement per word
+        python3 -m pip install --no-cache-dir ${OTEL_SPECS}
+        python3 /opt/gpuworks/shared/nodeps_declare.py lmcache \
+            "base package whose opentelemetry-api<=1.40.0 pin is overridden: vllm and vllm-omni require >=1.45.1"
     fi
 EOF
 
@@ -369,6 +410,7 @@ RUN <<EOF
     if [ -n "${VLLM_OMNI_VERSION}" ]; then
         PATCH_DIR=/tmp/patches-omni TARGET="${SITE}" \
             MANIFEST=/opt/gpuworks/patches-omni.json EXPECT_ALL=1 \
+            NOT_APPLICABLE="${OMNI_PATCHES_NOT_APPLICABLE}" \
             bash /opt/gpuworks/shared/apply_patches.sh
     fi
     rm -rf /tmp/patches-vllm /tmp/patches-omni
