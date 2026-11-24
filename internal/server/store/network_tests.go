@@ -111,15 +111,13 @@ func (s *Store) FinishNetworkTestRun(id uint, pairsJSON string, pairCount, passe
 	return nil
 }
 
-// LatestNetworkCardTestRun reads the latest completed card probe. Starting a
-// retest does not invalidate a measured placement result before it finishes.
-func (s *Store) LatestNetworkCardTestRun(networkID uint) (*NetworkTestRun, error) {
-	var run NetworkTestRun
-	err := s.db.Where("network_id = ? AND status = ? AND kind IN ?", networkID, NetworkTestDone, []string{"card_ping", "card_matrix"}).Order("id desc").First(&run).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrNotFound
-	}
-	return &run, err
+// RecentNetworkCardTestRuns returns completed card tests newest first so a
+// scoped retest cannot replace evidence for a pair it did not probe.
+func (s *Store) RecentNetworkCardTestRuns(networkID uint, since time.Time) ([]NetworkTestRun, error) {
+	var runs []NetworkTestRun
+	err := s.db.Where("network_id = ? AND status = ? AND kind IN ? AND started_at >= ?", networkID, NetworkTestDone, []string{"card_ping", "card_matrix"}, since).
+		Order("id desc").Limit(networkTestKeep).Find(&runs).Error
+	return runs, err
 }
 
 // LatestNetworkTestRun is the newest run of a network, if any.

@@ -10,30 +10,38 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestLatestNetworkCardTestIgnoresHostTests(t *testing.T) {
+func TestRecentNetworkCardTestRuns(t *testing.T) {
 	s := newTestStore(t)
-	if _, err := s.LatestNetworkCardTestRun(0); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("no card run = %v", err)
-	}
-	var cardID uint
-	for _, kind := range []string{"card_matrix", "tcp", "rdma_tool"} {
+	since := time.Now().UTC().Add(-time.Hour)
+	var first, second uint
+	for i, kind := range []string{"card_matrix", "card_ping", "tcp", "rdma_tool", "card_matrix"} {
 		run, err := s.StartNetworkTestRun(&NetworkTestRun{NetworkID: 0, Kind: kind})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if kind == "card_matrix" {
-			cardID = run.ID
-		}
 		if err := s.FinishNetworkTestRun(run.ID, "[]", 0, 0); err != nil {
 			t.Fatal(err)
 		}
+		switch i {
+		case 0:
+			if err := s.db.Model(run).Update("started_at", since.Add(-time.Minute)).Error; err != nil {
+				t.Fatal(err)
+			}
+		case 1:
+			first = run.ID
+		case 4:
+			second = run.ID
+		}
 	}
-	got, err := s.LatestNetworkCardTestRun(0)
-	if err != nil || got.ID != cardID {
-		t.Fatalf("latest card = %+v, %v", got, err)
+	if _, err := s.StartNetworkTestRun(&NetworkTestRun{NetworkID: 0, Kind: "card_ping"}); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := s.LatestNetworkCardTestRun(999); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("other network = %v", err)
+	got, err := s.RecentNetworkCardTestRuns(0, since)
+	if err != nil || len(got) != 2 || got[0].ID != second || got[1].ID != first {
+		t.Fatalf("completed recent card tests = %+v, %v", got, err)
+	}
+	if got, err := s.RecentNetworkCardTestRuns(999, since); len(got) != 0 || err != nil {
+		t.Fatalf("other network = %+v, %v", got, err)
 	}
 }
 

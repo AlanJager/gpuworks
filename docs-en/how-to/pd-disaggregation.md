@@ -56,7 +56,10 @@ one deployment with one service name. Send requests to `/v1` as usual; the gatew
    `hccn_tool -i <card-index> -lldp -g` to inspect the peer of a RoCE port.
 
    If two machines are directly connected by card number without a switch, P and D must select matching card numbers that are actually connected.
-   First run **Card reachability · full card matrix** under the network's **Internal test** to check cabling. Deployment validation does not verify card-to-card links for you.
+   Run **Card reachability · full card matrix** under the network's **Internal test** to check cabling.
+   For each card pair, the system uses the newest valid result from completed tests within 24 hours that match both port addresses.
+   If P and D each have one single-node instance with one pinned card, a measured unreachable pair blocks evaluation and creation with `PD_CARD_NETWORK_BLOCKED`.
+   Layouts with multiple cards or instances still receive a warning. If valid results are missing, the platform prompts you to retest and allows submission.
 
 To write the launch command yourself, click **Edit Command Text** in the command preview. The editor starts from a script the server generates: the prefill and decode commands sit in a
 `case` that branches on `${GPUWORKS_PD_ROLE}`, and values known only per instance, such as the side channel address and port, come from variables or from environment variables the platform injects. The command must reference
@@ -308,7 +311,7 @@ By default, evaluations measure end-to-end performance through the gateway. If y
 
 <!-- translation-source-sha256: 69122557be7acdfbade63e93224dea60470f7006d4c1ed3391cfe5776ec120bf # PD Disaggregation Deployment -->
 <!-- translation-source-sha256: b03f6bf81f3808d8b6642103e3de00052f5b11e134fe8f1626afd3e7717d98fd ## When to Use It -->
-<!-- translation-source-sha256: be79a10fc81c95a4b3615ed88818b99f28face48910758b809e973c874008ceb ## Deploy -->
+<!-- translation-source-sha256: 5b5669b69eed1830a41de061748008a5861257888ef68a52f9870e3d5043284f ## Deploy -->
 <!-- translation-source-sha256: 72b3aa78ce8c2b45b81847a3380244d1dcce9119a04e55d0f446f925def27c18 ### Kernels that hang UCX -->
 <!-- translation-source-sha256: 43407a1860da9324c4985dbf07b8821cf0ff3567a9d509c64a11ea0860181a3b ### PPU KV over RDMA -->
 <!-- translation-source-sha256: c198b0420c795cc1fed41757a97ef4e9f847ecd308cfae3d52329aea58e15b4c ## Automatic and Manual Placement -->
