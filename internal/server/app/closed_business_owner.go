@@ -5,8 +5,6 @@ package app
 import (
 	"context"
 	"errors"
-	"log/slog"
-	"runtime"
 )
 
 // revocableBusiness retains every resource borrowed by one joined business
@@ -69,13 +67,9 @@ func (a *App) closeBusinessAdmission() {
 	if owner := a.currentClosedBusiness(); owner != nil {
 		owner.BeginStop()
 	}
-	if a.log != nil && a.log.Enabled(context.Background(), slog.LevelDebug) {
-		caller := "unknown"
-		if pc, _, _, ok := runtime.Caller(1); ok {
-			if fn := runtime.FuncForPC(pc); fn != nil {
-				caller = fn.Name()
-			}
-		}
+	caller := admissionCloser()
+	a.admissionJournal.closed(a.log, caller)
+	if a.log != nil {
 		a.log.Debug("closed business admission invalidated", "caller", caller)
 	}
 }

@@ -22,6 +22,10 @@ type memberState struct {
 	legacyClosed bool
 	joinedRaft   joinedRaftSession
 
+	// admissionJournal logs who closed admission and what proofs failed on
+	// while it was closed.
+	admissionJournal admissionJournal
+
 	materialEligibilityMu     sync.Mutex
 	materialEligibility       *materialEligibility
 	materialEligibilityCancel context.CancelFunc

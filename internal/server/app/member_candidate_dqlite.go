@@ -24,6 +24,14 @@ func newCandidateMaterialEligibility(a *App) *materialEligibility {
 		log.DebugContext(ctx, "candidate material proof completed", "ready", ready, "err_class", closedMemberErrorClass(err),
 			"failure_stage", metrics.FailureStage, "failure_class", metrics.FailureClass,
 			"total_ms", float64(metrics.Total.Duration)/float64(time.Millisecond), "metrics", metrics)
+		if a != nil {
+			stage := metrics.FailureStage
+			succeeded := ready && err == nil && metrics.Total.Duration < materialEligibilityWindow
+			if ready && err == nil && !succeeded {
+				stage = "returned_after_window"
+			}
+			a.admissionJournal.proof(log, succeeded, closedMemberErrorClass(err), stage, metrics.FailureClass, metrics.Total.Duration)
+		}
 		return ready, err
 	}
 	eligibility := newMaterialEligibility(time.Now, prove, materialReproofInterval)
