@@ -18,7 +18,7 @@ What you do not need to change: any runtime driver (`internal/agent/runtime/*`),
 
 Registration is two lines and cannot be one: the definition is in a package the server and the agent share, and the driver is in the agent only.
 
-Vendor names and icons in the console are currently written in the front end (`ui/src/vendors.ts`, `ui/src/components/vendorAssets.ts`), and the support matrix (`docs/reference/support-matrix.md`) is written by hand; both are outside the definition and also need filling in.
+Vendor names and icons in the console are currently written in the front end (`ui/src/vendors.ts`, `ui/src/components/vendorAssets.ts`) and need filling in. The "Support Declared in the Definitions" table of the support matrix is generated from the definitions and is not edited by hand; after changing a definition, regenerate it (see Step 3).
 
 ## Step 1: The Vendor Definition
 
@@ -126,6 +126,7 @@ After a vendor is added, these existing tests ask you to update them, on purpose
 | `TestVendorRuntimeAdmission` in `accelerator` | Add a row: the runtimes this vendor is accepted on. It decides what is refused before scheduling, so it is written out |
 | `TestDefaultProbersPreserveExistingVendorOrder` and `TestMixedVendorAutoKeepsExistingProberPriority` in `agent/gpu` | Add to the expected probe order. NVIDIA comes after every vendor that ships a compatible `nvidia-smi` |
 | `TestEngineProfileGoldens` in `server/deploy` | `GPUWORKS_UPDATE_PROFILE_GOLDEN=1 go test -run TestEngineProfileGoldens ./internal/server/deploy/` |
+| `TestSupportMatrixTableIsWrittenFromTheDefinitions` in `accelerator` | `GPUWORKS_UPDATE_SUPPORT_MATRIX=1 go test -run TestSupportMatrixTableIsWrittenFromTheDefinitions ./internal/accelerator/` |
 
 ## Step 4: Before Submitting
 
@@ -151,7 +152,7 @@ Check a merge request that adds a vendor or a runtime against each row. Every ro
 
 | # | Requirement | How to check |
 |---|---|---|
-| 1 | Only its own files are touched | The production files in `git diff --stat <base>` are only: the new vendor's definition and driver files, one vendor constant in `vendor.go`, one line in `vendor_spec.go`, one line in `gpu.go`, and the vendor's name and icon in the front end; with a new metric, its registration in `internal/platformmetrics` as well, and when it lists `kube`, its extended resource name in `kube.go`. Tests, goldens and documents (the support matrix included) do not count. If a runtime driver, the scheduler or another vendor's file appears, ask for a separate merge request |
+| 1 | Only its own files are touched | The production files in `git diff --stat <base>` are only: the new vendor's definition and driver files, one vendor constant in `vendor.go`, one line in `vendor_spec.go`, one line in `gpu.go`, the vendor's name and icon in the front end, and the generated support-matrix table; with a new metric, its registration in `internal/platformmetrics` as well, and when it lists `kube`, its extended resource name in `kube.go`. Tests, goldens and the other documents do not count. If a runtime driver, the scheduler or another vendor's file appears, ask for a separate merge request |
 | 2 | The definition is consistent | `go test -run TestVendorDefinitionsAreConsistent ./internal/accelerator/` passes, and that test file is unchanged |
 | 3 | No budget grew | `make check-architecture` passes, and `git diff <base> -- scripts/arch-constraints.txt` raises no number |
 | 4 | The driver writes no container command-line option | Command 4 below the table prints nothing |
@@ -183,13 +184,13 @@ grep -n 'probeCards(' internal/agent/gpu/<vendor>*.go | grep -v '_test\.go'
 - Do not take "the device node exists" or "the environment variable is set" for "inference runs".
 
 <!-- translation-source-sha256: 70761906f3f9d64cc518f65d6f2a068e4d3bc5f680e70d2d14dff422aa3f3bd2 # Adding a New Accelerator Vendor -->
-<!-- translation-source-sha256: 30a387a790f39cbd49aba70321e5aee4f6c447d9150bb6c8e183de4711781a3e ## Files to Touch -->
+<!-- translation-source-sha256: c77ef0f91b0599f3880ed05c0529b2ff2cfe7b14341d9be400409921359c4e5e ## Files to Touch -->
 <!-- translation-source-sha256: 72f35532382ae1f8b24c0827fa855a5c43bf367873e2e75b1910e2509f73face ## Step 1: The Vendor Definition -->
 <!-- translation-source-sha256: 42366b695a9dc29118b9cbb5865620fb7ea0130a0166f4d665bf213aad3cf61a ## Step 2: The Driver -->
 <!-- translation-source-sha256: 8fa3cafc245b6882ec70b3edaff7eee36df16d04a1e496ebe3a2502d1294761d ### Granting Devices -->
-<!-- translation-source-sha256: 5118bf2c99468926a2ca3a4fa8ddaa26b1cd8ab9658ace6bc4550e0c409fef1b ## Step 3: Fixtures and Tests -->
+<!-- translation-source-sha256: e3d5992c34d03f0280d0ef03bd0f4ab88d991c4f1b971671ba01a37232f46b36 ## Step 3: Fixtures and Tests -->
 <!-- translation-source-sha256: e5f1e773baca5a8cd4cf9893e9316affc36ea6e6872236476e3c1b7d7e9324ce ## Step 4: Before Submitting -->
 <!-- translation-source-sha256: ee9f7e0f0fc8ea4baad3104d491662e298b0ac9a7ed15220e70e8295c9de2f77 ## Verification on Real Hardware -->
-<!-- translation-source-sha256: 5f53e3116d63db84ca2c3f7721773c42cd9d4c64d9d3a0b4930b77eaf76ba6ea ## Review Standard -->
+<!-- translation-source-sha256: 5955c7d8dc37afd3a89a2946496222945f3bfbbd43fd595a83306acbf670bec9 ## Review Standard -->
 <!-- translation-source-sha256: 269ac2f3dc089de79070bc268adb2c3ab12a39310a1abc4f1971ce5855e8834b ## What Not to Do -->
 <!-- translation-localized-code-block: 9ea29b074ac27a071bd49a8841fc9ac5eadd74e70c0d486438071610e8081ac5 ae3c0ad7266f2638793520aca2ce887f5d5ef0911f479687ccc57079bc8f7471 -->

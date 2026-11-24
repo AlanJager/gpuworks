@@ -18,7 +18,7 @@
 
 登记是两行，不能合成一行：定义在 server 与 agent 共用的包里，驱动只在 agent 里。
 
-控制台里的厂商名与图标目前写在前端（`ui/src/vendors.ts`、`ui/src/components/vendorAssets.ts`），支持矩阵（`docs/reference/support-matrix.md`）是手写的；这两处在定义之外，接入时也要补。
+控制台里的厂商名与图标目前写在前端（`ui/src/vendors.ts`、`ui/src/components/vendorAssets.ts`），接入时要补。支持矩阵里「定义里声明的支持范围」一表由定义生成，不用手改；改完定义后重新生成（见第三步）。
 
 ## 第一步：厂商定义
 
@@ -126,6 +126,7 @@ return RuntimeInjection{
 | `accelerator` 的 `TestVendorRuntimeAdmission` | 加一行：这个厂商在哪些运行时上被接受。它决定调度前拒绝什么，所以写出来 |
 | `agent/gpu` 的 `TestDefaultProbersPreserveExistingVendorOrder`、`TestMixedVendorAutoKeepsExistingProberPriority` | 加进期望的探测顺序。NVIDIA 排在所有带兼容版 `nvidia-smi` 的厂商之后 |
 | `server/deploy` 的 `TestEngineProfileGoldens` | `GPUWORKS_UPDATE_PROFILE_GOLDEN=1 go test -run TestEngineProfileGoldens ./internal/server/deploy/` |
+| `accelerator` 的 `TestSupportMatrixTableIsWrittenFromTheDefinitions` | `GPUWORKS_UPDATE_SUPPORT_MATRIX=1 go test -run TestSupportMatrixTableIsWrittenFromTheDefinitions ./internal/accelerator/` |
 
 ## 第四步：提交前
 
@@ -151,7 +152,7 @@ go test -race ./internal/accelerator/... ./internal/agent/gpu/...
 
 | # | 要求 | 怎么核对 |
 |---|---|---|
-| 1 | 只动了自己的文件 | `git diff --stat <base>` 里的生产文件只有：新厂商的定义与驱动文件、`vendor.go` 里一个厂商常量、`vendor_spec.go` 一行、`gpu.go` 一行、前端的厂商名与图标；有新指标时再加 `internal/platformmetrics` 里的登记，列了 `kube` 时再加 `kube.go` 里的扩展资源名。测试、golden 和文档（含支持矩阵）不算在内。出现运行时驱动、调度器或别家的文件，要求拆成单独的合并请求 |
+| 1 | 只动了自己的文件 | `git diff --stat <base>` 里的生产文件只有：新厂商的定义与驱动文件、`vendor.go` 里一个厂商常量、`vendor_spec.go` 一行、`gpu.go` 一行、前端的厂商名与图标、生成的支持矩阵表；有新指标时再加 `internal/platformmetrics` 里的登记，列了 `kube` 时再加 `kube.go` 里的扩展资源名。测试、golden 和其余文档不算在内。出现运行时驱动、调度器或别家的文件，要求拆成单独的合并请求 |
 | 2 | 定义自洽 | `go test -run TestVendorDefinitionsAreConsistent ./internal/accelerator/` 通过，且这个测试文件没有被改动 |
 | 3 | 预算没有变大 | `make check-architecture` 通过，`git diff <base> -- scripts/arch-constraints.txt` 里没有上调的数字 |
 | 4 | 驱动不写容器命令行选项 | 表后的命令 4 没有输出 |

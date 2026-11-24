@@ -38,7 +38,7 @@ As a result, adding a vendor meant editing the insides of runtime drivers and lo
 - `InferVendor`'s rules for finding product-line markers in model and architecture names (`accelerator/infer.go`), and the mapping from Kubernetes extended resource names to vendors (`accelerator/kube.go`). Both are rules tried in a fixed order inside one function, and the order is itself behaviour.
 - The checks on a driver's name in the engine: the dGPU injectors (`agent/engine/partition_hygon.go`, `partition_ascend.go`), kube's host root in `engine.go` and docker's mount root in `runtime_mounts.go`; and the hand-written `--tmpfs` of Hygon's dGPU backend. The budgets record how many there are.
 - Vendor names and icons in the console are still written in the front end.
-- The support matrix (`docs/reference/support-matrix.md`) is still written by hand; it is not generated from the definitions and does not record, per vendor and runtime, how far each has been verified.
+- The declared support in the support matrix (`docs/reference/support-matrix.md`) is generated from the definitions; how far each vendor and runtime has been verified is still written by hand.
 
 ## Consequences
 
@@ -50,5 +50,5 @@ As a result, adding a vendor meant editing the insides of runtime drivers and lo
 <!-- translation-source-sha256: b93bc066d7aacb5b8291991a0143d8f1f177b4a1530498b1f6a431641c0dfb7b ## Background -->
 <!-- translation-source-sha256: 4a3a9c91c32e5f7a2de4f69f6d4a515b9b8415be26ac52c3fac2597325ace58e ## Decision -->
 <!-- translation-source-sha256: 53384c0d5cc0207565c20b024e70ac12cd0d835bd60075685653bdc0fe4e4d71 ## Trade-offs -->
-<!-- translation-source-sha256: 4bea0831c5909a0442f5c2736628dd9325934784e11dc9cbeee7019597e0488b ## Still Outside the Definition -->
+<!-- translation-source-sha256: e2e3e3f6ea6f8423fad091ee91081017132936874752c54242e416fb4e8cb75e ## Still Outside the Definition -->
 <!-- translation-source-sha256: 06828ffd0477d4437f4247b4fa57ca6ddcf08a981289279d2434a06e52c8a755 ## Consequences -->
