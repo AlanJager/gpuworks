@@ -16,6 +16,7 @@ const (
 	// hardware shapes) could run a replica even with nothing else on it;
 	// {node} refused for {reason}.
 	ErrorDeploymentNeverFits = "DEPLOYMENT_NEVER_FITS"
+	ErrorDGPUStartupMemory   = "DGPU_STARTUP_MEMORY"
 	// ErrorNodeRequirementsNotEditable: the deployment's replicas are not
 	// placed from a pool ({shape}: multi_node or pd), so it has no node
 	// requirements to edit.

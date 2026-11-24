@@ -273,6 +273,7 @@
     "NODE_REQUIREMENTS_UNMET": "节点不满足部署的节点条件：{{detail}}",
     "PLACEMENT_STRATEGY_INVALID": "不支持的放置策略：{{strategy}}",
     "DEPLOYMENT_NEVER_FITS": "部署可用的节点里，即使空载也没有一台放得下一个副本：候选节点 {{pool}} 台、{{shapes}} 种硬件规格；{{node}} 的原因：{{reason}}。请调小配置或换用其他节点。",
+    "DGPU_STARTUP_MEMORY": "{{quota_gib}} GiB dGPU 切分需要为 Decode 计算图捕获预留显存。请将显存利用率从 {{utilization}} 降到 {{max_utilization}} 或更低。",
     "NODE_REQUIREMENTS_NOT_EDITABLE": "该部署按 rank 列出节点（{{shape}}），没有可编辑的节点条件。",
     "DGPU_QUOTA_INVALID": "dGPU 配额无效：{{field}} = {{value}}",
     "DGPU_QUOTA_NOT_PARTITIONED": "该部署使用整卡，没有 dGPU 配额可调整。",
