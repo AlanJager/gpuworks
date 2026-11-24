@@ -730,6 +730,7 @@
     "COMPUTE_NETWORK_ACCELERATOR_REQUIRED": "For {{node}}, replace “{{network}}”: create and attach a network of type $t(networks:typeGroup.accelerator).",
     "COMPUTE_NETWORK_NO_CARDS": "Node “{{node}}” has no usable accelerator port on accelerator network “{{network}}” ($t(networks:typeGroup.accelerator)).",
     "PD_NETWORK_ACCELERATOR_REQUIRED": "PD mode {{mode}} moves KV on the accelerator cards' own ports, so a deployment across hosts needs an accelerator network ($t(networks:typeGroup.accelerator)); this group shares “{{network}}”.",
+    "PD_CARD_NETWORK_BLOCKED": "The selected PD ports on {{network}} cannot reach each other: {{pairs}} (verified pairs: {{available}}; — means none). Select a reachable pair or run the card matrix test again.",
     "PD_NETWORK_HOST_REQUIRED": "PD mode {{mode}} requires $t(networks:typeGroup.host). “{{network}}” uses $t(networks:typeGroup.accelerator).",
     "PD_NETWORK_RDMA_REQUIRED": "PD mode {{mode}} moves KV over RDMA, so its nodes, even a single host, must share a host RDMA network, which gives the instances the RDMA devices; this group does not share one.",
     "PD_SLEEP_RDMA_UNSUPPORTED": "A sleepable PD deployment cannot move KV over RDMA network “{{network}}”: after sleeping, the engine cannot reallocate the KV memory registered with the NIC, so waking fails with out of memory. Turn sleep off, or use an Ethernet compute network.",
