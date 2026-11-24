@@ -36,8 +36,6 @@ func TestMatchWithLimitReadsTheEnginesOwnReport(t *testing.T) {
 		{"vLLM startup check", vllmFreeMemoryLine, testGiB, 0, 1234803097, "dGPU memory limit reached on GPU 0: the engine needed 1.1 GiB, its limit is 1.0 GiB"},
 		{"PyTorch allocator", torchOOMLine, testGiB, 0, testGiB + 20<<20, "dGPU memory limit reached on GPU 0: the engine needed 1.02 GiB, its limit is 1.00 GiB"},
 		{"PyTorch allocator, as the ticket quotes it", torchOOMElidedLine, testGiB, 0, 0, "dGPU memory limit reached on GPU 0: the engine could not get the memory it needs within its 1.0 GiB limit"},
-		// The reopened ticket's start: a 1 GiB limit, 0.09 GiB left for a KV cache of 0.44 GiB.
-		{"vLLM KV cache check", vllmKVCacheLine, testGiB, DeviceUnknown, testGiB - gibBytes("0.09") + gibBytes("0.44"), "dGPU memory limit reached: the engine needed 1.3 GiB, its limit is 1.0 GiB"},
 		{"PyTorch allocator, older wording", "RuntimeError: CUDA out of memory. Tried to allocate 2.00 GiB (GPU 1; 8.00 GiB total capacity; 7.10 GiB already allocated; 512.00 MiB free; 7.20 GiB reserved in total by PyTorch)", 8 * testGiB, 1, 8*testGiB - 512<<20 + 2*testGiB, "dGPU memory limit reached on GPU 1: the engine needed 9.5 GiB, its limit is 8.0 GiB"},
 	}
 	for _, tc := range cases {
@@ -57,6 +55,27 @@ func TestMatchWithLimitReadsTheEnginesOwnReport(t *testing.T) {
 				t.Fatalf("fallback = %q, want %q", c.Fallback(), tc.fallback)
 			}
 		})
+	}
+}
+
+// A KV cache that does not fit an instance with a dGPU memory limit is the
+// limit first (the reopened ticket: 1 GiB limit, 0.09 GiB left for 0.44 GiB)
+// and the KV cache second. Which fix applies the line cannot say: with a
+// generous limit and an oversized context it is the context, so the KV cache
+// cause and its advice stay, and no amount is stated for the limit.
+func TestAKVCacheThatDoesNotFitALimitedInstanceIsBothCauses(t *testing.T) {
+	oversized := "ValueError: To serve at least one request with the models's max seq len (4194304), (120.00 GiB KV cache is needed, which is larger than the available KV cache memory (28.00 GiB). Based on the available memory, the estimated maximum model length is 978000."
+	for line, limit := range map[string]int64{vllmKVCacheLine: testGiB, oversized: 40 * testGiB} {
+		got := MatchWithLimit([]string{"INFO start", line}, limit)
+		if len(got) != 2 || got[0].Code != CodeDGPUMemoryLimit || got[1].Code != CodeKVCacheInsufficient {
+			t.Fatalf("%q: causes = %+v, want the limit then the KV cache", line, got)
+		}
+		if c := got[0]; c.NeededBytes != 0 || c.LimitBytes != limit || c.Device != DeviceUnknown || !reflect.DeepEqual(c.Evidence, []Evidence{{Index: 1, Line: line}}) {
+			t.Fatalf("%q: limit cause = %+v", line, c)
+		}
+	}
+	if got, want := MatchWithLimit([]string{vllmKVCacheLine}, testGiB)[0].Fallback(), "dGPU memory limit reached: the engine could not get the memory it needs within its 1.0 GiB limit"; got != want {
+		t.Fatalf("fallback = %q, want %q", got, want)
 	}
 }
 
