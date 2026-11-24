@@ -92,7 +92,11 @@ func RecordStorageTier(dataDir string, tier storagetier.Tier) (storagetier.Tier,
 		return "", err
 	}
 	defer os.Remove(stage.Name())
-	if err := stage.Chmod(0600); err != nil {
+	record, err := os.Stat(path)
+	if err != nil {
+		return "", errors.Join(err, stage.Close())
+	}
+	if err := likeRecord(stage, record); err != nil {
 		return "", errors.Join(err, stage.Close())
 	}
 	_, writeErr := stage.Write(config)
