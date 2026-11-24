@@ -147,8 +147,8 @@ func TestKunlunCapturedEightCardInjection(t *testing.T) {
 				want = append(want, "--device", node+":"+node+":rwm")
 			}
 			want = append(want, "--device", "/dev/xpuctrl:/dev/xpuctrl:rwm")
-			if !reflect.DeepEqual(got.DockerArgs, want) {
-				t.Fatalf("args %v want %v", got.DockerArgs, want)
+			if !reflect.DeepEqual(got.Grant.DockerDeviceArgs(), want) {
+				t.Fatalf("args %v want %v", got.Grant.DockerDeviceArgs(), want)
 			}
 		})
 	}

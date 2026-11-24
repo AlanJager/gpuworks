@@ -97,8 +97,9 @@ func verifyDeviceInjection(driver *nerdctl.Driver, image string, indexes []int) 
 		Cmd:         []string{"300"},
 		Env:         inj.Env,
 		HostNetwork: true,
-		DockerArgs:  inj.DockerArgs,
+		Grant:       inj.Grant,
 	}
+	ws.Grant.Vendor = accelerator.VendorAscend
 	for _, m := range inj.Mounts {
 		ws.Mounts = append(ws.Mounts, runtime.Mount{Source: m.Source, Target: m.Target, ReadOnly: m.ReadOnly})
 	}

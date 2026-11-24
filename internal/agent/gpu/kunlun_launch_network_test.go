@@ -42,7 +42,7 @@ func TestKunlunConsumesResolvedHostRDMA(t *testing.T) {
 		req := InjectionRequest{Indexes: []int{1}, DriverName: "Docker", NNodes: 2, DockerArgs: launch.DockerArgs, Env: launch.Env}
 		inj := p.RuntimeInjectionForLaunch(t.Context(), req)
 		if finite {
-			if !strings.Contains(inj.UnsupportedReason, "finite") || len(inj.DockerArgs) != 0 {
+			if !strings.Contains(inj.UnsupportedReason, "finite") || len(inj.Grant.DockerDeviceArgs()) != 0 {
 				t.Fatalf("finite limit accepted: %+v", inj)
 			}
 			continue
@@ -50,7 +50,7 @@ func TestKunlunConsumesResolvedHostRDMA(t *testing.T) {
 		if inj.UnsupportedReason != "" {
 			t.Fatal(inj.UnsupportedReason)
 		}
-		combined := append(append([]string(nil), launch.DockerArgs...), inj.DockerArgs...)
+		combined := append(append([]string(nil), launch.DockerArgs...), inj.Grant.DockerDeviceArgs()...)
 		for _, value := range []string{"/dev/infiniband", "memlock=-1", "IPC_LOCK", "/dev/xdrdrv", "/dev/xpu1:/dev/xpu1:rwm"} {
 			count := 0
 			for _, arg := range combined {
@@ -94,7 +94,7 @@ func TestKunlunMultiNodeRequiresBKCLNetworkEnvironment(t *testing.T) {
 				DockerArgs: []string{"--device", "/dev/infiniband", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK"},
 				Env:        tc.env,
 			})
-			if inj.UnsupportedReason != tc.want || inj.Failure == nil || len(inj.DockerArgs) != 0 || len(inj.Env) != 0 {
+			if inj.UnsupportedReason != tc.want || inj.Failure == nil || len(inj.Grant.DockerDeviceArgs()) != 0 || len(inj.Env) != 0 {
 				t.Fatalf("injection = %+v, want reason %q", inj, tc.want)
 			}
 		})
@@ -141,7 +141,7 @@ func TestKunlunFreshInjectionHonorsCallerCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
 	defer cancel()
 	inj := p.RuntimeInjectionForLaunch(ctx, InjectionRequest{Indexes: []int{1}, DriverName: "docker", NNodes: 1})
-	if !strings.Contains(inj.UnsupportedReason, "deadline exceeded") || len(inj.DockerArgs) != 0 {
+	if !strings.Contains(inj.UnsupportedReason, "deadline exceeded") || len(inj.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("cancelled injection: %+v", inj)
 	}
 }
@@ -157,7 +157,7 @@ func TestKunlunFreshExecutableRespectsDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Millisecond)
 	defer cancel()
 	inj := p.RuntimeInjectionForLaunch(ctx, InjectionRequest{Indexes: []int{0}, DriverName: "docker", NNodes: 1})
-	if !strings.Contains(inj.UnsupportedReason, "deadline exceeded") || len(inj.DockerArgs) != 0 {
+	if !strings.Contains(inj.UnsupportedReason, "deadline exceeded") || len(inj.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("deadline ignored: %+v", inj)
 	}
 }

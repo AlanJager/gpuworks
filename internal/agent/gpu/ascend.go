@@ -263,7 +263,7 @@ func (p *AscendProber) RuntimeInjection(indexes []int) RuntimeInjection {
 		},
 		// Ascend Docker Runtime is the preferred path on the 910B4 hosts. It
 		// handles /dev/davinci* and driver mounts; per-device visibility is env.
-		DockerArgs: []string{"--runtime", "ascend"},
+		Grant: runtime.DeviceGrant{RuntimeClass: "ascend"},
 	}
 }
 
@@ -345,13 +345,13 @@ func (p *AscendProber) RuntimeInjectionForDriver(indexes []int, driverName strin
 		return base
 	}
 	containerDevices := compactVisibleDevices(len(indexes))
-	args := make([]string, 0, len(indexes)*2+len(ascendSharedDeviceNodes)*2)
+	devices := make([]runtime.Device, 0, len(indexes)+len(ascendSharedDeviceNodes))
 	for _, idx := range indexes {
-		args = append(args, "--device", fmt.Sprintf("/dev/davinci%d", idx))
+		devices = append(devices, runtime.Device{Path: fmt.Sprintf("/dev/davinci%d", idx)})
 	}
 	for _, node := range ascendSharedDeviceNodes {
 		if deviceNodeExists(node) {
-			args = append(args, "--device", node)
+			devices = append(devices, runtime.Device{Path: node})
 		}
 	}
 	return RuntimeInjection{
@@ -365,8 +365,8 @@ func (p *AscendProber) RuntimeInjectionForDriver(indexes []int, driverName strin
 			accelerator.AscendEnvRTVisibleDevices: containerDevices,
 			accelerator.AscendEnvNPUVisible:       containerDevices,
 		},
-		DockerArgs: args,
-		Mounts:     ascendNerdctlDriverMounts(),
+		Grant:  runtime.DeviceGrant{Devices: devices},
+		Mounts: ascendNerdctlDriverMounts(),
 	}
 }
 

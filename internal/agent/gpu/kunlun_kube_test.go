@@ -29,8 +29,8 @@ func TestKunlunKubeInjectionNamesNoRuntime(t *testing.T) {
 		if got.UnsupportedReason != "" {
 			t.Fatalf("%s %v: %s", tc.driver, tc.indexes, got.UnsupportedReason)
 		}
-		if !reflect.DeepEqual(got.DockerArgs, tc.want) {
-			t.Fatalf("%s %v: args = %v, want %v", tc.driver, tc.indexes, got.DockerArgs, tc.want)
+		if !reflect.DeepEqual(got.Grant.DockerDeviceArgs(), tc.want) {
+			t.Fatalf("%s %v: args = %v, want %v", tc.driver, tc.indexes, got.Grant.DockerDeviceArgs(), tc.want)
 		}
 	}
 }

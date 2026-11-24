@@ -68,7 +68,7 @@ func applyRuntimeInjection(ws *runtime.WorkloadSpec, inj gpu.RuntimeInjection, i
 		// the kube runtime gets the same remapping from the NVIDIA runtime
 		// class. Udocker has no such remapping and continues to use the
 		// physical indexes supplied by the prober.
-		if key == "CUDA_VISIBLE_DEVICES" && (driverName == "docker" || driverName == "nerdctl" || driverName == "kube") && hasDockerOption(inj.DockerArgs, "--gpus") {
+		if key == "CUDA_VISIBLE_DEVICES" && (driverName == "docker" || driverName == "nerdctl" || driverName == "kube") && len(inj.Grant.ToolkitDevices) > 0 {
 			value = compactDeviceIndexes(len(indexes))
 		}
 		env[key] = value
@@ -79,10 +79,11 @@ func applyRuntimeInjection(ws *runtime.WorkloadSpec, inj gpu.RuntimeInjection, i
 	if cleanup := inj.ManagedSelection; cleanup != nil {
 		args = removeDockerDevicePaths(args, cleanup.DevicePaths)
 		for _, option := range cleanup.DockerOptions {
-			args = removeDockerOption(args, option)
+			args = runtime.WithoutDockerOption(args, option)
 		}
 	}
-	updated.DockerArgs = mergeDeviceDockerArgs(args, inj.DockerArgs)
+	updated.DockerArgs = args
+	updated.Grant = inj.Grant
 	if len(inj.Mounts) > 0 {
 		mounts := append([]runtime.Mount(nil), ws.Mounts...)
 		for _, mount := range inj.Mounts {
@@ -141,33 +142,6 @@ func managedDockerDevice(value string, managed map[string]bool) bool {
 
 func dockerDeviceSource(value string) string {
 	return strings.SplitN(value, ":", 2)[0]
-}
-
-func removeDockerOption(args []string, option string) []string {
-	result := make([]string, 0, len(args))
-	for index := 0; index < len(args); index++ {
-		arg := args[index]
-		if strings.HasPrefix(arg, option+"=") {
-			continue
-		}
-		if arg == option {
-			if index+1 < len(args) {
-				index++
-			}
-			continue
-		}
-		result = append(result, arg)
-	}
-	return result
-}
-
-func hasDockerOption(args []string, option string) bool {
-	for _, arg := range args {
-		if arg == option || strings.HasPrefix(arg, option+"=") {
-			return true
-		}
-	}
-	return false
 }
 
 func compactDeviceIndexes(count int) string {

@@ -64,7 +64,7 @@ func TestAMDRuntimeInjectionOnKubernetes(t *testing.T) {
 	if inj.UnsupportedReason != "" {
 		t.Fatal(inj.UnsupportedReason)
 	}
-	if got := strings.Join(inj.DockerArgs, " "); got != "--device /dev/kfd:/dev/kfd:rwm --device /dev/dri/renderD135:/dev/dri/renderD135:rwm" {
+	if got := strings.Join(inj.Grant.DockerDeviceArgs(), " "); got != "--device /dev/kfd:/dev/kfd:rwm --device /dev/dri/renderD135:/dev/dri/renderD135:rwm" {
 		t.Fatal(got)
 	}
 	if len(inj.Env) != 0 {

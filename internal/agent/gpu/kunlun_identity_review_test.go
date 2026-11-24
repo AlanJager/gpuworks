@@ -38,7 +38,7 @@ func TestKunlunLargePCIDomainIsNotTruncated(t *testing.T) {
 		}
 		return oldRead(path)
 	}
-	if inj := p.RuntimeInjectionForDriver([]int{0}, "docker"); inj.UnsupportedReason != "Kunlun PCI vendor cannot be verified" || len(inj.DockerArgs) != 0 {
+	if inj := p.RuntimeInjectionForDriver([]int{0}, "docker"); inj.UnsupportedReason != "Kunlun PCI vendor cannot be verified" || len(inj.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("domain-zero fallback: %+v", inj)
 	}
 }
@@ -55,7 +55,7 @@ func TestKunlunMissingUUIDRetainsIndexMetricsButNotLaunchPermission(t *testing.T
 	}
 	// The named cause matters: refusing for want of a runtime driver would
 	// pass this assertion without ever reaching the identity check.
-	if inj := p.RuntimeInjectionForDriver([]int{0}, "docker"); inj.UnsupportedReason != "invalid or duplicate Kunlun device selection" || len(inj.DockerArgs) != 0 {
+	if inj := p.RuntimeInjectionForDriver([]int{0}, "docker"); inj.UnsupportedReason != "invalid or duplicate Kunlun device selection" || len(inj.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("unidentified card was authorized: %+v", inj)
 	}
 }
@@ -71,7 +71,7 @@ func TestKunlunAvailableRequiresExplicitBrand(t *testing.T) {
 func TestKunlunInjectionRequiresProbeBaselineAndManagesWholeInventory(t *testing.T) {
 	p, _ := kunlunFixture(t)
 	inj := p.RuntimeInjectionForDriver([]int{1}, "docker")
-	if inj.UnsupportedReason != "Kunlun injection requires a successful probe baseline" || inj.Failure == nil || len(inj.DockerArgs) != 0 || inj.ManagedSelection != nil {
+	if inj.UnsupportedReason != "Kunlun injection requires a successful probe baseline" || inj.Failure == nil || len(inj.Grant.DockerDeviceArgs()) != 0 || inj.ManagedSelection != nil {
 		t.Fatalf("injection without probe baseline: %+v", inj)
 	}
 

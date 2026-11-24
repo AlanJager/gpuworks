@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -196,18 +195,9 @@ func (p *SMIProber) RuntimeInjection(indexes []int) RuntimeInjection {
 	if len(indexes) == 0 {
 		return RuntimeInjection{}
 	}
-	idx := make([]string, len(indexes))
-	for i, g := range indexes {
-		idx[i] = strconv.Itoa(g)
-	}
-	devices := strings.Join(idx, ",")
 	return RuntimeInjection{
-		Env: map[string]string{"CUDA_VISIBLE_DEVICES": devices},
-		// Docker parses --gpus values as CSV. Without the inner quotes,
-		// device=0,1 becomes DeviceIDs=[0] plus Count=1 and recent daemons
-		// reject the request as "cannot set both Count and DeviceIDs". exec does
-		// not add shell quoting for us, so the quote characters are intentional.
-		DockerArgs: []string{"--gpus", "\"device=" + devices + "\""},
+		Env:   map[string]string{"CUDA_VISIBLE_DEVICES": joinDeviceIndexes(indexes)},
+		Grant: runtime.DeviceGrant{ToolkitDevices: append([]int(nil), indexes...)},
 	}
 }
 

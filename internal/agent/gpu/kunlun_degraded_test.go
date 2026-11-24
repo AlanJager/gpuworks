@@ -34,10 +34,10 @@ func TestKunlunDegradesTelemetryWithoutWeakeningIdentityChecks(t *testing.T) {
 			}
 			injection := p.RuntimeInjectionForDriver([]int{0}, "docker")
 			if field.schedulable {
-				if injection.UnsupportedReason != "" || len(injection.DockerArgs) == 0 {
+				if injection.UnsupportedReason != "" || len(injection.Grant.DockerDeviceArgs()) == 0 {
 					t.Fatalf("ECC warning denied injection: %+v", injection)
 				}
-			} else if injection.UnsupportedReason != "invalid or duplicate Kunlun device selection" || len(injection.DockerArgs) != 0 {
+			} else if injection.UnsupportedReason != "invalid or duplicate Kunlun device selection" || len(injection.Grant.DockerDeviceArgs()) != 0 {
 				t.Fatalf("invalid identity authorized: %+v", injection)
 			}
 			if reason := p.RuntimeInjectionForDriver([]int{1}, "docker").UnsupportedReason; reason != "" {

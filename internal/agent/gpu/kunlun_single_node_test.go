@@ -41,7 +41,7 @@ func TestKunlunSingleNodeUsesOnlyNativeDevices(t *testing.T) {
 				logical[i] = strconv.Itoa(i)
 			}
 			wantEnv := map[string]string{"XPU_VISIBLE_DEVICES": strings.Join(logical, ",")}
-			if !reflect.DeepEqual(injection.DockerArgs, want) || !reflect.DeepEqual(injection.Env, wantEnv) || len(injection.Mounts) != 0 {
+			if !reflect.DeepEqual(injection.Grant.DockerDeviceArgs(), want) || !reflect.DeepEqual(injection.Env, wantEnv) || len(injection.Mounts) != 0 {
 				t.Fatalf("unexpected local device contract: %+v", injection)
 			}
 		})

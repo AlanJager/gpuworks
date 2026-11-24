@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -99,7 +100,7 @@ func (p *KunlunProber) RuntimeInjectionForLaunch(ctx context.Context, req Inject
 		if err := p.verifyKunlunXDR(); err != nil {
 			return rejectedInjection(proto.RuntimeFailure{Code: proto.ErrorAcceleratorResourceUnavailable, Vendor: p.Vendor(), Resource: "/dev/xdrdrv"}, err.Error())
 		}
-		inj.DockerArgs = append(inj.DockerArgs, "--device", "/dev/xdrdrv")
+		inj.Grant.Devices = append(inj.Grant.Devices, runtime.Device{Path: "/dev/xdrdrv"})
 		inj.ManagedSelection.DevicePaths = append(inj.ManagedSelection.DevicePaths, "/dev/xdrdrv")
 	}
 	if err := ctx.Err(); err != nil {

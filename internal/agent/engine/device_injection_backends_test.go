@@ -39,7 +39,7 @@ func TestExistingBackendInjectionPreservedWithTopology(t *testing.T) {
 				for k, v := range tc.env {
 					wantEnv[k] = v
 				}
-				if !reflect.DeepEqual(ws.DockerArgs, append(user, tc.args...)) || !reflect.DeepEqual(ws.Env, wantEnv) || !reflect.DeepEqual(ws.Mounts, []runtime.Mount{mount}) {
+				if !reflect.DeepEqual(ws.DockerRunArgs(), append(user, tc.args...)) || !reflect.DeepEqual(ws.Env, wantEnv) || !reflect.DeepEqual(ws.Mounts, []runtime.Mount{mount}) {
 					t.Fatalf("existing backend contract changed: %+v", ws)
 				}
 				if err := e.applyDeviceInjectionForLaunch(context.Background(), &runtime.WorkloadSpec{}, nil, tc.driver, nodes); err != nil {
@@ -64,7 +64,7 @@ func TestExistingNativeBackendsKeepTheirValidation(t *testing.T) {
 		for _, nodes := range []int{1, 2} {
 			ws := runtime.WorkloadSpec{DockerArgs: []string{"--ipc=host"}, Env: map[string]string{"kept": "yes"}}
 			err := e.applyDeviceInjectionForLaunch(t.Context(), &ws, []int{0}, "docker", nodes)
-			if err == nil || !strings.Contains(err.Error(), tc.cli) || !reflect.DeepEqual(ws.DockerArgs, []string{"--ipc=host"}) || !reflect.DeepEqual(ws.Env, map[string]string{"kept": "yes"}) {
+			if err == nil || !strings.Contains(err.Error(), tc.cli) || !reflect.DeepEqual(ws.DockerRunArgs(), []string{"--ipc=host"}) || !reflect.DeepEqual(ws.Env, map[string]string{"kept": "yes"}) {
 				t.Fatalf("%s: %+v %v", tc.cli, ws, err)
 			}
 			if err := e.applyDeviceInjectionForLaunch(t.Context(), &ws, nil, "docker", nodes); err != nil {

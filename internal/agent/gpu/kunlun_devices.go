@@ -12,6 +12,7 @@ import (
 	"syscall"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	agentruntime "gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -72,10 +73,11 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 	// --runtime would become a RuntimeClass named "runc", which no cluster
 	// defines, so the pod could not be created; the kubelet's default runtime
 	// is already the plain one.
-	var args []string
+	runtimeClass := ""
 	if driver != "kube" {
-		args = []string{"--runtime", "runc"}
+		runtimeClass = "runc"
 	}
+	var devices []agentruntime.Device
 	logical := make([]string, 0, len(indexes))
 	seen := map[int]bool{}
 	for _, n := range indexes {
@@ -103,7 +105,7 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 		if err != nil {
 			return fail(err.Error())
 		}
-		args = append(args, "--device", node+":"+node+":rwm")
+		devices = append(devices, agentruntime.Device{Path: node, Access: agentruntime.DeviceAccessAll})
 	}
 	if err := p.verifyKunlunControl(); err != nil {
 		return fail(err.Error())
@@ -111,11 +113,11 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 	if err := ctx.Err(); err != nil {
 		return fail(err.Error())
 	}
-	args = append(args, "--device", "/dev/xpuctrl:/dev/xpuctrl:rwm")
+	devices = append(devices, agentruntime.Device{Path: "/dev/xpuctrl", Access: agentruntime.DeviceAccessAll})
 	return RuntimeInjection{
 		ManagedSelection: &RuntimeSelectionCleanup{Env: []string{"XPU_VISIBLE_DEVICES"}, DevicePaths: managedPaths},
-		DockerArgs:       args,
 		Env:              map[string]string{"XPU_VISIBLE_DEVICES": strings.Join(logical, ",")},
+		Grant:            agentruntime.DeviceGrant{RuntimeClass: runtimeClass, Devices: devices},
 	}
 }
 

@@ -131,7 +131,7 @@ func TestAMDRuntimeUsesSelectedRenderWithoutGuessingUserspaceOrdinals(t *testing
 	if !reflect.DeepEqual(inj.ManagedSelection.DevicePaths, wantPaths) {
 		t.Fatalf("AMD device path cleanup = %v, want %v", inj.ManagedSelection.DevicePaths, wantPaths)
 	}
-	joined := strings.Join(inj.DockerArgs, " ")
+	joined := strings.Join(inj.Grant.DockerDeviceArgs(), " ")
 	if joined != "--device /dev/kfd:/dev/kfd:rwm --device /dev/dri/renderD135:/dev/dri/renderD135:rwm" {
 		t.Fatal(joined)
 	}
@@ -167,8 +167,8 @@ func TestAMDRuntimePinsRunveilSelectionByGPUUUID(t *testing.T) {
 	if inj.Env["ROCR_VISIBLE_DEVICES"] != want {
 		t.Fatalf("ROCR_VISIBLE_DEVICES = %q, want %q", inj.Env["ROCR_VISIBLE_DEVICES"], want)
 	}
-	if !strings.Contains(strings.Join(inj.DockerArgs, " "), "/dev/kfd") {
-		t.Fatalf("runveil injection lost the device nodes: %v", inj.DockerArgs)
+	if !strings.Contains(strings.Join(inj.Grant.DockerDeviceArgs(), " "), "/dev/kfd") {
+		t.Fatalf("runveil injection lost the device nodes: %v", inj.Grant.DockerDeviceArgs())
 	}
 }
 
@@ -193,8 +193,8 @@ func TestAMDRuntimeCleanupIncludesByPathAliases(t *testing.T) {
 	if !reflect.DeepEqual(injection.ManagedSelection.DevicePaths, want) {
 		t.Fatalf("AMD by-path cleanup = %v, want %v", injection.ManagedSelection.DevicePaths, want)
 	}
-	if strings.Contains(strings.Join(injection.DockerArgs, " "), "by-path") {
-		t.Fatalf("injection must expose only the verified render node: %v", injection.DockerArgs)
+	if strings.Contains(strings.Join(injection.Grant.DockerDeviceArgs(), " "), "by-path") {
+		t.Fatalf("injection must expose only the verified render node: %v", injection.Grant.DockerDeviceArgs())
 	}
 }
 
@@ -279,7 +279,7 @@ func TestAMDRuntimeFailsClosed(t *testing.T) {
 			if !strings.Contains(inj.UnsupportedReason, want[test]) {
 				t.Fatalf("refusal = %q, want %q", inj.UnsupportedReason, want[test])
 			}
-			if len(inj.Env) != 0 || len(inj.DockerArgs) != 0 || len(inj.Mounts) != 0 {
+			if len(inj.Env) != 0 || len(inj.Grant.DockerDeviceArgs()) != 0 || len(inj.Mounts) != 0 {
 				t.Fatalf("failed injection returned additions: %+v", inj)
 			}
 		})
@@ -340,7 +340,7 @@ func TestAMDRuntimeMultipleNonContiguousCards(t *testing.T) {
 	if len(inj.Env) != 0 {
 		t.Fatal(inj.Env)
 	}
-	joined := strings.Join(inj.DockerArgs, " ")
+	joined := strings.Join(inj.Grant.DockerDeviceArgs(), " ")
 	if !strings.Contains(joined, "renderD135") || !strings.Contains(joined, "renderD141") || strings.Contains(joined, "--gpus") {
 		t.Fatal(joined)
 	}

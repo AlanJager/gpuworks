@@ -160,7 +160,7 @@ Device Minor: 9
 func TestPPURuntimeInjectionFailsClosed(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	inj := (&PPUProber{}).RuntimeInjection([]int{7})
-	if inj.UnsupportedReason == "" || len(inj.DockerArgs) != 0 || len(inj.Env) != 0 {
+	if inj.UnsupportedReason == "" || len(inj.Grant.DockerDeviceArgs()) != 0 || len(inj.Env) != 0 {
 		t.Fatalf("injection = %+v", inj)
 	}
 }
@@ -191,7 +191,7 @@ func TestPPURuntimeInjectionSelectsDevicesInRequestedOrder(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			inj := p.runtimeInjection(tc.indexes, tc.inventory, resolve, "docker")
 			if tc.failure != "" {
-				if !strings.Contains(inj.UnsupportedReason, tc.failure) || len(inj.Env) != 0 || len(inj.DockerArgs) != 0 {
+				if !strings.Contains(inj.UnsupportedReason, tc.failure) || len(inj.Env) != 0 || len(inj.Grant.DockerDeviceArgs()) != 0 {
 					t.Fatalf("injection=%+v", inj)
 				}
 				return
@@ -208,14 +208,14 @@ func TestPPURuntimeInjectionSelectsDevicesInRequestedOrder(t *testing.T) {
 					t.Fatalf("identity order differs from selected devices: %+v", inj)
 				}
 				path := fmt.Sprintf("/dev/alixpu_ppu%d", index+1)
-				if !strings.Contains(strings.Join(inj.DockerArgs, " "), path+":"+path+":rwm") {
+				if !strings.Contains(strings.Join(inj.Grant.DockerDeviceArgs(), " "), path+":"+path+":rwm") {
 					t.Fatalf("wrong device mapping: %+v", inj)
 				}
 			}
 		})
 	}
 	unknown := p.runtimeInjection([]int{8}, rows, resolve, "unknown")
-	if unknown.UnsupportedReason == "" || len(unknown.Env) != 0 || len(unknown.DockerArgs) != 0 {
+	if unknown.UnsupportedReason == "" || len(unknown.Env) != 0 || len(unknown.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("unsupported runtime injection=%+v", unknown)
 	}
 
@@ -264,7 +264,7 @@ func TestPPURuntimeInjectionUsesDriverInventory(t *testing.T) {
 					t.Fatalf("identity must be independent of the runtime view: %+v", inj)
 				}
 				path := fmt.Sprintf("/dev/alixpu_ppu%d", index+1)
-				if !strings.Contains(strings.Join(inj.DockerArgs, " "), path+":"+path+":rwm") {
+				if !strings.Contains(strings.Join(inj.Grant.DockerDeviceArgs(), " "), path+":"+path+":rwm") {
 					t.Fatalf("wrong device mapping: %+v", inj)
 				}
 			}
@@ -272,7 +272,7 @@ func TestPPURuntimeInjectionUsesDriverInventory(t *testing.T) {
 	}
 	t.Setenv("PATH", t.TempDir())
 	inj := p.RuntimeInjectionForDriver(nil, "docker")
-	if inj.UnsupportedReason != "" || len(inj.Env) != 0 || len(inj.DockerArgs) != 0 {
+	if inj.UnsupportedReason != "" || len(inj.Env) != 0 || len(inj.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("empty selection must not query or inject devices: %+v", inj)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -50,14 +51,12 @@ func (p *HygonProber) RuntimeInjection(indexes []int) RuntimeInjection {
 		byIndex[gpu.Index] = gpu
 	}
 
-	args := make([]string, 0, 14+len(indexes)*4)
-	devices := []string{}
+	var devices []runtime.Device
 	for _, path := range []string{"/dev/kfd", "/dev/mkfd"} {
 		if err := p.requireDevice(path); err != nil {
 			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("required Hygon device is unavailable: %s: %v", path, err)}
 		}
-		args = append(args, "--device", path+":"+path+":rwm")
-		devices = append(devices, path)
+		devices = append(devices, runtime.Device{Path: path, Access: runtime.DeviceAccessAll})
 	}
 	if info, err := p.inspect("/opt/hyhal"); err != nil || !info.IsDir() {
 		return RuntimeInjection{UnsupportedReason: "required Hygon driver directory is unavailable: /opt/hyhal"}
@@ -82,21 +81,20 @@ func (p *HygonProber) RuntimeInjection(indexes []int) RuntimeInjection {
 			return RuntimeInjection{UnsupportedReason: err.Error()}
 		}
 		for _, path := range nodes {
-			args = append(args, "--device", path+":"+path+":rwm")
-			devices = append(devices, path)
+			devices = append(devices, runtime.Device{Path: path, Access: runtime.DeviceAccessAll})
 		}
 	}
 	// Docker resolves named supplementary groups inside the image. Minimal
 	// probe images have no group database, so pass host device GIDs as numbers.
 	groups := map[uint32]bool{}
-	for _, path := range devices {
-		info, err := p.inspect(path)
+	for _, device := range devices {
+		info, err := p.inspect(device.Path)
 		if err != nil {
-			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("inspect Hygon device %s group: %v", path, err)}
+			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("inspect Hygon device %s group: %v", device.Path, err)}
 		}
 		stat, ok := info.Sys().(*syscall.Stat_t)
 		if !ok {
-			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("cannot determine Hygon device %s group", path)}
+			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("cannot determine Hygon device %s group", device.Path)}
 		}
 		groups[stat.Gid] = true
 	}
@@ -105,9 +103,6 @@ func (p *HygonProber) RuntimeInjection(indexes []int) RuntimeInjection {
 		groupIDs = append(groupIDs, int(group))
 	}
 	sort.Ints(groupIDs)
-	for _, group := range groupIDs {
-		args = append(args, "--group-add", strconv.Itoa(group))
-	}
 	visible := joinDeviceIndexes(indexes)
 	// Ray in Hygon vLLM images rejects ROCR_VISIBLE_DEVICES when
 	// HIP_VISIBLE_DEVICES is also set. HIP alone restricts the visible cards.
@@ -116,7 +111,7 @@ func (p *HygonProber) RuntimeInjection(indexes []int) RuntimeInjection {
 			"HYGON_VISIBLE_DEVICES": visible,
 			"HIP_VISIBLE_DEVICES":   visible,
 		},
-		DockerArgs: args,
+		Grant: runtime.DeviceGrant{Devices: devices, Groups: groupIDs},
 		// Driver libraries are required by every runtime. PRoot launchers do
 		// not interpret Docker volume flags; structured mounts reach them too.
 		Mounts: []RuntimeMount{{Source: "/opt/hyhal", Target: "/opt/hyhal", ReadOnly: true}},

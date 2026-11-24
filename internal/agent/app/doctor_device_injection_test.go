@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	dockerdrv "gpuworks.ai/gpuworks/internal/agent/runtime/docker"
 	nerdctldrv "gpuworks.ai/gpuworks/internal/agent/runtime/nerdctl"
 	"gpuworks.ai/gpuworks/internal/proto"
@@ -25,7 +26,7 @@ func (p runtimeBoundProber) RuntimeInjectionForDriver(indexes []int, driverName 
 	if driverName != p.verified {
 		return gpu.RuntimeInjection{UnsupportedReason: "runtime_unsupported: requires " + p.verified + ", not " + driverName}
 	}
-	return gpu.RuntimeInjection{DockerArgs: []string{"--device", "/dev/fake0:/dev/fake0:rwm"}}
+	return gpu.RuntimeInjection{Grant: runtime.DeviceGrant{Devices: []runtime.Device{{Path: "/dev/fake0", Access: runtime.DeviceAccessAll}}}}
 }
 
 // The doctor's job is to predict what a deployment will do on this host, so

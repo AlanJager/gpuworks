@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -42,7 +43,7 @@ func (p *kubeCardsProber) RuntimeInjectionForDriver(indexes []int, driver string
 		return gpu.RuntimeInjection{UnsupportedReason: reason}
 	}
 	node := "/dev/dri/renderD" + string(rune('0'+indexes[0]))
-	return gpu.RuntimeInjection{DockerArgs: []string{"--device", "/dev/kfd:/dev/kfd:rwm", "--device", node + ":" + node + ":rwm"}}
+	return gpu.RuntimeInjection{Grant: runtime.DeviceGrant{Devices: []runtime.Device{{Path: "/dev/kfd", Access: runtime.DeviceAccessAll}, {Path: node, Access: runtime.DeviceAccessAll}}}}
 }
 
 func twoAMDCards() []proto.GPUInfo {

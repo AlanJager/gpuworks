@@ -169,9 +169,17 @@ func parseDockerBytes(s string) (int64, error) {
 	return n * mult, nil
 }
 
+// workloadTranslation is what a workload asks of its pod. The devices it was
+// granted are translated in their docker spelling together with the options
+// it carries, so a granted runtime class or toolkit request replaces the
+// workload's own exactly as it does under docker.
+func workloadTranslation(spec runtime.WorkloadSpec) (dockerTranslation, error) {
+	return translateDockerArgs(spec.DockerRunArgs())
+}
+
 // instancePod builds the pod a workload runs as.
 func instancePod(spec runtime.WorkloadSpec, o podOptions) (kubeapi.Pod, error) {
-	tr, err := translateDockerArgs(spec.DockerArgs)
+	tr, err := workloadTranslation(spec)
 	if err != nil {
 		return kubeapi.Pod{}, err
 	}
@@ -299,7 +307,7 @@ func instancePod(spec runtime.WorkloadSpec, o podOptions) (kubeapi.Pod, error) {
 
 // workloadDevices are the device nodes a workload's pod must be given.
 func workloadDevices(spec runtime.WorkloadSpec) ([]string, error) {
-	tr, err := translateDockerArgs(spec.DockerArgs)
+	tr, err := workloadTranslation(spec)
 	if err != nil || tr.Privileged {
 		return nil, err
 	}

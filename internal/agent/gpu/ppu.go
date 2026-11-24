@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -221,9 +222,9 @@ func (p *PPUProber) RuntimeInjectionForDriver(indexes []int, driverName string) 
 }
 
 func (p *PPUProber) runtimeInjection(indexes []int, rows string, resolve func(int, string) (string, error), driverName string) RuntimeInjection {
-	args := []string{
-		"--device", "/dev/alixpu:/dev/alixpu:rwm",
-		"--device", "/dev/alixpu_ctl:/dev/alixpu_ctl:rwm",
+	devices := []runtime.Device{
+		{Path: "/dev/alixpu", Access: runtime.DeviceAccessAll},
+		{Path: "/dev/alixpu_ctl", Access: runtime.DeviceAccessAll},
 	}
 	byIndex := make(map[int]string)
 	for _, row := range parsePPUCSV(rows) {
@@ -254,7 +255,7 @@ func (p *PPUProber) runtimeInjection(indexes []int, rows string, resolve func(in
 		if err != nil {
 			return RuntimeInjection{UnsupportedReason: err.Error()}
 		}
-		args = append(args, "--device", path+":"+path+":rwm")
+		devices = append(devices, runtime.Device{Path: path, Access: runtime.DeviceAccessAll})
 		deviceUUIDs = append(deviceUUIDs, uuid)
 	}
 	// Driver-independent diagnostics keep the existing UUID contract. Actual
@@ -273,7 +274,7 @@ func (p *PPUProber) runtimeInjection(indexes []int, rows string, resolve func(in
 			accelerator.EnvCUDAVisibleDevices:   visible,
 			accelerator.PPUEnvDeviceUUIDs:       strings.Join(deviceUUIDs, ","),
 		},
-		DockerArgs: args,
+		Grant: runtime.DeviceGrant{Devices: devices},
 	}
 }
 

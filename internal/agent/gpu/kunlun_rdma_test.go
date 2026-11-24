@@ -86,7 +86,7 @@ func TestKunlunDeviceInspectorDoesNotFollowSymlinks(t *testing.T) {
 
 func TestKunlunLaunchInjectionIsAtomic(t *testing.T) {
 	p, _ := kunlunFixture(t)
-	if got := p.RuntimeInjectionForLaunch(context.Background(), InjectionRequest{DriverName: "docker", NNodes: 2}); got.UnsupportedReason != "" || len(got.DockerArgs) != 0 {
+	if got := p.RuntimeInjectionForLaunch(context.Background(), InjectionRequest{DriverName: "docker", NNodes: 2}); got.UnsupportedReason != "" || len(got.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("empty selection should expose nothing: %+v", got)
 	}
 	if _, err := p.Probe(t.Context()); err != nil {
@@ -97,12 +97,12 @@ func TestKunlunLaunchInjectionIsAtomic(t *testing.T) {
 		t.Fatal(got)
 	}
 	req := InjectionRequest{Indexes: []int{1}, DriverName: "docker", NNodes: 2, DockerArgs: []string{"--device", "/dev/infiniband", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK"}, Env: validKunlunMultiNodeEnv()}
-	if got := p.RuntimeInjectionForLaunch(context.Background(), req); got.UnsupportedReason == "" || len(got.DockerArgs) != 0 {
+	if got := p.RuntimeInjectionForLaunch(context.Background(), req); got.UnsupportedReason == "" || len(got.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("partial injection: %+v", got)
 	}
 	withKunlunXDR(p, os.ModeDevice|os.ModeCharDevice)
 	got := p.RuntimeInjectionForLaunch(context.Background(), req)
-	args := strings.Join(got.DockerArgs, " ")
+	args := strings.Join(got.Grant.DockerDeviceArgs(), " ")
 	if got.UnsupportedReason != "" || !strings.Contains(args, "/dev/xpu1") || !strings.Contains(args, "/dev/xdrdrv") || strings.Contains(args, "/dev/xpu0") {
 		t.Fatal(got)
 	}
@@ -132,7 +132,7 @@ func TestKunlunInjectionCanceledDuringXDRValidation(t *testing.T) {
 		DockerArgs: []string{"--device", "/dev/infiniband", "--ulimit", "memlock=-1", "--cap-add", "IPC_LOCK"},
 		Env:        validKunlunMultiNodeEnv(),
 	})
-	if !strings.Contains(injection.UnsupportedReason, "context canceled") || len(injection.DockerArgs) != 0 {
+	if !strings.Contains(injection.UnsupportedReason, "context canceled") || len(injection.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("canceled XDR validation exposed devices: %+v", injection)
 	}
 }

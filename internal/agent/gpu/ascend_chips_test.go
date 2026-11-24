@@ -310,7 +310,7 @@ func TestAscendRuntimeInjectionUsesPhysicalIDsOn910C(t *testing.T) {
 	gpus := parseAscendInfo(readNPUFixture(t, "npu-smi-info-910c-sparse.txt"))
 	indexes := []int{gpus[6].Index, gpus[7].Index}
 	inj := (&AscendProber{}).RuntimeInjectionForDriver(indexes, "nerdctl")
-	if got := strings.Join(inj.DockerArgs[:4], " "); got != "--device /dev/davinci14 --device /dev/davinci15" {
+	if got := strings.Join(inj.Grant.DockerDeviceArgs()[:4], " "); got != "--device /dev/davinci14 --device /dev/davinci15" {
 		t.Fatalf("nerdctl devices = %q", got)
 	}
 	docker := (&AscendProber{}).RuntimeInjection(indexes)

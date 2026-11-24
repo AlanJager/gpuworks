@@ -13,6 +13,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/gpu/pcicards"
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -20,9 +21,10 @@ import (
 type RuntimeInjection struct {
 	// ManagedSelection names stale accelerator settings to replace. It is
 	// independent of the atomic copy/apply contract used by every injector.
-	ManagedSelection  *RuntimeSelectionCleanup
-	Env               map[string]string
-	DockerArgs        []string
+	ManagedSelection *RuntimeSelectionCleanup
+	Env              map[string]string
+	// Grant is the devices handed over. ResolveInjection sets its Vendor.
+	Grant             runtime.DeviceGrant
 	Mounts            []RuntimeMount
 	UnsupportedReason string
 	// Failure augments the legacy reason; old backends need not implement it.
@@ -91,16 +93,22 @@ type InjectionRequest struct {
 // some container runtime, and a backend whose contract depends on it then
 // answers for a host that may not be this one.
 func ResolveInjection(ctx context.Context, p Prober, req InjectionRequest) RuntimeInjection {
+	var inj RuntimeInjection
 	switch injector := p.(type) {
 	case nil:
 		return RuntimeInjection{}
 	case TopologyAwareInjector:
-		return injector.RuntimeInjectionForLaunch(ctx, req)
+		inj = injector.RuntimeInjectionForLaunch(ctx, req)
 	case DriverAwareInjector:
-		return injector.RuntimeInjectionForDriver(req.Indexes, req.DriverName)
+		inj = injector.RuntimeInjectionForDriver(req.Indexes, req.DriverName)
 	default:
-		return injector.RuntimeInjection(req.Indexes)
+		inj = injector.RuntimeInjection(req.Indexes)
 	}
+	// The grant's vendor is the backend's, written here for every backend.
+	if len(req.Indexes) > 0 && inj.UnsupportedReason == "" && inj.Failure == nil {
+		inj.Grant.Vendor = accelerator.NormalizeVendor(p.Vendor())
+	}
+	return inj
 }
 
 // AcceleratorPortProber is an optional Prober extension for accelerators

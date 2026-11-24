@@ -237,8 +237,8 @@ func TestHygonRuntimeInjectionResolvesDRMFromPCI(t *testing.T) {
 		"--group-add", "39",
 		"--group-add", "998",
 	}
-	if !reflect.DeepEqual(inj.DockerArgs, wantArgs) {
-		t.Fatalf("docker args = %#v, want %#v", inj.DockerArgs, wantArgs)
+	if !reflect.DeepEqual(inj.Grant.DockerDeviceArgs(), wantArgs) {
+		t.Fatalf("docker args = %#v, want %#v", inj.Grant.DockerDeviceArgs(), wantArgs)
 	}
 	wantMounts := []RuntimeMount{{Source: "/opt/hyhal", Target: "/opt/hyhal", ReadOnly: true}}
 	if !reflect.DeepEqual(inj.Mounts, wantMounts) {
@@ -278,8 +278,8 @@ func TestHygonRuntimeInjectionForDriverNumbersCardsAsHIPSeesThem(t *testing.T) {
 			t.Fatalf("%s %v: env = %+v, want %+v", tc.driver, tc.indexes, inj.Env, wantEnv)
 		}
 		// The selected cards' nodes are still the host's own, whatever HIP calls them.
-		if !slices.Contains(inj.DockerArgs, "/dev/dri/renderD129:/dev/dri/renderD129:rwm") {
-			t.Fatalf("%s %v: selected render node missing: %#v", tc.driver, tc.indexes, inj.DockerArgs)
+		if !slices.Contains(inj.Grant.DockerDeviceArgs(), "/dev/dri/renderD129:/dev/dri/renderD129:rwm") {
+			t.Fatalf("%s %v: selected render node missing: %#v", tc.driver, tc.indexes, inj.Grant.DockerDeviceArgs())
 		}
 	}
 }
@@ -288,7 +288,7 @@ func TestHygonRuntimeInjectionForDriverKeepsRefusals(t *testing.T) {
 	p := testHygonProber(t, readHygonFixture(t))
 	p.seen.cards = map[int]proto.GPUInfo{1: {UUID: "GPU-b", PCIeBDF: "0000:19:00.0"}}
 	inj := p.RuntimeInjectionForDriver([]int{1}, "docker")
-	if !strings.Contains(inj.UnsupportedReason, "changed from PCI") || inj.Env != nil || inj.DockerArgs != nil {
+	if !strings.Contains(inj.UnsupportedReason, "changed from PCI") || inj.Env != nil || inj.Grant.DockerDeviceArgs() != nil {
 		t.Fatalf("refused injection = %+v", inj)
 	}
 }
@@ -297,7 +297,7 @@ func TestHygonRuntimeInjectionFailsClosedOnIndexDrift(t *testing.T) {
 	p := testHygonProber(t, readHygonFixture(t))
 	p.seen.cards = map[int]proto.GPUInfo{1: {UUID: "GPU-b", PCIeBDF: "0000:19:00.0"}}
 	inj := p.RuntimeInjection([]int{1})
-	if !strings.Contains(inj.UnsupportedReason, "changed from PCI") || len(inj.Env) != 0 || len(inj.DockerArgs) != 0 {
+	if !strings.Contains(inj.UnsupportedReason, "changed from PCI") || len(inj.Env) != 0 || len(inj.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("injection = %+v", inj)
 	}
 }

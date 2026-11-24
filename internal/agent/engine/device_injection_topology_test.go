@@ -24,7 +24,7 @@ func (p *topologyInjectionProber) RuntimeInjectionForLaunch(_ context.Context, r
 	if p.fail {
 		return gpu.RuntimeInjection{UnsupportedReason: "transport unavailable"}
 	}
-	return gpu.RuntimeInjection{DockerArgs: []string{"--device", "/dev/example-transport"}}
+	return gpu.RuntimeInjection{Grant: runtime.DeviceGrant{Devices: []runtime.Device{{Path: "/dev/example-transport"}}}}
 }
 
 func TestDeviceInjectionUsesTopologyExtensionWithoutVendorBranch(t *testing.T) {
@@ -37,12 +37,12 @@ func TestDeviceInjectionUsesTopologyExtensionWithoutVendorBranch(t *testing.T) {
 	if err := e.applyDeviceInjectionForLaunch(context.Background(), &ws, []int{3, 7}, "docker", 2); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(p.indexes, []int{3, 7}) || p.driver != "docker" || p.nodes != 2 || !reflect.DeepEqual(p.env, ws.Env) || !reflect.DeepEqual(ws.DockerArgs, []string{"--ipc=host", "--device", "/dev/example-transport"}) {
+	if !reflect.DeepEqual(p.indexes, []int{3, 7}) || p.driver != "docker" || p.nodes != 2 || !reflect.DeepEqual(p.env, ws.Env) || !reflect.DeepEqual(ws.DockerRunArgs(), []string{"--ipc=host", "--device", "/dev/example-transport"}) {
 		t.Fatalf("p=%+v ws=%+v", p, ws)
 	}
 	p.fail = true
-	before := append([]string(nil), ws.DockerArgs...)
-	if err := e.applyDeviceInjectionForLaunch(context.Background(), &ws, []int{3}, "docker", 2); err == nil || !reflect.DeepEqual(ws.DockerArgs, before) {
+	before := append([]string(nil), ws.DockerRunArgs()...)
+	if err := e.applyDeviceInjectionForLaunch(context.Background(), &ws, []int{3}, "docker", 2); err == nil || !reflect.DeepEqual(ws.DockerRunArgs(), before) {
 		t.Fatalf("failure changed workload: %+v, %v", ws, err)
 	}
 }
@@ -53,7 +53,7 @@ func TestDeviceInjectionAllowsEmptySelectionForBackendsThatSupportIt(t *testing.
 	p := &topologyInjectionProber{fail: true}
 	withExtension := NewWithProber(&headlessTestDriver{}, nil, slog.Default(), t.TempDir(), p)
 	ws := runtime.WorkloadSpec{DockerArgs: []string{"--ipc=host"}}
-	if err := withExtension.applyDeviceInjectionForLaunch(context.Background(), &ws, nil, "docker", 2); err != nil || len(ws.DockerArgs) != 1 || p.nodes != 0 {
+	if err := withExtension.applyDeviceInjectionForLaunch(context.Background(), &ws, nil, "docker", 2); err != nil || len(ws.DockerRunArgs()) != 1 || p.nodes != 0 {
 		t.Fatalf("empty selection reached extension: %+v %+v %v", p, ws, err)
 	}
 	e := NewWithProber(&headlessTestDriver{}, nil, slog.Default(), t.TempDir(), gpu.NoAccelerator{})
@@ -81,7 +81,7 @@ func (p *allInjectionProber) RuntimeInjectionForLaunch(ctx context.Context, req 
 	if err := ctx.Err(); err != nil {
 		return gpu.RuntimeInjection{UnsupportedReason: err.Error()}
 	}
-	return gpu.RuntimeInjection{DockerArgs: []string{"--device", "/dev/xdrdrv"}}
+	return gpu.RuntimeInjection{Grant: runtime.DeviceGrant{Devices: []runtime.Device{{Path: "/dev/xdrdrv"}}}}
 }
 func TestResolvedInjectionPrecedesOtherOptionalInterfaces(t *testing.T) {
 	p := &allInjectionProber{}
@@ -95,8 +95,8 @@ func TestResolvedInjectionPrecedesOtherOptionalInterfaces(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	before := append([]string(nil), ws.DockerArgs...)
-	if err := e.applyDeviceInjectionForLaunch(ctx, &ws, []int{1}, "docker", 2); err == nil || !reflect.DeepEqual(ws.DockerArgs, before) {
+	before := append([]string(nil), ws.DockerRunArgs()...)
+	if err := e.applyDeviceInjectionForLaunch(ctx, &ws, []int{1}, "docker", 2); err == nil || !reflect.DeepEqual(ws.DockerRunArgs(), before) {
 		t.Fatalf("cancel mutated workload: %v %+v", err, ws)
 	}
 }
@@ -131,12 +131,12 @@ func TestKunlunManagedSelectionUsesAtomicMergeAndPreservesResolvedRDMA(t *testin
 			"BKCL_ENABLE_IBGDA":  "0",
 			"BKCL_SOCKET_IFNAME": "bond0",
 		},
-		DockerArgs: []string{
-			"--runtime", "runc",
-			"--device", "/dev/xpu1:/dev/xpu1:rwm",
-			"--device", "/dev/xpuctrl:/dev/xpuctrl:rwm",
-			"--device", "/dev/xdrdrv",
-		},
+		Grant: runtime.DeviceGrant{RuntimeClass: "runc",
+			Devices: []runtime.Device{
+				{Path: "/dev/xpu1", Access: runtime.DeviceAccessAll},
+				{Path: "/dev/xpuctrl", Access: runtime.DeviceAccessAll},
+				{Path: "/dev/xdrdrv"},
+			}},
 	}
 	applyRuntimeInjection(&ws, inj, []int{1}, "docker")
 	want := []string{
@@ -148,8 +148,8 @@ func TestKunlunManagedSelectionUsesAtomicMergeAndPreservesResolvedRDMA(t *testin
 		"--device", "/dev/xpuctrl:/dev/xpuctrl:rwm",
 		"--device", "/dev/xdrdrv",
 	}
-	if !reflect.DeepEqual(ws.DockerArgs, want) {
-		t.Fatalf("merged args = %v, want %v", ws.DockerArgs, want)
+	if !reflect.DeepEqual(ws.DockerRunArgs(), want) {
+		t.Fatalf("merged args = %v, want %v", ws.DockerRunArgs(), want)
 	}
 	wantEnv := map[string]string{
 		"KEEP":               "value",

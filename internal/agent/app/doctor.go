@@ -471,7 +471,7 @@ func doctorWorkloadSpec(ctx context.Context, p gpu.Prober, driverName string, gp
 	for _, mount := range inj.Mounts {
 		mounts = append(mounts, runtime.Mount{Source: mount.Source, Target: mount.Target, ReadOnly: mount.ReadOnly})
 	}
-	return runtime.WorkloadSpec{GPUIndexes: indexes, Env: inj.Env, DockerArgs: inj.DockerArgs, Mounts: mounts}, nil
+	return runtime.WorkloadSpec{GPUIndexes: indexes, Env: inj.Env, Mounts: mounts, Grant: inj.Grant}, nil
 }
 
 // GrantDeviceAccess gives a non-root runtime user access to the device nodes

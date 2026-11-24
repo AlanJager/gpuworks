@@ -91,10 +91,10 @@ func TestNoAcceleratorReportsNothingAndRefusesDevices(t *testing.T) {
 	if p.DriverVersion(t.Context()) != "" || p.Topology(t.Context()) != "" {
 		t.Fatal("NoAccelerator reports a driver or topology")
 	}
-	if inj := p.RuntimeInjection(nil); inj.UnsupportedReason != "" || len(inj.Env) != 0 || len(inj.DockerArgs) != 0 {
+	if inj := p.RuntimeInjection(nil); inj.UnsupportedReason != "" || len(inj.Env) != 0 || len(inj.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("injection for no devices = %+v", inj)
 	}
-	if inj := p.RuntimeInjection([]int{0}); inj.UnsupportedReason != noAcceleratorReason || len(inj.DockerArgs) != 0 {
+	if inj := p.RuntimeInjection([]int{0}); inj.UnsupportedReason != noAcceleratorReason || len(inj.Grant.DockerDeviceArgs()) != 0 {
 		t.Fatalf("injection for a device = %+v", inj)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
+	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -190,7 +191,7 @@ func (p *AMDProber) runtimeInjectionForDriver(indexes []int, driver string, ctx 
 	}
 	seen := map[int]bool{}
 	renderSeen := map[string]bool{}
-	args := []string{"--device", "/dev/kfd:/dev/kfd:rwm"}
+	devices := []runtime.Device{{Path: "/dev/kfd", Access: runtime.DeviceAccessAll}}
 	// runveil binds the host's whole /dev and /sys, so HIP enumerates every
 	// card; ROCR_VISIBLE_DEVICES pins the selection by ROCm's stable GPU
 	// UUID (GPU-<unique_id>) rather than by an ordinal that depends on KFD
@@ -257,7 +258,7 @@ func (p *AMDProber) runtimeInjectionForDriver(indexes []int, driver string, ctx 
 		if err := p.requireCharacterDevice(path, expectedDev); err != nil {
 			return fail(path + " unavailable: " + err.Error())
 		}
-		args = append(args, "--device", path+":"+path+":rwm")
+		devices = append(devices, runtime.Device{Path: path, Access: runtime.DeviceAccessAll})
 	}
 	return RuntimeInjection{
 		ManagedSelection: &RuntimeSelectionCleanup{
@@ -265,8 +266,8 @@ func (p *AMDProber) runtimeInjectionForDriver(indexes []int, driver string, ctx 
 			DockerOptions: []string{"--gpus", "--runtime"},
 			DevicePaths:   p.dockerDevicePathsUnset(inventory),
 		},
-		DockerArgs: args,
-		Env:        amdPinnedEnv(pinned),
+		Grant: runtime.DeviceGrant{Devices: devices},
+		Env:   amdPinnedEnv(pinned),
 	}
 }
 
