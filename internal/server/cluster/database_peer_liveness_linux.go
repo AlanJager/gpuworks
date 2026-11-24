@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"gpuworks.ai/gpuworks/internal/server/cluster/storagetier"
 )
 
 // Clear blackholed member sessions with headroom inside the initial
@@ -16,12 +18,21 @@ import (
 // the database process applies the same policy to the ones it accepts.
 const databasePeerLivenessTimeout = 3 * time.Second
 
+// peerLivenessFor is the limit in a cluster that runs this storage tier. At
+// a tier whose election timeout reaches the limit, a connection would be
+// closed at the very moment the leader steps down for want of answers; the
+// limit grows with the tier so that the election decides first.
+func peerLivenessFor(tier storagetier.Tier) time.Duration {
+	return tier.Stretch(databasePeerLivenessTimeout)
+}
+
 func configureDatabasePeerSocket(conn net.Conn) error {
 	tcp, ok := conn.(*net.TCPConn)
 	if !ok || tcp == nil {
 		return errors.New("database transport requires a TCP connection")
 	}
-	if err := tcp.SetKeepAliveConfig(net.KeepAliveConfig{Enable: true, Idle: time.Second, Interval: time.Second, Count: int(databasePeerLivenessTimeout / time.Second)}); err != nil {
+	limit := peerLivenessFor(ProcessStorageTier())
+	if err := tcp.SetKeepAliveConfig(net.KeepAliveConfig{Enable: true, Idle: time.Second, Interval: time.Second, Count: int(limit / time.Second)}); err != nil {
 		return err
 	}
 	raw, err := tcp.SyscallConn()
@@ -30,7 +41,7 @@ func configureDatabasePeerSocket(conn net.Conn) error {
 	}
 	var socketErr error
 	controlErr := raw.Control(func(fd uintptr) {
-		socketErr = unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_USER_TIMEOUT, int(databasePeerLivenessTimeout/time.Millisecond))
+		socketErr = unix.SetsockoptInt(int(fd), unix.IPPROTO_TCP, unix.TCP_USER_TIMEOUT, int(limit/time.Millisecond))
 	})
 	return errors.Join(controlErr, socketErr)
 }

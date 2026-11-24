@@ -204,6 +204,25 @@ func (t Tier) RollsWith(other Tier) bool {
 	return 3*slow.HeartbeatInterval() <= fast.ElectionTimeout()
 }
 
+// Stretch lengthens a window that is fixed in the code to the timing the tier
+// runs at. Such windows (how long a leader observation stays fresh, how long
+// an unacknowledged peer connection is kept) were set against the
+// slow-storage election timing; a tier that elects later than that needs them
+// longer in proportion, or they end before an election can. A tier at
+// slow-storage's latency or below keeps the window as it is.
+func (t Tier) Stretch(window time.Duration) time.Duration {
+	return StretchFor(t.NetworkLatency(), window)
+}
+
+// StretchFor is Stretch for a database node run at this latency.
+func StretchFor(latency, window time.Duration) time.Duration {
+	base := profiles[SlowStorage].latency
+	if latency <= base {
+		return window
+	}
+	return time.Duration(float64(window) * float64(latency) / float64(base)).Round(time.Millisecond)
+}
+
 // Slower reports whether t waits longer than other before electing a leader.
 func (t Tier) Slower(other Tier) bool { return t.NetworkLatency() > other.NetworkLatency() }
 

@@ -178,3 +178,35 @@ func TestTimingsThatMayRunSideBySide(t *testing.T) {
 		}
 	}
 }
+
+// A fixed window keeps its length up to slow-storage's timing and grows in
+// proportion beyond it.
+func TestWindowsStretchWithALaterElection(t *testing.T) {
+	at := func(ms int) Tier {
+		tier, err := SlowStorage.WithLatency(time.Duration(ms) * time.Millisecond)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tier
+	}
+	for _, tc := range []struct {
+		tier Tier
+		want time.Duration
+	}{
+		{Standard, 3 * time.Second},
+		{at(20), 3 * time.Second},
+		{SlowStorage, 3 * time.Second},
+		{at(75), 4500 * time.Millisecond},
+		{at(100), 6 * time.Second},
+		{at(200), 12 * time.Second},
+	} {
+		if got := tc.tier.Stretch(3 * time.Second); got != tc.want || StretchFor(tc.tier.NetworkLatency(), 3*time.Second) != tc.want {
+			t.Errorf("%s: a 3 s window becomes %s, want %s", tc.tier, got, tc.want)
+		}
+		// The window never ends before the longest election of the tier
+		// can: two election timeouts.
+		if _, longest := tc.tier.ElectionTimer(); tc.tier.Stretch(3*time.Second) < longest {
+			t.Errorf("%s: the window %s is shorter than the longest election timer %s", tc.tier, tc.tier.Stretch(3*time.Second), longest)
+		}
+	}
+}

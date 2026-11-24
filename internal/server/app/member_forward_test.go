@@ -23,6 +23,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/cluster"
+	"gpuworks.ai/gpuworks/internal/server/cluster/storagetier"
 )
 
 // forwardCluster is a set of members joined by a real mutual-TLS member
@@ -469,5 +472,49 @@ level=INFO msg="business follows a new database leader" new_leader=7 this_member
 	}
 	if dropped != 1 {
 		t.Fatalf("sessions were closed %d times", dropped)
+	}
+}
+
+// A leader observation is acted on for three seconds at the tiers' own
+// timing and longer, in proportion, on a tier that elects later: at an
+// election timeout of 3 s a leader's death takes up to two of them to a new
+// leader, and three seconds of freshness would make every member refuse
+// business on every leader change.
+func TestALeaderObservationStaysFreshThroughAnElectionOfTheTier(t *testing.T) {
+	at := func(name string) storagetier.Tier {
+		tier, err := storagetier.Parse(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tier
+	}
+	for name, want := range map[string]time.Duration{
+		"standard": 3 * time.Second, "slow-storage": 3 * time.Second,
+		"slow-storage@100ms": 6 * time.Second, "slow-storage@200ms": 12 * time.Second,
+	} {
+		tier := at(name)
+		if got := memberLeaderFreshFor(tier); got != want {
+			t.Errorf("%s: fresh for %s, want %s", name, got, want)
+		}
+		if _, longest := tier.ElectionTimer(); memberLeaderFreshFor(tier) < longest+memberLeaderObserveInterval {
+			t.Errorf("%s: an observation is fresh for %s, shorter than the tier's longest election timer %s and one observation", name, memberLeaderFreshFor(tier), longest)
+		}
+	}
+	// The member acts on what the tier of its own process allows.
+	cluster.UseStorageTier(at("slow-storage@200ms"))
+	t.Cleanup(func() { cluster.UseStorageTier(storagetier.Standard) })
+	f := &memberForward{}
+	f.observed.Store(&memberLeaderObservation{leader: 2, at: time.Now().Add(-8 * time.Second)})
+	if leader, ok := f.observedLeader(); !ok || leader != 2 {
+		t.Fatalf("an observation 8 s old is not acted on at an election timeout of 3 s: %d, %v", leader, ok)
+	}
+	f.observed.Store(&memberLeaderObservation{leader: 2, at: time.Now().Add(-13 * time.Second)})
+	if _, ok := f.observedLeader(); ok {
+		t.Fatal("an observation 13 s old is acted on")
+	}
+	cluster.UseStorageTier(storagetier.SlowStorage)
+	f.observed.Store(&memberLeaderObservation{leader: 2, at: time.Now().Add(-4 * time.Second)})
+	if _, ok := f.observedLeader(); ok {
+		t.Fatal("an observation 4 s old is acted on at slow-storage's timing")
 	}
 }
