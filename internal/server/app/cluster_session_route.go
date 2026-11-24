@@ -203,6 +203,14 @@ const memberRouteMembershipAge = materialEligibilityWindow
 // more than a request of its own (the peer names the client it forwards for),
 // so this bound is half of what a member's own admission gets without an
 // answer; it still covers the stalls seen on slow storage several times over.
+//
+// On hosts whose storage stood still for 28 to 33 s this was too short:
+// requests that entered through a member that does not lead were refused
+// while the leader went on serving. Setting this to materialUnconfirmedLimit
+// gives the member route the same bound as business; what that costs is that
+// a member revoked during such a stall is accepted by its peers for up to
+// that long instead of half of it (the member that commits the revocation
+// drops the list at once, and so does a member whose own admission closes).
 const memberRouteUnansweredAge = 2 * materialEligibilityWindow
 
 // memberRouteKey picks a member key for one connection between members. It
