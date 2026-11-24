@@ -3,6 +3,7 @@ package app
 import (
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 )
 
@@ -32,5 +33,24 @@ func TestEveryRegisteredDriverIsBuiltUnderItsOwnName(t *testing.T) {
 		if _, ok := runtime.DriverNamed(name); !ok {
 			t.Fatalf("driver %q is built but not registered", name)
 		}
+	}
+}
+
+// The runtimes a vendor can be declared on and the drivers the agent has
+// are the same set of names. A driver added to one and not the other would
+// be a runtime no vendor can list, or a listed runtime nothing can run.
+func TestVendorRuntimesAreTheAgentsDrivers(t *testing.T) {
+	declared := map[string]bool{}
+	for _, name := range accelerator.Runtimes() {
+		declared[name] = true
+	}
+	for _, info := range runtime.Drivers() {
+		if !declared[info.Name] {
+			t.Errorf("driver %q cannot be listed by any vendor", info.Name)
+		}
+		delete(declared, info.Name)
+	}
+	for name := range declared {
+		t.Errorf("vendors can list runtime %q, which the agent has no driver for", name)
 	}
 }

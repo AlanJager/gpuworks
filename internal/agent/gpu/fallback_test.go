@@ -98,3 +98,37 @@ func TestNoAcceleratorReportsNothingAndRefusesDevices(t *testing.T) {
 		t.Fatalf("injection for a device = %+v", inj)
 	}
 }
+
+// With no control device anywhere, an installed tool names the vendor, and
+// NVIDIA's is believed only when no other vendor's is installed: a stale
+// nvidia-smi is commonly left on hosts of other vendors.
+func TestFallbackBelievesNVIDIASToolLast(t *testing.T) {
+	probers := defaultProbers()
+	none := func(string) bool { return false }
+	installed := func(names ...string) func(string) bool {
+		return func(name string) bool {
+			for _, n := range names {
+				if n == name {
+					return true
+				}
+			}
+			return false
+		}
+	}
+	for _, tc := range []struct {
+		tools []string
+		want  string
+	}{
+		{[]string{"nvidia-smi"}, accelerator.VendorNVIDIA},
+		{[]string{"nvidia-smi", "ppu-smi"}, accelerator.VendorPPU},
+		{[]string{"nvidia-smi", "npu-smi"}, accelerator.VendorAscend},
+		{[]string{"hy-smi", "nvidia-smi"}, accelerator.VendorHygon},
+		{[]string{"npu-smi", "hy-smi"}, accelerator.VendorHygon},
+		{[]string{"xpu-smi"}, ""},
+		{nil, ""},
+	} {
+		if got := fallbackProber(probers, none, installed(tc.tools...), none).Vendor(); got != tc.want {
+			t.Errorf("tools %v: fallback vendor = %q, want %q", tc.tools, got, tc.want)
+		}
+	}
+}

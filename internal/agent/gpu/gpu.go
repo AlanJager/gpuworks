@@ -275,29 +275,6 @@ func pciBusVendors(hostRoot string) (func(string) bool, func(string) bool) {
 	return func(vendor string) bool { scan(); return vendors[vendor] }, func(vendor string) bool { scan(); return managed[vendor] }
 }
 
-// vendorDeviceFiles are control devices a vendor's kernel driver creates.
-// When no backend can query its driver, the one whose devices exist is the
-// host's real vendor, and reporting it keeps the failure attributable (for
-// example "npu-smi: dcmi module initialize failed" instead of "0 NVIDIA GPUs").
-var vendorDeviceFiles = map[string][]string{
-	accelerator.VendorKunlunxin: {"/dev/xpuctrl"},
-	accelerator.VendorNVIDIA:    {"/dev/nvidiactl"},
-	accelerator.VendorAscend:    {"/dev/davinci_manager"},
-	accelerator.VendorPPU:       {"/dev/alixpu_ctl"},
-}
-
-// xpu-smi is deliberately absent: Intel uses that name too. Kunlun fallback
-// needs its control device or PCI identity, not an executable name alone.
-// vendorCommands are the CLIs each backend queries its driver with, in the
-// order fallbackProber trusts them: NVIDIA's last, because a stale
-// nvidia-smi is the one commonly left on hosts of other vendors.
-var vendorCommands = []struct{ vendor, command string }{
-	{accelerator.VendorAscend, "npu-smi"},
-	{accelerator.VendorHygon, "hy-smi"},
-	{accelerator.VendorPPU, "ppu-smi"},
-	{accelerator.VendorNVIDIA, "nvidia-smi"},
-}
-
 // deviceExists checks the host's live /dev when CLIs run there: a
 // privileged container's own /dev is a copy made at container start, so a
 // device node created afterward (a driver still initializing) would
@@ -328,21 +305,23 @@ func commandExists(name string) bool {
 // exactly the cards its operator needed to see. Every vendor's prober
 // lists the bus's cards when its CLI is missing (Roster).
 func fallbackProber(probers []Prober, exists, installed, onBus func(string) bool) Prober {
+	// A control device first: when no backend can query its driver, the one
+	// whose devices exist is the host's real vendor, and reporting it keeps
+	// the failure attributable (for example "npu-smi: dcmi module initialize
+	// failed" instead of "0 NVIDIA GPUs").
 	for _, p := range probers {
-		for _, path := range vendorDeviceFiles[p.Vendor()] {
+		for _, path := range accelerator.ControlDevices(p.Vendor()) {
 			if exists(path) {
 				return p
 			}
 		}
 	}
-	for _, c := range vendorCommands {
-		if !installed(c.command) {
-			continue
-		}
-		for _, p := range probers {
-			if p.Vendor() == c.vendor {
-				return p
-			}
+	// Then an installed tool, in the probers' order: NVIDIA's comes after
+	// the other vendors', because a stale nvidia-smi is the one commonly
+	// left on their hosts.
+	for _, p := range probers {
+		if command := accelerator.DetectCommand(p.Vendor()); command != "" && installed(command) {
+			return p
 		}
 	}
 	for _, p := range probers {
@@ -354,6 +333,10 @@ func fallbackProber(probers []Prober, exists, installed, onBus func(string) bool
 }
 
 func defaultProbers() []Prober {
+	// The order is also the one an installed tool is believed in when no
+	// tool answers (fallbackProber), so NVIDIA comes after every vendor
+	// whose hosts are commonly left with a stale nvidia-smi.
+	//
 	// Keep the existing automatic-probe order stable. AMD is an explicit
 	// choice on mixed-vendor nodes; inserting it before NVIDIA would silently
 	// change which vendor the single-prober agent reports in auto mode.
