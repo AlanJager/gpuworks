@@ -229,7 +229,13 @@ func TestRecordImageTransferBytesFinishesAPeerSyncWithTheSendersCount(t *testing
 				if row, _ := st.ImageNode(image.ID, node.ID); row.TransferredBytes != 5545984 {
 					t.Fatalf("before the sender's result the row holds %d, want the sample", row.TransferredBytes)
 				}
+				// The count changes no state, so it must not make the
+				// controller re-plan: the topic's generation stays.
+				before := st.Bus.Generation("image")
 				record()
+				if after := st.Bus.Generation("image"); after != before {
+					t.Fatalf("recording the count advanced the image generation from %d to %d", before, after)
+				}
 			}
 			// Nothing the node can still send for this transfer changes it.
 			for _, late := range []proto.ImageNodeStatus{sample, loaded} {
@@ -238,8 +244,8 @@ func TestRecordImageTransferBytesFinishesAPeerSyncWithTheSendersCount(t *testing
 				}
 			}
 			row, _ := st.ImageNode(image.ID, node.ID)
-			if row.State != ImageStatePresent || row.TransferredBytes != archive || row.SizeBytes != c.wantSizeBytes {
-				t.Fatalf("finished row = %+v, want present with %d of %d", row, archive, c.wantSizeBytes)
+			if row.State != ImageStatePresent || row.TransferredBytes != archive || row.SizeBytes != c.wantSizeBytes || row.RateBPS != 0 {
+				t.Fatalf("finished row = %+v, want present with %d of %d and no rate", row, archive, c.wantSizeBytes)
 			}
 		})
 	}
@@ -316,7 +322,10 @@ func TestApplyImageNodeStatusShowsAFallingCountOutsideAPeerCopy(t *testing.T) {
 
 // The sending side's count can land between the status writer's read of the
 // row and its update. The comparison is the update's own, so a sample that
-// was read against a lower count still cannot replace a higher one.
+// was read against a lower count still cannot replace a higher one. That
+// interleaving cannot be forced through ApplyImageNodeStatus, so the test
+// applies the expression the writer uses to a row read before the count
+// landed.
 func TestImageStatusCountComparesAgainstTheRowAsItIsAtTheUpdate(t *testing.T) {
 	st, err := Open("file:store_image_count_at_update?mode=memory&cache=shared", bus.New())
 	if err != nil {

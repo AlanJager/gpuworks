@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/bus"
 )
 
 // UpdateImageSyncProgressIfActive records progress only for the currently
@@ -56,7 +57,8 @@ func (s *Store) BeginDirectImageSync(imageID, nodeID, sourceNodeID uint, transfe
 // once that report has finished the row. So the finished row would keep the
 // last sample. This write is accepted in either order, on the row still
 // syncing under transferID or on the row that transferID finished as present,
-// and on no other. An archive size that was unknown becomes the count.
+// and on no other. An archive size that was unknown becomes the count, and
+// the rate is cleared: nothing is moving any more.
 func (s *Store) RecordImageTransferBytes(imageID, nodeID uint, transferID string, bytes int64) (bool, error) {
 	if transferID == "" || bytes <= 0 {
 		return false, nil
@@ -68,12 +70,14 @@ func (s *Store) RecordImageTransferBytes(imageID, nodeID uint, transferID string
 		Updates(map[string]any{
 			"transferred_bytes": bytes,
 			"size_bytes":        gorm.Expr("CASE WHEN size_bytes > 0 THEN size_bytes ELSE ? END", bytes),
+			"rate_bps":          int64(0),
 		})
 	if res.Error != nil {
 		return false, res.Error
 	}
 	if res.RowsAffected > 0 {
-		s.Bus.PublishChange("image", uintKey(imageID), "node")
+		// Only counters moved; the row's state is what it was.
+		s.Bus.PublishChange("image", uintKey(imageID), bus.ReasonProgress)
 	}
 	return res.RowsAffected > 0, nil
 }

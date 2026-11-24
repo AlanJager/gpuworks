@@ -375,10 +375,8 @@ func (h *Hub) trackImageTransfer(ctx context.Context, imageID, nodeID uint, tran
 		}
 		// The target agent reports present/failed only after its load returns.
 		// Keep the ledger syncing here so io.Copy completion is not mistaken for
-		// a successful image import.
-		persistProgress(bytes, true)
-		// The target can report its load before the write above, which is then
-		// dropped because the row is no longer syncing.
+		// a successful image import. The final count is written whether or not
+		// that report has already finished the row.
 		_, _ = h.store.RecordImageTransferBytes(imageID, nodeID, transferID, bytes)
 		h.awaitImageConfirmation(copyCtx, imageID, nodeID, transferID, "image archive transferred, but target docker load did not confirm completion", confirmationWait)
 	})
