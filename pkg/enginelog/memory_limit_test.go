@@ -9,6 +9,7 @@ import (
 // small for the engine to start.
 const (
 	vllmFreeMemoryLine  = "ValueError: Free memory on device cuda:0 (0.75/1.0 GiB) on startup is less than desired GPU memory utilization (0.9, 0.9 GiB). Decrease GPU memory utilization or reduce GPU memory used by other processes."
+	vllmKVCacheLine     = "ValueError: To serve at least one request with the models's max seq len (40960), (0.44 GiB KV cache is needed, which is larger than the available KV cache memory (0.09 GiB). Based on the available memory, the estimated maximum model length is 8368."
 	torchOOMElidedLine  = "torch.OutOfMemoryError: CUDA out of memory ... GPU 0 has a total capacity of 1024.00 MiB ..."
 	torchOOMLine        = "torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB. GPU 0 has a total capacity of 1024.00 MiB of which 0 bytes is free. Including non-PyTorch memory, this process has 1024.00 MiB memory in use."
 	ascendSetDeviceLine = "(EngineCore pid=179) RuntimeError: ExchangeDevice:../torch_npu/csrc/core/npu/sys_ctrl/npu_sys_ctrl.cpp:285 NPU function error: c10_npu::SetDevice(device), error code is 507033"
@@ -57,6 +58,27 @@ func TestMatchWithLimitReadsTheEnginesOwnReport(t *testing.T) {
 	}
 }
 
+// A KV cache that does not fit an instance with a dGPU memory limit is the
+// limit first (the reopened ticket: 1 GiB limit, 0.09 GiB left for 0.44 GiB)
+// and the KV cache second. Which fix applies the line cannot say: with a
+// generous limit and an oversized context it is the context, so the KV cache
+// cause and its advice stay, and no amount is stated for the limit.
+func TestAKVCacheThatDoesNotFitALimitedInstanceIsBothCauses(t *testing.T) {
+	oversized := "ValueError: To serve at least one request with the models's max seq len (4194304), (120.00 GiB KV cache is needed, which is larger than the available KV cache memory (28.00 GiB). Based on the available memory, the estimated maximum model length is 978000."
+	for line, limit := range map[string]int64{vllmKVCacheLine: testGiB, oversized: 40 * testGiB} {
+		got := MatchWithLimit([]string{"INFO start", line}, limit)
+		if len(got) != 2 || got[0].Code != CodeDGPUMemoryLimit || got[1].Code != CodeKVCacheInsufficient {
+			t.Fatalf("%q: causes = %+v, want the limit then the KV cache", line, got)
+		}
+		if c := got[0]; c.NeededBytes != 0 || c.LimitBytes != limit || c.Device != DeviceUnknown || !reflect.DeepEqual(c.Evidence, []Evidence{{Index: 1, Line: line}}) {
+			t.Fatalf("%q: limit cause = %+v", line, c)
+		}
+	}
+	if got, want := MatchWithLimit([]string{vllmKVCacheLine}, testGiB)[0].Fallback(), "dGPU memory limit reached: the engine could not get the memory it needs within its 1.0 GiB limit"; got != want {
+		t.Fatalf("fallback = %q, want %q", got, want)
+	}
+}
+
 // Without a dGPU memory limit the same lines are not a quota problem: a
 // whole card PyTorch ran out of is out of GPU memory, and the rest are what
 // they were before, unclassified (free memory below the utilization is
@@ -64,6 +86,7 @@ func TestMatchWithLimitReadsTheEnginesOwnReport(t *testing.T) {
 func TestTheSameLinesWithoutALimitAreNotTheLimit(t *testing.T) {
 	for line, want := range map[string]string{
 		vllmFreeMemoryLine:  "",
+		vllmKVCacheLine:     CodeKVCacheInsufficient,
 		torchOOMLine:        CodeCUDAOOM,
 		torchOOMElidedLine:  CodeCUDAOOM,
 		ascendMallocLine:    "",
@@ -87,6 +110,10 @@ func TestALimitIsNotBlamedForADeviceItDoesNotSize(t *testing.T) {
 		"ValueError: Free memory on device cuda:0 (0.75/23.69 GiB) on startup is less than desired GPU memory utilization (0.9, 21.32 GiB). Decrease GPU memory utilization or reduce GPU memory used by other processes.": "",
 		"torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB. GPU 0 has a total capacity of 23.69 GiB of which 3.25 MiB is free.":                                                                      CodeCUDAOOM,
 		"RuntimeError: CUDA error: out of memory": CodeCUDAOOM,
+		// 20 GiB left for the KV cache is not a device of 1 GiB.
+		"ValueError: To serve at least one request with the models's max seq len (1048576), (36.50 GiB KV cache is needed, which is larger than the available KV cache memory (20.00 GiB). Based on the available memory, the estimated maximum model length is 574000.": CodeKVCacheInsufficient,
+		// A KV cache shortage that states no amounts cannot be held against the limit.
+		"ValueError: The model's max seq len (32768) is larger than the maximum number of tokens that can be stored in KV cache (12000).": CodeKVCacheInsufficient,
 	} {
 		got := MatchWithLimit([]string{line}, testGiB)
 		switch {

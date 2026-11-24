@@ -35,6 +35,8 @@
       "updateFailed": "目录更新失败",
       "upload": "上传 manifest",
       "version": "已导入目录 {{version}}",
+      "conflicts": "已保留 {{n}} 个同名本地条目",
+      "conflictNames": "查看冲突的名称",
       "result": {
         "created": "新增 {{n}}",
         "updated": "更新 {{n}}",
@@ -151,6 +153,8 @@
   "nodeTable": {
     "localOption": "从节点本地文件导入…",
     "localAction": "导入本地文件…",
+    "sourceRuntime": "节点已有镜像",
+    "namespaceCopy": "已复制 {{size}}",
     "sourceLocal": "节点本地文件",
     "localLoading": "正在加载镜像…",
     "localDialog": {
@@ -228,6 +232,22 @@
     "collapse": "收起详情"
   },
   "import": {
+    "runtime": {
+      "title": "从计算节点已有镜像导入",
+      "namespace": "来源 namespace",
+      "target": "部署 namespace：{{ns}}。其他 namespace 的镜像会先复制过来。",
+      "list": "节点上的 {{runtime}} 镜像",
+      "name": "镜像名称",
+      "tag": "标签",
+      "size": "大小",
+      "scanning": "正在扫描节点镜像…",
+      "reading": "正在读取所选镜像的信息…",
+      "ready": "已读取镜像信息，可补齐缺失字段后添加。",
+      "empty": "此处没有可选的带标签镜像。",
+      "failed": "读取节点镜像失败，请刷新后重试。",
+      "copying": "已登记镜像，可在节点分布查看复制进度。",
+      "added": "已登记镜像。"
+    },
     "method": "导入方式",
     "local": {
       "noTags": "归档中未找到带 tag 的镜像引用，请手动填写。",

@@ -12,7 +12,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
-func (n *NodeRuntime) rpcImagePull(ctx context.Context, raw json.RawMessage) (any, error) {
+func (i *nodeImages) rpcImagePull(ctx context.Context, raw json.RawMessage) (any, error) {
 	var p proto.ImagePullParams
 	if err := json.Unmarshal(raw, &p); err != nil || strings.TrimSpace(p.EffectiveRef) == "" || strings.TrimSpace(p.CanonicalRef) == "" {
 		return nil, errors.New("image pull requires effective_ref and canonical_ref")
@@ -30,24 +30,24 @@ func (n *NodeRuntime) rpcImagePull(ctx context.Context, raw json.RawMessage) (an
 	go func() {
 		pullCtx, cancelPull := context.WithTimeout(context.WithoutCancel(ctx), imageOperationTimeout)
 		defer cancelPull()
-		unregister := n.imageOps.begin(p.CanonicalRef, p.TransferID, cancelPull)
+		unregister := i.ops.begin(p.CanonicalRef, p.TransferID, cancelPull)
 		defer unregister()
-		n.lockImageOperation(p.CanonicalRef, "pulling")
-		defer n.imagePullMu.Unlock()
-		n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "pulling", TransferID: p.TransferID, Message: "pulling " + p.EffectiveRef})
-		if !n.host.PullsImages() {
+		i.lockSlot(p.CanonicalRef, "pulling")
+		defer i.slot.Unlock()
+		i.deps.report(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "pulling", TransferID: p.TransferID, Message: "pulling " + p.EffectiveRef})
+		if !i.deps.pullsImages() {
 			// Every image is on a simulated node; asking a registry would
 			// reach the network from the real host.
-			n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "present", TransferID: p.TransferID, Message: "image present"})
+			i.deps.report(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "present", TransferID: p.TransferID, Message: "image present"})
 			return
 		}
-		d := n.runtimeDriver()
+		d := i.deps.driver()
 		if d == nil {
-			n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", TransferID: p.TransferID, Message: "runtime driver is unavailable"})
+			i.deps.report(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", TransferID: p.TransferID, Message: "runtime driver is unavailable"})
 			return
 		}
 		if len(p.Candidates) > 0 {
-			n.pullImageCandidates(pullCtx, d, p)
+			i.pullImageCandidates(pullCtx, d, p)
 			return
 		}
 		// Every pull line is offered to the egress gate, which keeps at most
@@ -55,23 +55,23 @@ func (n *NodeRuntime) rpcImagePull(ctx context.Context, raw json.RawMessage) (an
 		progress := imagepull.NewProgress()
 		if err := d.PullImage(pullCtx, p.EffectiveRef, func(line string) {
 			_, done, total, rate, _, _ := progress.Observe(line, time.Now())
-			n.reportImageNode(proto.ImageNodeStatus{
+			i.deps.report(proto.ImageNodeStatus{
 				ImageRef: p.CanonicalRef, State: "pulling", TransferID: p.TransferID, Message: line,
 				TransferredBytes: done, SizeBytes: total, RateBPS: rate,
 			})
 		}); err != nil {
-			n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", TransferID: p.TransferID, Message: imageOperationError(pullCtx, err)})
+			i.deps.report(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", TransferID: p.TransferID, Message: imageOperationError(pullCtx, err)})
 			return
 		}
 		tagger, ok := d.(interface {
 			TagImage(context.Context, string, string) error
 		})
 		if !ok {
-			n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", TransferID: p.TransferID, Message: "runtime does not support canonical image tagging"})
+			i.deps.report(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", TransferID: p.TransferID, Message: "runtime does not support canonical image tagging"})
 			return
 		}
 		if err := tagger.TagImage(pullCtx, p.EffectiveRef, p.CanonicalRef); err != nil {
-			n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", TransferID: p.TransferID, Message: "tag canonical image: " + err.Error()})
+			i.deps.report(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", TransferID: p.TransferID, Message: "tag canonical image: " + err.Error()})
 			return
 		}
 		status := proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "present", TransferID: p.TransferID, Message: "image pulled and tagged"}
@@ -80,7 +80,7 @@ func (n *NodeRuntime) rpcImagePull(ctx context.Context, raw json.RawMessage) (an
 				status.ImageID = inspected.ID
 			}
 		}
-		n.reportImageNode(status)
+		i.deps.report(status)
 	}()
 	return proto.ImagePullResult{State: "pulling", EffectiveRef: p.EffectiveRef, CanonicalRef: p.CanonicalRef}, nil
 }

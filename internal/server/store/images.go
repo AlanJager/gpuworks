@@ -723,7 +723,7 @@ func (s *Store) ApplyImageNodeStatus(imageID, nodeID uint, st proto.ImageNodeSta
 	if err != nil {
 		return err
 	}
-	if st.TransferID != "" && current.TransferID != "" && st.TransferID != current.TransferID {
+	if !runtimeImageReportMatches(current, st) || (st.TransferID != "" && current.TransferID != "" && st.TransferID != current.TransferID) {
 		return nil
 	}
 	if st.TransferID != "" && current.TransferID == "" && current.LastTransferID != "" && st.TransferID != current.LastTransferID {
@@ -757,7 +757,7 @@ func (s *Store) ApplyImageNodeStatus(imageID, nodeID uint, st proto.ImageNodeSta
 		updates["size_bytes"] = st.SizeBytes
 	}
 	if st.TransferredBytes > 0 {
-		updates["transferred_bytes"] = st.TransferredBytes
+		updates["transferred_bytes"] = imageStatusCount(current, st)
 	}
 	if st.RateBPS > 0 {
 		updates["rate_bps"] = st.RateBPS

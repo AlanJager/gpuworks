@@ -36,7 +36,7 @@ func TestImageExistsRPC(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			d := &presenceDriver{exists: tc.exists, err: tc.err}
 			n := NewNodeRuntime(slog.Default(), d, t.TempDir())
-			result, err := n.rpcImageExists(context.Background(), json.RawMessage(`{"image_ref":" uncatalogued:v1 "}`))
+			result, err := n.imageWork().rpcImageExists(context.Background(), json.RawMessage(`{"image_ref":" uncatalogued:v1 "}`))
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("err=%v", err)
 			}
@@ -48,8 +48,11 @@ func TestImageExistsRPC(t *testing.T) {
 			}
 		})
 	}
+	if _, err := (&NodeRuntime{}).imageWork().rpcImageExists(context.Background(), json.RawMessage(`{"image_ref":"repo/image:tag"}`)); err == nil {
+		t.Fatal("a node with no runtime answered image.exists")
+	}
 	for _, raw := range []string{`{}`, `null`, `{`, `{"image_ref":" "}`} {
-		if _, err := (&NodeRuntime{}).rpcImageExists(context.Background(), json.RawMessage(raw)); err == nil {
+		if _, err := (&NodeRuntime{}).imageWork().rpcImageExists(context.Background(), json.RawMessage(raw)); err == nil {
 			t.Fatalf("accepted %s", raw)
 		}
 	}

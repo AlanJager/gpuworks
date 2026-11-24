@@ -66,6 +66,39 @@ func TestStopReturnsWhileAZombieItCannotReapRemains(t *testing.T) {
 	}
 }
 
+// A worker that exits between a drain's reap and its look at the group still
+// has to be reaped before the stop returns: once its leader is gone it has
+// been handed to this process, and nothing else will ever wait for it. The
+// probe holds the reaper back until the drain has judged the group drained,
+// which is the order a loaded machine can produce on its own.
+func TestStopReapsAWorkerThatExitedAfterTheLastReap(t *testing.T) {
+	if !procShowsAllPIDs() {
+		t.Skip("unrestricted procfs required")
+	}
+	tr := &Tracker{Dir: t.TempDir(), KillWait: 100 * time.Millisecond}
+	_, zombiePID := startGroupWithZombie(t, tr)
+	judged := false
+	probe := groupProbe{
+		stillWorking: func(pgid int) bool {
+			working := groupStillWorking(pgid)
+			judged = judged || !working
+			return working
+		},
+		reap: func(pgid int) int {
+			if !judged {
+				return 0
+			}
+			return reapOrphans(pgid)
+		},
+	}
+	if err := tr.stop(context.Background(), "serving", 50*time.Millisecond, probe); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Kill(zombiePID, 0); err == nil {
+		t.Fatalf("the stop returned with its adopted worker %d still <defunct>", zombiePID)
+	}
+}
+
 func TestGroupLivenessAfterKill(t *testing.T) {
 	tests := []struct {
 		name    string

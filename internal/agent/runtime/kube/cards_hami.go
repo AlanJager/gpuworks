@@ -42,6 +42,7 @@ const (
 
 	resNVIDIAGPU       = "nvidia.com/gpu"
 	resNVIDIACores     = "nvidia.com/gpucores"
+	resNVIDIAMem       = "nvidia.com/gpumem"
 	resNVIDIAMemPct    = "nvidia.com/gpumem-percentage"
 	annNVIDIAUseUUID   = "nvidia.com/use-gpuuuid"
 	hamiAscendUsePart1 = "hami.io/use-"
@@ -245,8 +246,10 @@ func (h *hamiNode) verifyWhole(pod kubeapi.Pod, card string) error {
 }
 
 // hamiHoldPod is the hold pod for one card. Its limits ask for the whole
-// card; the pod goes through HAMi's scheduler and names the card.
-func (p *cardPool) hamiHoldPod(v cardView, name, card string) kubeapi.Pod {
+// card; the pod goes through HAMi's scheduler and names the card. An NVIDIA
+// card's memory is asked for as all of it by percentage, or with memAmount as
+// the amount HAMi registered for the card (createHAMiHold).
+func (p *cardPool) hamiHoldPod(v cardView, name, card string, memAmount bool) kubeapi.Pod {
 	pod := p.baseHoldPod(name)
 	pod.Spec.SchedulerName = v.hami.scheduler
 	pod.Spec.NodeSelector = map[string]string{labelHostname: v.hostname}
@@ -257,12 +260,33 @@ func (p *cardPool) hamiHoldPod(v cardView, name, card string) kubeapi.Pod {
 		model := strings.TrimPrefix(v.resource, "huawei.com/")
 		pod.Metadata.Annotations[hamiAscendUsePart1+model+hamiAscendUsePart2] = card
 	} else {
-		limits[resNVIDIACores], limits[resNVIDIAMemPct] = "100", "100"
+		limits[resNVIDIACores] = "100"
+		if memAmount {
+			limits[resNVIDIAMem] = strconv.Itoa(v.hami.cards[card].devmem)
+		} else {
+			limits[resNVIDIAMemPct] = "100"
+		}
 		pod.Metadata.Annotations[annNVIDIAUseUUID] = card
 	}
 	c := &pod.Spec.Containers[0]
 	c.Resources.Limits = limits
 	return pod
+}
+
+// createHAMiHold creates the hold pod for one card. The percentage is the
+// form to ask by: HAMi reads it against the card whatever its configuration,
+// while it multiplies an amount by its memoryFactor. A cluster whose
+// admission refuses a pod that states no amount (403) is asked again with the
+// amount, for an NVIDIA card.
+func (p *cardPool) createHAMiHold(ctx context.Context, v cardView, name, card string) error {
+	err := p.api.Create(ctx, kubeapi.PodsPath(p.ns), p.hamiHoldPod(v, name, card, false), nil)
+	if kubeapi.IsForbidden(err) && v.hami.vendor != accelerator.VendorAscend {
+		if again := p.api.Create(ctx, kubeapi.PodsPath(p.ns), p.hamiHoldPod(v, name, card, true), nil); again != nil {
+			return fmt.Errorf("%w; stating the card's memory as an amount: %w", err, again)
+		}
+		return nil
+	}
+	return err
 }
 
 // borrowHAMi takes the wanted cards that no hold pod holds: one hold pod each,
@@ -288,7 +312,7 @@ func (p *cardPool) borrowHAMi(ctx context.Context, v cardView, want []string) er
 	var names []string
 	for _, card := range cards {
 		name := holdPrefix + randomSuffix()
-		if err := p.api.Create(ctx, kubeapi.PodsPath(p.ns), p.hamiHoldPod(v, name, card), nil); err != nil {
+		if err := p.createHAMiHold(ctx, v, name, card); err != nil {
 			p.deletePods(ctx, names)
 			return fmt.Errorf("create hold pod: %w", err)
 		}

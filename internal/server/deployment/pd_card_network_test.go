@@ -69,7 +69,7 @@ func TestPDCardNetworkUsesMeasuredPortsNotCardNumbers(t *testing.T) {
 				t.Fatal(err)
 			}
 			run.Pairs = string(encoded)
-			warnings := pdCardNetworkWarnings(p, group, run, now)
+			warnings := pdCardNetworkWarnings(p, group, []store.NetworkTestRun{*run}, now)
 			if tc.want == "" {
 				if len(warnings) != 0 {
 					t.Fatalf("reachable ports warned: %+v", warnings)

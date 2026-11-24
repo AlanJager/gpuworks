@@ -19,6 +19,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog/seed"
 	"gpuworks.ai/gpuworks/internal/server/network"
 	"gpuworks.ai/gpuworks/internal/server/proxy"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -230,7 +231,7 @@ func testBenchmarkGGUFTokenizerViaAPI(t *testing.T, tc ggufTokenizerCase) {
 	// Use the production gateway, authentication and API router. Only the
 	// agent's TCP tunnel is replaced with a connection to the engine fixture.
 	st := f.admission.store
-	gateway := proxy.New(st, network.New(st, network.StoreCatalog{Store: st}), ggufTokenizerTunnel{
+	gateway := proxy.New(storeplane.New(st), network.New(st, network.StoreCatalog{Store: st}), ggufTokenizerTunnel{
 		node: f.node.UUID, addr: strings.TrimPrefix(engine.URL, "http://"),
 	}, nil, 0)
 	gateway.SetAccountant(proxy.NewAccountant(nil, nil))

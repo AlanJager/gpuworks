@@ -13,6 +13,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -38,7 +39,7 @@ func TestPlaygroundRealtimeStripsControlPlaneOriginBeforeUpstreamHandshake(t *te
 	if _, err := st.CreateInstance(&store.Instance{UUID: "realtime", DeploymentID: dep.ID, NodeID: node.ID, State: proto.InstRunning, APIPort: 30000, DesiredStateJSON: string(desired)}); err != nil {
 		t.Fatal(err)
 	}
-	p := New(st, storeNetworks(st), dialTestHub{addr: strings.TrimPrefix(upstream.URL, "http://")}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), dialTestHub{addr: strings.TrimPrefix(upstream.URL, "http://")}, nil, 0)
 	defer p.Close()
 	proxyServer := httptest.NewServer(p.PlaygroundHandler(nil))
 	defer proxyServer.Close()
@@ -89,7 +90,7 @@ func TestPlaygroundDiscoveryForwardsUnmodifiedSchemaAndRejectsWrites(t *testing.
 			t.Fatal(err)
 		}
 	}
-	p := New(st, storeNetworks(st), dialTestHub{addr: strings.TrimPrefix(upstream.URL, "http://")}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), dialTestHub{addr: strings.TrimPrefix(upstream.URL, "http://")}, nil, 0)
 	defer p.Close()
 	handler := p.PlaygroundHandler(nil)
 	for _, tc := range []struct {

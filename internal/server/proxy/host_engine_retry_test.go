@@ -15,6 +15,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -80,7 +81,7 @@ func TestGatewayRetriesBetweenHostReplicasThatAnswerUnderDifferentNames(t *testi
 		t.Fatal(err)
 	}
 	hub := &firstTunnelFailsHub{addr: strings.TrimPrefix(upstream.URL, "http://")}
-	p := New(st, storeNetworks(st), hub, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
+	p := New(storeplane.New(st), storeNetworks(st), hub, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
 	t.Cleanup(p.Close)
 
 	for _, stream := range []bool{false, true} {

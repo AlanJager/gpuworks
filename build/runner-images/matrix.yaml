@@ -42,10 +42,13 @@
 #                                        里面有文件）会失败
 #                 TORCHCODEC_SPEC        base 自带的 torchcodec 与本档 CUDA 不匹配时，
 #                                        用它显式替换成正确的构建
-#                 OMNI_PATCHES_NOT_APPLICABLE  昇腾 omni 档：本档 base 的 vllm_omni 上确实
+#                 OMNI_PATCHES_NOT_APPLICABLE  昇腾与 cuda omni 档：本档 base 的 vllm_omni 上确实
 #                                        不适用的 omni 补丁；声明过期会失败
 #                 VOXCPM_SPEC / DECORD_SPEC / MOVIEPY_SPEC  cuda vllm 线按档加装的模型专属依赖
 #                                        （见 cuda/Dockerfile.vllm「模型专属依赖」）
+#                 OMNI_OPENCV_ALIGN      "1" = cuda omni 档装 omni 时把 opencv-python 约束到 base 的 headless 版本
+#                 OTEL_SPECS             cuda vllm 线把 opentelemetry-* 对齐到这些 name==version 规格
+#                                        （见 cuda/Dockerfile.vllm「遥测栈对齐」）
 #                 DTK_VLLM_PATCHES       "1"=dtk vllm 档应用 patches/vllm_dtk/（严格应用，且要经得起
 #                                        重跑 vllm-hcu-apply-patches）；不传则不打
 #   requires    本档必须成立的断言，构建末尾与 verify.sh 都会检查，不过即失败：
@@ -192,6 +195,41 @@ items:
       （fugashi、unidic-lite，x86_64 另有 WeTextProcessing）；arm64 上没有 pynini 的 cp312 wheel，
       所以 IndexTTS 2.5 的中英文文本规范化只在 x86_64 上可用。r4 以 --no-deps 加装 voxcpm
       （VoxCPM2 用），并打 omni 补丁 003（MOSS-TTS-Realtime 参考音频编码的设备不一致）。
+
+  - id: cuda13.0-vllm-omni0.34.0
+    revision: r1
+    backend: cuda
+    engine: vllm
+    # amd64 only for r1: the SenseNova-U1.6 and other omni workloads target x86 GPU nodes, and the
+    # arm64 build (emulated, or on an arm64 builder) was not done for this revision.
+    platforms: [linux/amd64]
+    base: vllm/vllm-openai:v0.34.0
+    base_note: >-
+      vllm-omni 0.34.0 的官方 CUDA 镜像（vllm/vllm-omni:v0.34.0）就以
+      vllm/vllm-openai:v0.34.0 为 base，与本档同一原件；同仓库内大层去重。
+    args:
+      VLLM_OMNI_VERSION: "0.34.0"
+      MOONCAKE: "base"
+      ENGINE_VERSION: "0.34.0"
+      FRAMEWORK_VERSION: "13.0"
+      VOXCPM_SPEC: "voxcpm==2.0.3"
+      OMNI_OPENCV_ALIGN: "1"
+      OTEL_SPECS: "opentelemetry-api==1.45.2 opentelemetry-sdk==1.45.2 opentelemetry-exporter-otlp==1.45.2 opentelemetry-exporter-prometheus==0.66b2"
+      PATCHES_NOT_APPLICABLE: "001_wrong_dp_ray.patch 002_mooncake_prom_metrics.patch"
+      OMNI_PATCHES_NOT_APPLICABLE: "002_ming_audio_dsp_npu_cpu_fallback.diff 003_moss_realtime_ref_encoder_device.diff"
+    requires: [engine, engine_import, omni, indextts2_frontend, voxcpm, mooncake, overlays, audit]
+    note: >-
+      omni 档，vllm 0.34.0 + vllm-omni 0.34.0（transformers <5.23、accelerate 1.13.0、
+      diffusers 0.42.0），取舍同 cuda13.0-vllm-omni0.30.0，只有 amd64。给 vllm-omni 独家支持的
+      负载用（SenseNova-U1.6 的文生图与图像编辑、Qwen3-TTS 等），普通负载请用默认档。
+      与 0.30 档的配方差异：opentelemetry-* 整套对齐到 1.45.2（base 的 1.40.0 低于 vllm 与
+      vllm-omni 的 >=1.45.1），base 自带 lmcache 的 <=1.40.0 钉子因此成为声明过的 pip check 冲突；
+      opencv-python 约束到 base 的 opencv-python-headless 版本；补丁里 vllm 的 001、002，omni 的
+      002、003 在 0.34 上不适用或上游已修，按 PATCHES_NOT_APPLICABLE / OMNI_PATCHES_NOT_APPLICABLE
+      声明（原因见 README 补丁表），omni 的 001（--omni 旁路）已重新定位。与上游官方 omni 镜像
+      的差异：不重编 LMCache，不另装 cuDNN 9.25.1 预加载（上游为 Qwen-Image 2.1 的像素门加的）。
+      真机：RTX 4090 与 RTX 3090 上 SenseNova-U1.6 的 FP8 文生图与编辑通过，不带 --omni 时普通
+      文本模型照常起服务。
 
   - id: cuda13.0-sglang0.5.21
     revision: r2
@@ -871,3 +909,466 @@ items:
       ggml-org/llama.cpp PR #32694），b12611 修正循环层共享 slot 时漏掉逐专家 scale
       （#32704）；Inkling 2 Mini 的 Mac 模板用这档。
       构建：build/host-envs/build.sh llama.cpp b12631 r1。
+
+# Exact tags from the public SWR runner repository, excluding tags already
+# catalogued in items. New imports default to disabled. Historical tags and
+# moving aliases are listed as published, along with host environment packages.
+published:
+  - id: cann8.5-910b-sglang0.5.12.post1
+    tag: cann8.5-910b-sglang0.5.12.post1
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann8.5-910b-vllm0.18.0
+    tag: cann8.5-910b-vllm0.18.0
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann8.5-a3-sglang0.5.12.post1
+    tag: cann8.5-a3-sglang0.5.12.post1
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann8.5-vllm0.18.0
+    tag: cann8.5-vllm0.18.0-amd64-omni-slot14
+    platforms: [linux/amd64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cann8.5-vllm0.18.0
+    tag: cann8.5-vllm0.18.0-amd64-slot14
+    platforms: [linux/amd64]
+  - id: cann8.5-vllm0.18.0
+    tag: cann8.5-vllm0.18.0-arm64-omni-slot14
+    platforms: [linux/arm64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cann8.5-vllm0.18.0
+    tag: cann8.5-vllm0.18.0-arm64-slot14
+    platforms: [linux/arm64]
+  - id: cann9.0-910b-sglang0.5.18
+    tag: cann9.0-910b-sglang0.5.18
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann9.0-910b-vllm-omni0.23.0rc1
+    tag: cann9.0-910b-vllm-omni0.23.0rc1
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann9.0-a3-sglang0.5.18
+    tag: cann9.0-a3-sglang0.5.18
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann9.0-a3-vllm-omni0.23.0rc1
+    tag: cann9.0-a3-vllm-omni0.23.0rc1
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann9.0-sglang0.5.15.post1
+    tag: cann9.0-sglang0.5.15.post1-amd64-diffusion-slot16
+    platforms: [linux/amd64]
+  - id: cann9.0-sglang0.5.15.post1
+    tag: cann9.0-sglang0.5.15.post1-arm64-diffusion-slot16
+    platforms: [linux/arm64]
+  - id: cann9.0-sglang0.5.18
+    tag: cann9.0-sglang0.5.18-amd64-diffusion-slot15
+    platforms: [linux/amd64]
+  - id: cann9.0-sglang0.5.18
+    tag: cann9.0-sglang0.5.18-arm64-diffusion-slot15
+    platforms: [linux/arm64]
+  - id: cann9.1-310p-vllm0.27.1rc1
+    tag: cann9.1-310p-vllm0.27.1rc1
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann9.1-910b-vllm-omni0.30.0
+    tag: cann9.1-910b-vllm-omni0.30.0
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann9.1-910b-vllm-omni0.32.0
+    tag: cann9.1-910b-vllm-omni0.32.0-r2-linux-amd64
+    platforms: [linux/amd64]
+    note: Review deployment compatibility before enabling.
+  - id: cann9.1-910b-vllm0.26.0rc1
+    tag: cann9.1-910b-vllm0.26.0rc1
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann9.1-910b-vllm0.27.1rc1
+    tag: cann9.1-910b-vllm0.27.1rc1
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann9.1-950-vllm-omni0.30.0
+    tag: cann9.1-950-vllm-omni0.30.0
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann9.1-950-vllm0.27.1rc1
+    tag: cann9.1-950-vllm0.27.1rc1
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann9.1-a3-sglang0.5.23
+    tag: cann9.1-a3-sglang0.5.23-r1-amd64
+    platforms: [linux/amd64]
+    note: Review deployment compatibility before enabling.
+  - id: cann9.1-a3-sglang0.5.23
+    tag: cann9.1-a3-sglang0.5.23-r1-arm64
+    platforms: [linux/arm64]
+    note: Review deployment compatibility before enabling.
+  - id: cann9.1-a3-vllm-omni0.30.0
+    tag: cann9.1-a3-vllm-omni0.30.0
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann9.1-a3-vllm-omni0.32.0
+    tag: cann9.1-a3-vllm-omni0.32.0-r2-linux-amd64
+    platforms: [linux/amd64]
+    note: Review deployment compatibility before enabling.
+  - id: cann9.1-a3-vllm0.26.0rc1
+    tag: cann9.1-a3-vllm0.26.0rc1
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann9.1-a3-vllm0.27.1rc1
+    tag: cann9.1-a3-vllm0.27.1rc1
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann9.1-vllm0.23.0
+    tag: cann9.1-vllm0.23.0-amd64-omni-slot13
+    platforms: [linux/amd64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cann9.1-vllm0.23.0
+    tag: cann9.1-vllm0.23.0-amd64-slot13
+    platforms: [linux/amd64]
+  - id: cann9.1-vllm0.23.0
+    tag: cann9.1-vllm0.23.0-arm64-omni-slot13
+    platforms: [linux/arm64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cann9.1-vllm0.23.0
+    tag: cann9.1-vllm0.23.0-arm64-slot13
+    platforms: [linux/arm64]
+  - id: cann9.2-910b-vllm0.30.0
+    tag: cann9.2-910b-vllm0.30.0-r1-amd64
+    platforms: [linux/amd64]
+    note: Review deployment compatibility before enabling.
+  - id: cann9.2-910b-vllm0.30.0
+    tag: cann9.2-910b-vllm0.30.0-r1-arm64
+    platforms: [linux/arm64]
+    note: Review deployment compatibility before enabling.
+  - id: cann9.2-910b-vllm0.32.0rc1
+    tag: cann9.2-910b-vllm0.32.0rc1-r1-amd64
+    platforms: [linux/amd64]
+    engine_version: 0.32.0
+    note: vLLM 0.32.0 with vLLM-Ascend 0.32.0rc1 and CANN 9.2.1. NPU inference pending.
+  - id: cann9.2-910b-vllm0.32.0rc1
+    tag: cann9.2-910b-vllm0.32.0rc1-r1-arm64
+    platforms: [linux/arm64]
+    engine_version: 0.32.0
+    note: vLLM 0.32.0 with vLLM-Ascend 0.32.0rc1 and CANN 9.2.1. NPU inference pending.
+  - id: cann9.2-a3-vllm0.30.0
+    tag: cann9.2-a3-vllm0.30.0-r1-amd64
+    platforms: [linux/amd64]
+    note: Review deployment compatibility before enabling.
+  - id: cann9.2-a3-vllm0.30.0
+    tag: cann9.2-a3-vllm0.30.0-r1-arm64
+    platforms: [linux/arm64]
+    note: Review deployment compatibility before enabling.
+  - id: cann9.2-a3-vllm0.32.0rc1
+    tag: cann9.2-a3-vllm0.32.0rc1-r1-amd64
+    platforms: [linux/amd64]
+    engine_version: 0.32.0
+    note: vLLM 0.32.0 with vLLM-Ascend 0.32.0rc1 and CANN 9.2.1. NPU inference pending.
+  - id: cann9.2-a3-vllm0.32.0rc1
+    tag: cann9.2-a3-vllm0.32.0rc1-r1-arm64
+    platforms: [linux/arm64]
+    engine_version: 0.32.0
+    note: vLLM 0.32.0 with vLLM-Ascend 0.32.0rc1 and CANN 9.2.1. NPU inference pending.
+  - id: cuda12.8-sglang0.5.8.post1
+    tag: cuda12.8-sglang0.5.8.post1-amd64-diffusion-slot12
+    platforms: [linux/amd64]
+  - id: cuda12.8-sglang0.5.8.post1
+    tag: cuda12.8-sglang0.5.8.post1-arm64-diffusion-slot12
+    platforms: [linux/arm64]
+  - id: cuda12.8-sglang0.5.9
+    tag: cuda12.8-sglang0.5.9-amd64-diffusion-slot11
+    platforms: [linux/amd64]
+  - id: cuda12.8-sglang0.5.9
+    tag: cuda12.8-sglang0.5.9-arm64-diffusion-slot11
+    platforms: [linux/arm64]
+  - id: cuda12.8-systemone1.0
+    tag: cuda12.8-systemone1.0-r1
+    platforms: [linux/amd64]
+  - id: cuda12.8-v100-vllm1cat1.5.1
+    tag: cuda12.8-v100-vllm1cat1.5.1-r1
+    platforms: [linux/amd64]
+  - id: cuda12.8-v100-vllm1cat1.5.3
+    tag: cuda12.8-v100-vllm1cat1.5.3-r1-linux-amd64
+    platforms: [linux/amd64]
+    note: NVIDIA Volta SM70 only. Select through a V100-specific template.
+  - id: cuda12.8-vllm0.16.0
+    tag: cuda12.8-vllm0.16.0-amd64-omni-slot10
+    platforms: [linux/amd64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cuda12.8-vllm0.16.0
+    tag: cuda12.8-vllm0.16.0-amd64-slot10
+    platforms: [linux/amd64]
+  - id: cuda12.8-vllm0.16.0
+    tag: cuda12.8-vllm0.16.0-arm64-omni-slot10
+    platforms: [linux/arm64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cuda12.8-vllm0.16.0
+    tag: cuda12.8-vllm0.16.0-arm64-slot10
+    platforms: [linux/arm64]
+  - id: cuda12.8-vllm0.17.1
+    tag: cuda12.8-vllm0.17.1-amd64-omni-slot09
+    platforms: [linux/amd64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cuda12.8-vllm0.17.1
+    tag: cuda12.8-vllm0.17.1-amd64-slot09
+    platforms: [linux/amd64]
+  - id: cuda12.8-vllm0.17.1
+    tag: cuda12.8-vllm0.17.1-arm64-omni-slot09
+    platforms: [linux/arm64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cuda12.8-vllm0.17.1
+    tag: cuda12.8-vllm0.17.1-arm64-slot09
+    platforms: [linux/arm64]
+  - id: cuda12.9-sglang0.5.18
+    tag: cuda12.9-sglang0.5.18
+    platforms: [linux/amd64, linux/arm64]
+  - id: cuda12.9-sglang0.5.18
+    tag: cuda12.9-sglang0.5.18-amd64-diffusion-slot08
+    platforms: [linux/amd64]
+  - id: cuda12.9-sglang0.5.18
+    tag: cuda12.9-sglang0.5.18-arm64-diffusion-slot08
+    platforms: [linux/arm64]
+  - id: cuda12.9-sglang0.5.19
+    tag: cuda12.9-sglang0.5.19-amd64-diffusion-slot07
+    platforms: [linux/amd64]
+  - id: cuda12.9-sglang0.5.19
+    tag: cuda12.9-sglang0.5.19-arm64-diffusion-slot07
+    platforms: [linux/arm64]
+  - id: cuda12.9-vllm0.28.0
+    tag: cuda12.9-vllm0.28.0-amd64-omni-slot06
+    platforms: [linux/amd64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cuda12.9-vllm0.28.0
+    tag: cuda12.9-vllm0.28.0-amd64-slot06
+    platforms: [linux/amd64]
+  - id: cuda12.9-vllm0.28.0
+    tag: cuda12.9-vllm0.28.0-arm64-omni-slot06
+    platforms: [linux/arm64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cuda12.9-vllm0.28.0
+    tag: cuda12.9-vllm0.28.0-arm64-slot06
+    platforms: [linux/arm64]
+  - id: cuda12.9-vllm0.29.0
+    tag: cuda12.9-vllm0.29.0-amd64-omni-slot05
+    platforms: [linux/amd64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cuda12.9-vllm0.29.0
+    tag: cuda12.9-vllm0.29.0-amd64-slot05
+    platforms: [linux/amd64]
+  - id: cuda12.9-vllm0.29.0
+    tag: cuda12.9-vllm0.29.0-arm64-omni-slot05
+    platforms: [linux/arm64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cuda12.9-vllm0.29.0
+    tag: cuda12.9-vllm0.29.0-arm64-slot05
+    platforms: [linux/arm64]
+  - id: cuda12.9-vllm0.31.0
+    tag: cuda12.9-vllm0.31.0
+    platforms: [linux/amd64, linux/arm64]
+  - id: cuda13.0-sglang0.5.18
+    tag: cuda13.0-sglang0.5.18-amd64-diffusion-slot04
+    platforms: [linux/amd64]
+  - id: cuda13.0-sglang0.5.18
+    tag: cuda13.0-sglang0.5.18-arm64-diffusion-slot04
+    platforms: [linux/arm64]
+  - id: cuda13.0-sglang0.5.19
+    tag: cuda13.0-sglang0.5.19-amd64-diffusion-slot03
+    platforms: [linux/amd64]
+  - id: cuda13.0-sglang0.5.19
+    tag: cuda13.0-sglang0.5.19-arm64-diffusion-slot03
+    platforms: [linux/arm64]
+  - id: cuda13.0-sglang0.5.21
+    tag: cuda13.0-sglang0.5.21
+    platforms: [linux/amd64, linux/arm64]
+  - id: cuda13.0-sglang0.5.21
+    tag: cuda13.0-sglang0.5.21-r3
+    platforms: [linux/amd64, linux/arm64]
+  - id: cuda13.0-sglang0.5.23
+    tag: cuda13.0-sglang0.5.23-r2-amd64
+    platforms: [linux/amd64]
+    note: Review deployment compatibility before enabling.
+  - id: cuda13.0-sglang0.5.23
+    tag: cuda13.0-sglang0.5.23-r2-arm64
+    platforms: [linux/arm64]
+    note: Review deployment compatibility before enabling.
+  - id: cuda13.0-strata0.1.38
+    tag: cuda13.0-strata0.1.38-amd64-slot31-r5
+    platforms: [linux/amd64]
+  - id: cuda13.0-strata0.1.38
+    tag: cuda13.0-strata0.1.38-r5
+    platforms: [linux/amd64]
+  - id: cuda13.0-strata0.1.59
+    tag: cuda13.0-strata0.1.59-deepseek41-amd64-r4
+    platforms: [linux/amd64]
+  - id: cuda13.0-strata0.1.59
+    tag: cuda13.0-strata0.1.59-deepseek41-amd64-r5
+    platforms: [linux/amd64]
+    note: DeepSeek 4.1 GGUF. Select through a Strata Serve Adapter template.
+  - id: cuda13.0-strata0.1.59
+    tag: cuda13.0-strata0.1.59-deepseek41-amd64-slot32-r4
+    platforms: [linux/amd64]
+  - id: cuda13.0-vllm-omni0.30.0
+    tag: cuda13.0-vllm-omni0.30.0
+    platforms: [linux/amd64, linux/arm64]
+  - id: cuda13.0-vllm-omni0.30.0
+    tag: cuda13.0-vllm-omni0.30.0-r2
+    platforms: [linux/amd64, linux/arm64]
+  - id: cuda13.0-vllm-omni0.30.0
+    tag: cuda13.0-vllm-omni0.30.0-r3
+    platforms: [linux/amd64, linux/arm64]
+  - id: cuda13.0-vllm-omni0.32.0
+    tag: cuda13.0-vllm-omni0.32.0-r2-linux-amd64
+    platforms: [linux/amd64]
+    note: Review deployment compatibility before enabling.
+  - id: cuda13.0-vllm-omni0.32.0
+    tag: cuda13.0-vllm-omni0.32.0-r2-linux-arm64
+    platforms: [linux/arm64]
+    note: Review deployment compatibility before enabling.
+  - id: cuda13.0-vllm0.28.0
+    tag: cuda13.0-vllm0.28.0-amd64-omni-slot02
+    platforms: [linux/amd64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cuda13.0-vllm0.28.0
+    tag: cuda13.0-vllm0.28.0-amd64-slot02
+    platforms: [linux/amd64]
+  - id: cuda13.0-vllm0.28.0
+    tag: cuda13.0-vllm0.28.0-arm64-omni-slot02
+    platforms: [linux/arm64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cuda13.0-vllm0.28.0
+    tag: cuda13.0-vllm0.28.0-arm64-slot02
+    platforms: [linux/arm64]
+  - id: cuda13.0-vllm0.29.0
+    tag: cuda13.0-vllm0.29.0-amd64-omni-slot01
+    platforms: [linux/amd64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cuda13.0-vllm0.29.0
+    tag: cuda13.0-vllm0.29.0-amd64-slot01
+    platforms: [linux/amd64]
+  - id: cuda13.0-vllm0.29.0
+    tag: cuda13.0-vllm0.29.0-arm64-omni-slot01
+    platforms: [linux/arm64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: cuda13.0-vllm0.29.0
+    tag: cuda13.0-vllm0.29.0-arm64-slot01
+    platforms: [linux/arm64]
+  - id: cuda13.0-vllm0.30.0
+    tag: cuda13.0-vllm0.30.0
+    platforms: [linux/amd64, linux/arm64]
+  - id: cuda13.0-vllm0.30.0
+    tag: cuda13.0-vllm0.30.0-r2
+    platforms: [linux/amd64, linux/arm64]
+  - id: cuda13.0-vllm0.30.0
+    tag: cuda13.0-vllm0.30.0-r3
+    platforms: [linux/amd64, linux/arm64]
+  - id: cuda13.0-vllm0.33.0
+    tag: cuda13.0-vllm0.33.0-r1-amd64
+    platforms: [linux/amd64]
+  - id: cuda13.0-vllm0.34.0
+    tag: cuda13.0-vllm0.34.0-r1-amd64
+    platforms: [linux/amd64]
+    note: Review deployment compatibility before enabling.
+  - id: cuda13.0-vllm0.34.0
+    tag: cuda13.0-vllm0.34.0-r1-arm64
+    platforms: [linux/arm64]
+    note: Review deployment compatibility before enabling.
+  - id: dtk26.04-sglang0.5.12
+    tag: dtk26.04-sglang0.5.12
+    platforms: [linux/amd64]
+  - id: dtk26.04-sglang0.5.12
+    tag: dtk26.04-sglang0.5.12-amd64-diffusion-slot20
+    platforms: [linux/amd64]
+  - id: dtk26.04-vllm0.18.1
+    tag: dtk26.04-vllm0.18.1
+    platforms: [linux/amd64]
+  - id: dtk26.04-vllm0.18.1
+    tag: dtk26.04-vllm0.18.1-amd64-slot18
+    platforms: [linux/amd64]
+  - id: dtk26.04-vllm0.21.0
+    tag: dtk26.04-vllm0.21.0
+    platforms: [linux/amd64]
+  - id: dtk26.04-vllm0.21.0
+    tag: dtk26.04-vllm0.21.0-r1
+    platforms: [linux/amd64]
+  - id: dtk26.04-vllm0.21.0
+    tag: dtk26.04-vllm0.21.0-r2
+    platforms: [linux/amd64]
+  - id: dtk26.04-vllm0.21.0
+    tag: dtk26.04-vllm0.21.0-r3
+    platforms: [linux/amd64]
+  - id: hggc13.0-sglang0.5.10
+    tag: hggc13.0-sglang0.5.10-amd64-diffusion-slot24
+    platforms: [linux/amd64]
+  - id: hggc13.0-sglang0.5.12
+    tag: hggc13.0-sglang0.5.12-amd64-diffusion-slot23
+    platforms: [linux/amd64]
+  - id: hggc13.0-sglang0.5.13
+    tag: hggc13.0-sglang0.5.13
+    platforms: [linux/amd64]
+  - id: hggc13.0-sglang0.5.13
+    tag: hggc13.0-sglang0.5.13-r2
+    platforms: [linux/amd64]
+  - id: hggc13.0-vllm0.20.1
+    tag: hggc13.0-vllm0.20.1-amd64-omni-slot22
+    platforms: [linux/amd64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: hggc13.0-vllm0.20.1
+    tag: hggc13.0-vllm0.20.1-amd64-slot22
+    platforms: [linux/amd64]
+  - id: hggc13.0-vllm0.23.0
+    tag: hggc13.0-vllm0.23.0
+    platforms: [linux/amd64]
+  - id: hggc13.0-vllm0.23.0
+    tag: hggc13.0-vllm0.23.0-amd64-omni-slot21
+    platforms: [linux/amd64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: hggc13.0-vllm0.23.0
+    tag: hggc13.0-vllm0.23.0-legacy-clean-r1-linux-amd64
+    platforms: [linux/amd64]
+    note: Review deployment compatibility before enabling.
+  - id: metal15.0-mlx-vlm0.7.8
+    tag: metal15.0-mlx-vlm0.7.8-r1
+    platforms: [darwin/arm64]
+  - id: metal15.0-vllm0.31.0
+    tag: metal15.0-vllm0.31.0-r1
+    platforms: [darwin/arm64]
+  - id: rocm10.0-sglang0.5.23
+    tag: rocm10.0-sglang0.5.23-mi30x-r3-linux-amd64
+    platforms: [linux/amd64]
+    note: AMD MI30x (gfx942) only. Includes SGLang Diffusion.
+  - id: rocm10.0-sglang0.5.23
+    tag: rocm10.0-sglang0.5.23-mi35x-r3-linux-amd64
+    platforms: [linux/amd64]
+    note: AMD MI35x (gfx950) only. Includes SGLang Diffusion.
+  - id: rocm10.0-vllm0.33.0
+    tag: rocm10.0-vllm0.33.0-r2-linux-amd64
+    platforms: [linux/amd64]
+    note: Review deployment compatibility before enabling.
+  - id: rocm7.2-vllm0.33.0
+    tag: rocm7.2-vllm0.33.0-r2-linux-amd64
+    platforms: [linux/amd64]
+    note: Review deployment compatibility before enabling.
+  - id: rocm7.2.3-vllm0.29.0
+    tag: rocm7.2.3-vllm0.29.0-amd64-slot29
+    platforms: [linux/amd64]
+  - id: rocm7.2.3-vllm0.30.0
+    tag: rocm7.2.3-vllm0.30.0
+    platforms: [linux/amd64]
+  - id: rocm7.2.4-sglang0.5.21.dev550
+    tag: rocm7.2.4-sglang0.5.21.dev550-g4142235c2-amd64-slot30
+    platforms: [linux/amd64]
+  - id: xre-sglang0.5.5.post3
+    tag: xre-sglang0.5.5.post3-amd64-diffusion-slot27
+    platforms: [linux/amd64]
+  - id: xre-vllm0.1.dev3
+    tag: xre-vllm0.1.dev3-amd64-omni-slot25
+    platforms: [linux/amd64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  - id: xre-vllm0.1.dev3
+    tag: xre-vllm0.1.dev3-amd64-slot25
+    platforms: [linux/amd64]
+  - id: xre-vllm0.25.1
+    tag: xre-vllm0.25.1-amd64-omni-slot26
+    platforms: [linux/amd64]
+    note: Legacy Omni tag. The label records the base vLLM version.
+  # Same SWR manifest as xre5.0.21.46-vllm0.25.1-r1 (sha256:33d94768ff9a895bdc8874cae09940aede1b0e88218e52ed52231b8f86a91beb).
+  - id: xre5.0.21.46-vllm0.25.1
+    tag: xre-vllm0.25.1-amd64-slot26
+    alias: true
+    platforms: [linux/amd64]
+  - id: xre5.37.1.0-sglang0.5.18
+    tag: xre5.37.1.0-sglang0.5.18-amd64-diffusion-slot27
+    platforms: [linux/amd64]
+  - id: xre5.37.1.0-sglang0.5.18
+    tag: xre5.37.1.0-sglang0.5.18-amd64-diffusion-slot28
+    platforms: [linux/amd64]
+  - id: cuda12.8-v100-vllm1cat1.5.1
+    tag: zz-pilot-v100-1cat-r1
+    platforms: [linux/amd64]
+    alias: true
+    note: Historical Volta pilot alias. NVIDIA SM70 only.

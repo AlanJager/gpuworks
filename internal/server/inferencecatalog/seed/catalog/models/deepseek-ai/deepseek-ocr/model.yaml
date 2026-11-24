@@ -140,6 +140,7 @@ specs:
   - half
   env:
     TRITON_ALLOW_NON_CONSTEXPR_GLOBALS: '1'
+    VLLM_USE_V2_MODEL_RUNNER: '0'
   api:
     health_endpoint: /health
     operations:

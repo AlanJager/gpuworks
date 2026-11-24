@@ -137,7 +137,7 @@ func (s *fakeSched) admitHAMi(p *kubeapi.Pod, limits map[string]string) {
 	if v := limits[resNVIDIACores]; v != "" {
 		cores, _ = strconv.Atoi(v)
 	}
-	if v := limits["nvidia.com/gpumem"]; v != "" {
+	if v := limits[resNVIDIAMem]; v != "" {
 		mem, _ = strconv.Atoi(v)
 	}
 	if v := limits[resNVIDIAMemPct]; v != "" {

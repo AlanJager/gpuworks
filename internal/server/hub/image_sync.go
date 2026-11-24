@@ -306,21 +306,30 @@ func (h *Hub) runDirectImageSync(ctx context.Context, image *store.Image, target
 		}
 		h.watchDirectImageTransfer(image.ID, nodeID)
 	}
+	h.finishDirectImageSync(ctx, image.ID, nodeID, transferID, result, confirmationWait)
+}
+
+// finishDirectImageSync records what a peer copy that returned without an
+// error did, and waits for the target to confirm its load.
+func (h *Hub) finishDirectImageSync(ctx context.Context, imageID, nodeID uint, transferID string, result proto.ImageSyncCopyResult, confirmationWait time.Duration) {
 	if result.InProgress {
 		// The target agent already runs another receiver for this image, so
 		// nothing will ever report on the transfer id we just wrote. Leaving
 		// the row syncing would strand it with no timer to fail it.
 		if result.TransferID != transferID {
-			_ = h.store.FailImageSyncIfActive(image.ID, nodeID, transferID, "target node already has an active transfer for this image; retry after it finishes")
+			_ = h.store.FailImageSyncIfActive(imageID, nodeID, transferID, "target node already has an active transfer for this image; retry after it finishes")
 		}
 		return
 	}
 	h.log.Info("peer image archive transferred", "transfer_id", transferID, "transport", result.Transport)
 	if result.Bytes > imageArchiveMaxBytes {
-		_ = h.store.FailImageSyncIfActive(image.ID, nodeID, transferID, "image archive exceeded 500 GiB transfer limit")
+		_ = h.store.FailImageSyncIfActive(imageID, nodeID, transferID, "image archive exceeded 500 GiB transfer limit")
 		return
 	}
-	h.awaitImageConfirmation(ctx, image.ID, nodeID, transferID, "image archive transferred, but target did not confirm completion", confirmationWait)
+	// The target's own count is a sample taken about once a second; the
+	// sender's is the whole archive.
+	_, _ = h.store.RecordImageTransferBytes(imageID, nodeID, transferID, result.Bytes)
+	h.awaitImageConfirmation(ctx, imageID, nodeID, transferID, "image archive transferred, but target did not confirm completion", confirmationWait)
 }
 
 // trackImageTransfer runs one server-relayed transfer in the background and
@@ -358,7 +367,16 @@ func (h *Hub) trackImageTransfer(ctx context.Context, imageID, nodeID uint, tran
 			}
 			_, _ = h.store.UpdateImageSyncProgressIfActive(imageID, nodeID, transferID, sizeBytes, done, rate)
 		}
-		bytes, copyErr := copy(copyCtx, func(done int64) { persistProgress(done, false) })
+		bytes, copyErr := copy(copyCtx, func(done int64) {
+			// The counter that reaches the declared size is the final
+			// observation, and it must be written now: the copy callback runs
+			// before the last chunk is handed to the target, so the target's
+			// own present report cannot land first and deactivate the row.
+			// Throttled, the last sample the row keeps is whatever the first
+			// second happened to see, and a present image would be recorded as
+			// a few KiB transferred.
+			persistProgress(done, sizeBytes > 0 && done >= sizeBytes)
+		})
 		if copyErr != nil {
 			persistProgress(bytes, true)
 			_ = h.store.FailImageSyncIfActive(imageID, nodeID, transferID, copyErr.Error())
@@ -366,8 +384,9 @@ func (h *Hub) trackImageTransfer(ctx context.Context, imageID, nodeID uint, tran
 		}
 		// The target agent reports present/failed only after its load returns.
 		// Keep the ledger syncing here so io.Copy completion is not mistaken for
-		// a successful image import.
-		persistProgress(bytes, true)
+		// a successful image import. The final count is written whether or not
+		// that report has already finished the row.
+		_, _ = h.store.RecordImageTransferBytes(imageID, nodeID, transferID, bytes)
 		h.awaitImageConfirmation(copyCtx, imageID, nodeID, transferID, "image archive transferred, but target docker load did not confirm completion", confirmationWait)
 	})
 }

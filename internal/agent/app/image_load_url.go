@@ -42,9 +42,9 @@ const (
 // rpcImageLoadURL downloads an image archive published over plain HTTP and
 // loads it under the canonical catalog reference. It mirrors rpcImagePull:
 // the RPC acknowledges immediately, the work runs in a background goroutine
-// serialized on imagePullMu, and every state change is reported through
+// serialized on the image slot, and every state change is reported through
 // status.image_node.
-func (n *NodeRuntime) rpcImageLoadURL(ctx context.Context, raw json.RawMessage) (any, error) {
+func (i *nodeImages) rpcImageLoadURL(ctx context.Context, raw json.RawMessage) (any, error) {
 	var p proto.ImageLoadURLParams
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return nil, errors.New("image load requires canonical_ref and archive_url")
@@ -67,11 +67,11 @@ func (n *NodeRuntime) rpcImageLoadURL(ctx context.Context, raw json.RawMessage) 
 	go func() {
 		loadCtx, cancelLoad := context.WithTimeout(loadCtx, imageOperationTimeout)
 		defer cancelLoad()
-		unregister := n.imageOps.begin(p.CanonicalRef, p.TransferID, cancelLoad)
+		unregister := i.ops.begin(p.CanonicalRef, p.TransferID, cancelLoad)
 		defer unregister()
-		n.lockImageOperation(p.CanonicalRef, "syncing")
-		defer n.imagePullMu.Unlock()
-		n.loadImageArchiveURL(loadCtx, p)
+		i.lockSlot(p.CanonicalRef, "syncing")
+		defer i.slot.Unlock()
+		i.loadImageArchiveURL(loadCtx, p)
 	}()
 	return proto.ImageLoadURLResult{State: "syncing", CanonicalRef: p.CanonicalRef}, nil
 }
@@ -99,29 +99,29 @@ func checkArchiveURL(raw string) error {
 	return nil
 }
 
-func (n *NodeRuntime) loadImageArchiveURL(ctx context.Context, p proto.ImageLoadURLParams) {
+func (i *nodeImages) loadImageArchiveURL(ctx context.Context, p proto.ImageLoadURLParams) {
 	failed := func(message string) proto.ImageNodeStatus {
 		return proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", Message: message}
 	}
 	report := func(status proto.ImageNodeStatus) {
 		if status.State == "failed" {
-			n.log.Warn("image archive url load failed", "image", p.CanonicalRef, "err", status.Message)
+			i.deps.log().Warn("image archive url load failed", "image", p.CanonicalRef, "err", status.Message)
 		} else {
-			n.log.Info("image archive url loaded", "image", p.CanonicalRef, "host", archiveURLHost(p.ArchiveURL))
+			i.deps.log().Info("image archive url loaded", "image", p.CanonicalRef, "host", archiveURLHost(p.ArchiveURL))
 		}
-		n.reportImageNode(status)
+		i.deps.report(status)
 	}
-	d := n.runtimeDriver()
+	d := i.deps.driver()
 	if d == nil {
 		report(failed("runtime driver is unavailable"))
 		return
 	}
 	loader, ok := d.(runtime.ImageFileLoader)
 	if !ok {
-		report(failed("runtime " + n.RuntimeDriverName() + " cannot load an image archive from a file"))
+		report(failed("runtime " + i.driverName() + " cannot load an image archive from a file"))
 		return
 	}
-	dir, err := n.imageArchiveDir()
+	dir, err := i.imageArchiveDir()
 	if err != nil {
 		report(failed("image archive directory unavailable: " + err.Error()))
 		return
@@ -133,7 +133,7 @@ func (n *NodeRuntime) loadImageArchiveURL(ctx context.Context, p proto.ImageLoad
 		return
 	}
 	archive := filepath.Join(dir, imageArchiveFileName(p)+".tar")
-	status := n.fetchAndLoadImageArchive(ctx, d, loader, p, archive)
+	status := i.fetchAndLoadImageArchive(ctx, d, loader, p, archive)
 	// The staged archive is deleted before the outcome is announced, on the
 	// success and the failure path alike: whatever reacts to the terminal state
 	// must never find the node still holding a full copy of a multi-gigabyte
@@ -147,12 +147,12 @@ func (n *NodeRuntime) loadImageArchiveURL(ctx context.Context, p proto.ImageLoad
 // canonical reference when the archive carried another one, and hydrates the
 // catalog metadata. Progress is reported as it goes; the returned status is
 // the terminal one, which the caller announces after the staged file is gone.
-func (n *NodeRuntime) fetchAndLoadImageArchive(ctx context.Context, d runtime.Driver, loader runtime.ImageFileLoader, p proto.ImageLoadURLParams, archive string) proto.ImageNodeStatus {
+func (i *nodeImages) fetchAndLoadImageArchive(ctx context.Context, d runtime.Driver, loader runtime.ImageFileLoader, p proto.ImageLoadURLParams, archive string) proto.ImageNodeStatus {
 	failed := func(message string) proto.ImageNodeStatus {
 		return proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "failed", TransferID: p.TransferID, Message: message}
 	}
-	n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "syncing", TransferID: p.TransferID, SizeBytes: p.SizeBytes, Message: "downloading " + archiveURLHost(p.ArchiveURL)})
-	net := n.network()
+	i.deps.report(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "syncing", TransferID: p.TransferID, SizeBytes: p.SizeBytes, Message: "downloading " + archiveURLHost(p.ArchiveURL)})
+	net := i.deps.network()
 	err := download.Download(ctx, download.Options{
 		URL:          p.ArchiveURL,
 		Dest:         archive,
@@ -164,7 +164,7 @@ func (n *NodeRuntime) fetchAndLoadImageArchive(ctx context.Context, d runtime.Dr
 		if total <= 0 {
 			total = p.SizeBytes
 		}
-		n.reportImageNode(proto.ImageNodeStatus{
+		i.deps.report(proto.ImageNodeStatus{
 			ImageRef: p.CanonicalRef, State: "syncing", TransferID: p.TransferID, SizeBytes: total,
 			TransferredBytes: progress.Done, RateBPS: progress.RateBytesPerS,
 		})
@@ -173,10 +173,10 @@ func (n *NodeRuntime) fetchAndLoadImageArchive(ctx context.Context, d runtime.Dr
 		return failed(fmt.Sprintf("download %s: %s", archiveURLHost(p.ArchiveURL), imageOperationError(ctx, err)))
 	}
 
-	n.reportImageNode(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "syncing", TransferID: p.TransferID, SizeBytes: p.SizeBytes, Message: "loading image archive"})
+	i.deps.report(proto.ImageNodeStatus{ImageRef: p.CanonicalRef, State: "syncing", TransferID: p.TransferID, SizeBytes: p.SizeBytes, Message: "loading image archive"})
 	status, err := loadImageArchive(ctx, d, imageArchiveLoad{
 		CanonicalRef: p.CanonicalRef,
-		RuntimeName:  n.RuntimeDriverName(),
+		RuntimeName:  i.driverName(),
 		Loaded:       "image archive downloaded and loaded",
 		Load: func(loadCtx context.Context) (string, error) {
 			if reporter, ok := loader.(runtime.LoadedRefReporter); ok {
@@ -226,8 +226,8 @@ func removeArchive(path string) {
 // prefers the runtime's own image store so the admission check and the load
 // see one filesystem, and falls back to the agent state directory when that
 // store is not writable by this agent.
-func (n *NodeRuntime) imageArchiveDir() (string, error) {
-	roots := []string{runtimeImageStoreRoot(n.RuntimeDriverName(), n.ModelsRoot()), filepath.Join(n.stateDir, "images")}
+func (i *nodeImages) imageArchiveDir() (string, error) {
+	roots := []string{runtimeImageStoreRoot(i.driverName(), i.deps.modelsRoot()), filepath.Join(i.deps.stateDir(), "images")}
 	var firstErr error
 	seen := map[string]bool{}
 	for _, root := range roots {

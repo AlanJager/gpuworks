@@ -105,7 +105,7 @@ func TestURLArchiveRetagsAnExistingCanonicalWhenItCarriedAnotherReference(t *tes
 	h := newArchiveLoadHarness(t)
 	const published = "publisher/runner:new"
 	h.driver.InjectLoadedRef(published)
-	if _, err := h.node.rpcImageLoadURL(context.Background(), h.params(h.size)); err != nil {
+	if _, err := h.node.imageWork().rpcImageLoadURL(context.Background(), h.params(h.size)); err != nil {
 		t.Fatal(err)
 	}
 	status := h.awaitTerminal(t)

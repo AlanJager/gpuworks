@@ -203,16 +203,7 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 		}
 	}
 	mode := command.Mode
-	manualScript := ""
-	if mode == CommandManual && strings.TrimSpace(overrides.CmdDisplay) != "" {
-		candidate := strings.TrimSpace(overrides.CmdDisplay)
-		// The deployment command editor owns a complete shell command and emits
-		// a readable block containing comments, environment assignments and the
-		// launch command. JSON arrays retain the catalog argv contract.
-		if !strings.HasPrefix(candidate, "[") {
-			manualScript = candidate
-		}
-	}
+	manualScript := manualScriptOf(overrides)
 	var commandArgv []string
 	if manualScript == "" {
 		commandArgv, err = parseOptionalCommand(overrides.CmdDisplay)
@@ -399,13 +390,21 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 	if warning, ok := allocatorRewrite.warning(launch.Env); ok {
 		warnings = append(warnings, warning)
 	}
+	if manualScript != "" && !params.Headless && !manualCommandStatesPort(overrides.CmdDisplay) {
+		warnings = append(warnings, messages.NewWarning(messages.WarningManualCommandPortUnstated, manualCommandPortFix()))
+	}
 	if err := resolveStartupBudget(input, &launch); err != nil {
 		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)
 	}
 	return launch, warnings, nil
 }
 
-var manualCommandPortPattern = regexp.MustCompile(`(?m)(^|[ \t])--port(?:[ \t]+|=)[^ \t\r\n;|&]+`)
+// manualCommandPortFlag is the API port flag of a manual command that
+// replaceManualCommandPort rewrites to the assigned port, whatever the engine:
+// the manual command contract of ADR 0020 decision 6.
+const manualCommandPortFlag = "--port"
+
+var manualCommandPortPattern = regexp.MustCompile(`(?m)(^|[ \t])` + regexp.QuoteMeta(manualCommandPortFlag) + `(?:[ \t]+|=)([^ \t\r\n;|&]+)`)
 var manualCommandServedNamePattern = regexp.MustCompile(`(?m)(^|[ \t])--served-model-name(?:[ \t]+|=)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^ \t\r\n;|&]+)`)
 
 // replaceManualCommandPort keeps the manually edited engine command aligned
@@ -416,7 +415,7 @@ func replaceManualCommandPort(command string, port int) string {
 	if port <= 0 {
 		return command
 	}
-	return manualCommandPortPattern.ReplaceAllString(command, "${1}--port "+strconv.Itoa(port))
+	return manualCommandPortPattern.ReplaceAllString(command, "${1}"+manualCommandPortFlag+" "+strconv.Itoa(port))
 }
 
 // replaceManualServedName applies a configured engine alias to a manual launch.

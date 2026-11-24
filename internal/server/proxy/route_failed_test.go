@@ -9,6 +9,7 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -60,7 +61,7 @@ func TestSelectInstanceSaysDeploymentFailedWhenRetriesStopped(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"failed-node": !tc.offline}}, nil, 0)
+			p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{"failed-node": !tc.offline}}, nil, 0)
 			t.Cleanup(p.Close)
 			_, _, status, msg, asleep := p.selectStatus("failed-model")
 			if status != http.StatusServiceUnavailable || asleep || !strings.Contains(msg, tc.wantSub) {

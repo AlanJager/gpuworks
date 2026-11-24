@@ -19,7 +19,8 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
-	hubpkg "gpuworks.ai/gpuworks/internal/server/hub"
+	"gpuworks.ai/gpuworks/internal/server/proxy/plane"
+	"gpuworks.ai/gpuworks/internal/server/proxy/storeplane"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -75,7 +76,7 @@ func newAccountingProxyFor(t *testing.T, upstream http.Handler, shape *store.Dep
 		t.Fatal(err)
 	}
 	addr := strings.TrimPrefix(upstreamServer.URL, "http://")
-	pr := New(st, storeNetworks(st), dialTestHub{addr: addr}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
+	pr := New(storeplane.New(st), storeNetworks(st), dialTestHub{addr: addr}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
 	t.Cleanup(pr.Close)
 	a := newAccountant(nil, 16, nil)
 	pr.SetAccountant(a)
@@ -180,7 +181,7 @@ func TestProxyAccountingAsleepInstanceCountedAsAsleep503(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"sleepy-node": true}}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{"sleepy-node": true}}, nil, 0)
 	t.Cleanup(p.Close)
 	acct := newAccountant(nil, 4, nil)
 	p.SetAccountant(acct)
@@ -343,7 +344,7 @@ func (dialErrorHub) Online(string) bool { return true }
 type dataLaneUnavailableHub struct{}
 
 func (dataLaneUnavailableHub) OpenTunnel(context.Context, string, string) (net.Conn, error) {
-	return nil, fmt.Errorf("%w: node data-lane-unavailable-node did not reattach within 5s", hubpkg.ErrDataLaneUnavailable)
+	return nil, fmt.Errorf("%w: node data-lane-unavailable-node did not reattach within 5s", plane.ErrDataLaneUnavailable)
 }
 func (dataLaneUnavailableHub) Online(string) bool { return true }
 
@@ -376,7 +377,7 @@ func TestProxyAccountingUpstreamConnectionErrorCountedAs5xx(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := New(st, storeNetworks(st), dialErrorHub{}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
+	p := New(storeplane.New(st), storeNetworks(st), dialErrorHub{}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
 	t.Cleanup(p.Close)
 	acct := newAccountant(nil, 4, nil)
 	p.SetAccountant(acct)
@@ -438,7 +439,7 @@ func TestProxyDataLaneUnavailableReturns503WithRetryAfter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := New(st, storeNetworks(st), dataLaneUnavailableHub{}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
+	p := New(storeplane.New(st), storeNetworks(st), dataLaneUnavailableHub{}, slog.New(slog.NewTextHandler(io.Discard, nil)), 0)
 	t.Cleanup(p.Close)
 	acct := newAccountant(nil, 4, nil)
 	p.SetAccountant(acct)
@@ -531,7 +532,7 @@ func TestProxyAccountingRewriteModelFailureCountedForResolvedDeployment(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := p.store.UpdateInstanceDesiredState("omni-instance", string(desired)); err != nil {
+	if err := storeOf(p.store).UpdateInstanceDesiredState("omni-instance", string(desired)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -587,7 +588,7 @@ func TestProxyAccountingContractMismatchCountedForResolvedDeployment(t *testing.
 	if _, err := st.CreateInstance(&store.Instance{UUID: "video", DeploymentID: dep.ID, NodeID: node.ID, State: proto.InstRunning, APIPort: 30000, DesiredStateJSON: string(desired)}); err != nil {
 		t.Fatal(err)
 	}
-	p := New(st, storeNetworks(st), readinessTestHub{online: map[string]bool{"contract-node": true}}, nil, 0)
+	p := New(storeplane.New(st), storeNetworks(st), readinessTestHub{online: map[string]bool{"contract-node": true}}, nil, 0)
 	t.Cleanup(p.Close)
 	acct := newAccountant(nil, 4, nil)
 	p.SetAccountant(acct)

@@ -20,7 +20,7 @@ func newSleepingProxy(t *testing.T, held bool) (*Proxy, *store.Store, string, ui
 	upstream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, `{"ok":true}`) })
 	p, _, key, depID, closeUpstream := newAccountingProxyFor(t, upstream, &store.Deployment{Engine: "vllm", Sleepable: true})
 	t.Cleanup(closeUpstream)
-	st := p.store
+	st := storeOf(p.store)
 	if err := updateInstanceRow(st, "omni-instance", map[string]any{"sleep_level": 1}); err != nil {
 		t.Fatal(err)
 	}

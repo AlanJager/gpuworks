@@ -1,11 +1,19 @@
 package deploy
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
 )
+
+// deepSeekMLA names DeepSeek's V-series language models (deepseek_v3,
+// DeepseekV3ForCausalLM), the ones whose attention is MLA. The vision-language
+// checkpoints behind DeepSeek-OCR (deepseek_vl_v2, DeepseekOCRForCausalLM)
+// carry the name and ordinary attention: an fp8 KV cache is not theirs to
+// have, and on a PPU its kernel does not compile.
+var deepSeekMLA = regexp.MustCompile(`(?i)deepseek[_-]?v[0-9]`)
 
 // quirk is a data-driven correction: when match(p) is true, apply(b,p,env) runs
 // after quick-params and before user extra_args. Quirks use injectKV/injectFlag,
@@ -28,7 +36,7 @@ var quirks = []quirk{
 			if vendorIs(p, accelerator.VendorAscend) {
 				return false
 			}
-			return containsFold(p.ModelType, "deepseek") || containsFold(p.Arch, "deepseek")
+			return deepSeekMLA.MatchString(p.ModelType) || deepSeekMLA.MatchString(p.Arch)
 		},
 		apply: func(b *builder, _ Params, _ map[string]string) {
 			b.injectKV("--kv-cache-dtype", "fp8")
