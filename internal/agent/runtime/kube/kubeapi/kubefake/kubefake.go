@@ -429,9 +429,12 @@ func (s *Server) servePods(w http.ResponseWriter, r *http.Request, ns string, re
 			s.status(w, 422, "Invalid", fmt.Sprintf("Pod %q is invalid: spec.containers: Required value", p.Metadata.Name))
 			return
 		}
-		if s.Admission != nil {
-			if webhook, denied := s.Admission(&p); denied != "" {
-				s.status(w, 403, denied, fmt.Sprintf("admission webhook %q denied the request: %s", webhook, denied))
+		s.mu.Lock()
+		admission := s.Admission
+		s.mu.Unlock()
+		if admission != nil {
+			if webhook, denied := admission(&p); denied != "" {
+				s.status(w, 403, "Forbidden", fmt.Sprintf("admission webhook %q denied the request: %s", webhook, denied))
 				return
 			}
 		}

@@ -141,7 +141,7 @@ agent 改经宿主 root（`/proc/1/root`）预先在宿主机 `/dev/shm` 建好�
 挂进实例 Pod，账本路径本身不变。海光的 dGPU 切分目前只在 Docker 与 udocker 上验证，在 Kubernetes 节点上不可用，这张卡只做整卡部署。
 
 **HAMi**：占位 Pod 不绑定节点，而是写 `schedulerName: hami-scheduler`、`nodeSelector: kubernetes.io/hostname=<节点>`，
-申请 `nvidia.com/gpu: 1`、`nvidia.com/gpucores: 100`、`nvidia.com/gpumem: <HAMi 登记的整卡显存 MiB>`（HAMi 没登记显存的卡用 `nvidia.com/gpumem-percentage: 100`），并用注解
+申请 `nvidia.com/gpu: 1`、`nvidia.com/gpucores: 100`、`nvidia.com/gpumem-percentage: 100`（集群准入以 403 拒绝只写百分比的 Pod 时，改写 `nvidia.com/gpumem: <HAMi 登记的整卡显存 MiB>` 再建一次），并用注解
 `nvidia.com/use-gpuuuid` 指定卡的 UUID。HAMi 的 device plugin 只给经过 HAMi 调度器、带分配注解的 Pod 分配，所以借卡不能绕过调度器。
 卡归谁以 HAMi 写在占位 Pod 上的 `hami.io/vgpu-devices-allocated` 为准，并核对确实是指定的那张、算力 100%、显存等于 HAMi 登记的整卡显存，
 否则退回并报原因。其他 Pod 占着卡的一部分时，它们在 gpuworks 里显示为外部占用（Pod 名、显存、算力）；占位 Pod 因此一直 Pending 时，
