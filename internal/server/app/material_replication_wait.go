@@ -86,7 +86,7 @@ func namingSilentMaterialMembers(err error, silent []string) error {
 func (a *App) materialReplicationPassFailed(err error) {
 	closes := materialReplicationFailureInvalidates(err)
 	if closes {
-		a.invalidateCandidateMaterialEligibility()
+		a.invalidateCandidateMaterialEligibility(closeMaterialPass)
 		a.materialPending.ended()
 		if a.log != nil {
 			a.log.Warn("cluster material replication pending", "err", err, "closes_member", true)

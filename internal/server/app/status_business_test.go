@@ -42,7 +42,7 @@ func TestStatusRequiresCurrentBusinessAdmissionAfterQuorumObservation(t *testing
 			}
 			if mode == "refused" {
 				// What a refusal from the database does to this member.
-				eligibility.Invalidate()
+				eligibility.Invalidate(closeMaterialPass)
 			}
 			gate.setBusinessHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path != "/api/v1/readyz" {
@@ -194,7 +194,7 @@ func TestStatusReadinessRechecksAdmissionAfterOneRealRead(t *testing.T) {
 				}
 				switch mode {
 				case "refused after the read":
-					eligibility.Invalidate()
+					eligibility.Invalidate(closeMaterialPass)
 				case "request canceled after the read":
 					cancel()
 				case "proof expires after the read":
@@ -265,7 +265,7 @@ func TestStatusReadinessUsesMaterialAndGenerationGuards(t *testing.T) {
 			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}, nil))
 			switch index {
 			case 1:
-				eligibility.Invalidate()
+				eligibility.Invalidate(closeMaterialPass)
 			case 2:
 				gate.setBusinessHandler(nil)
 			}

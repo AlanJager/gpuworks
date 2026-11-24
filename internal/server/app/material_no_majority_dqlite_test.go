@@ -32,7 +32,7 @@ func TestNativeReplicationPassWithoutAMajorityOfAnswersKeepsTheMemberOpen(t *tes
 	}
 	closed := 0
 	gate := newMaterialEligibility(time.Now, func(context.Context) (bool, error) { return true, nil }, materialReproofInterval)
-	gate.setOnInvalidated(func() { closed++ })
+	gate.setOnInvalidated(func(admissionCloseCause) { closed++ })
 	if ready, err := gate.Reprove(ctx); !ready || err != nil {
 		t.Fatal(ready, err)
 	}

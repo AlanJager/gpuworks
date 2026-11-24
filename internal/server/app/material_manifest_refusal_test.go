@@ -173,7 +173,7 @@ func TestRestartCheckDoesNotCloseOnAnInterruptedPeerCheck(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			invalidated := 0
 			gate := newMaterialEligibility(time.Now, func(context.Context) (bool, error) { return true, nil }, materialReproofInterval)
-			gate.setOnInvalidated(func() { invalidated++ })
+			gate.setOnInvalidated(func(admissionCloseCause) { invalidated++ })
 			if ready, err := gate.Reprove(t.Context()); !ready || err != nil {
 				t.Fatal(ready, err)
 			}

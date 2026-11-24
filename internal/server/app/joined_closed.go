@@ -165,7 +165,7 @@ func (a *App) assembleClosedMemberMaterials(ctx context.Context, bundle *enrollm
 	if err := recoverOrphanedMaterialTransfers(ctx, receiver); err != nil {
 		return err
 	}
-	receiver.onChange = a.invalidateCandidateMaterialEligibility
+	receiver.onChange = func() { a.invalidateCandidateMaterialEligibility(closeMaterialReceived) }
 	router := chi.NewRouter()
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -192,7 +192,7 @@ func (a *App) assembleClosedMemberMaterials(ctx context.Context, bundle *enrollm
 	}
 	registerClusterDiagnostics(router, bundle, requests, a.cfg, log)
 	registerEnrollmentMaterialReceiver(router, bundle, st, receiver, requests)
-	registerEnrollmentOriginWithChange(router, bundle, st, a.invalidateCandidateMaterialEligibility)
+	registerEnrollmentOriginWithChange(router, bundle, st, func() { a.invalidateCandidateMaterialEligibility(closeOriginRegistered) })
 	enrollment, err := newEnrollmentServer(bundle.info.ListenAddress, router, bundle.tls, log)
 	if err != nil {
 		return err
@@ -283,7 +283,7 @@ func (a *App) startClosedMaterialEligibility(ctx context.Context) error {
 // its caller allows. A timeout leaves the worker recorded so a later Run
 // cannot overlap it and Close cannot release the Store until a retry drains it.
 func (a *App) stopClosedMaterialEligibility(ctx context.Context) error {
-	a.closeBusinessAdmission()
+	a.closeBusinessAdmission(closeMemberStopping)
 	a.materialEligibilityMu.Lock()
 	eligibility := a.materialEligibility
 	cancel := a.materialEligibilityCancel
@@ -319,16 +319,16 @@ func (a *App) stopClosedMaterialEligibility(ctx context.Context) error {
 // invalidateCandidateMaterialEligibility is the observation seam for future
 // material or membership change notices. Invalidation closes the current
 // result immediately; the background worker will perform the next full proof.
-func (a *App) invalidateCandidateMaterialEligibility() {
+func (a *App) invalidateCandidateMaterialEligibility(cause admissionCloseCause) {
 	a.materialEligibilityMu.Lock()
 	eligibility := a.materialEligibility
 	a.materialEligibilityMu.Unlock()
 	if eligibility != nil {
 		// Latch ineligibility before BeginStop can wait on an activation phase.
 		// Its callback closes Store admission and withdraws the old routes.
-		eligibility.Invalidate()
+		eligibility.Invalidate(cause)
 	}
-	a.closeBusinessAdmission()
+	a.closeBusinessAdmission(cause)
 }
 
 // installClosedBusinessWriteBarrier keeps ordinary target writes closed until
@@ -342,7 +342,7 @@ func (a *App) installClosedBusinessWriteBarrier() error {
 	a.materialEligibilityMu.Unlock()
 	// A write the database refused because this member is no longer admitted
 	// closes the member now; its next renewal would only learn the same.
-	a.store.OnWriterRefused(a.invalidateCandidateMaterialEligibility)
+	a.store.OnWriterRefused(func() { a.invalidateCandidateMaterialEligibility(closeWriterRefused) })
 	return a.store.InstallBusinessWriteBarrier(func(context.Context) error {
 		a.materialEligibilityMu.Lock()
 		eligibility := a.materialEligibility
@@ -376,7 +376,7 @@ func (a *App) closedTransportAuthorizationRefresh(refresh func(context.Context) 
 		undecided := store.GrantUndecided.Unanswered(err)
 		closes := errors.Is(ctxErr, context.Canceled) || !undecided
 		if closes {
-			a.invalidateCandidateMaterialEligibility()
+			a.invalidateCandidateMaterialEligibility(closeTransportRefused)
 		}
 		if a.log != nil {
 			message := "closed transport refresh kept material eligibility after an undecided failure"

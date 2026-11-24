@@ -138,7 +138,7 @@ func TestBusinessReadinessFollowingBackgroundRenewal(t *testing.T) {
 			gate.requireMaterialEligibility()
 			gate.setMaterialEligibility(e)
 			if mode != "no-callback" {
-				e.setOnInvalidated(func() {
+				e.setOnInvalidated(func(admissionCloseCause) {
 					st.SuspendBusinessWrites()
 					if mode == "failed-first-then-fast" || mode == "epoch-ABA" {
 						failedGenerationOnce.Do(func() {
@@ -218,7 +218,7 @@ func TestBusinessReadinessFollowingBackgroundRenewal(t *testing.T) {
 			}
 			switch mode {
 			case "epoch-change", "epoch-ABA":
-				e.Invalidate()
+				e.Invalidate(closeMaterialPass)
 			case "cancel-request":
 				cancelRequest()
 			case "cancel-proof":

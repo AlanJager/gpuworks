@@ -22,7 +22,7 @@ func (a *App) materialStartupFailure(ctx context.Context, err error) (error, boo
 		return nil, false
 	}
 	if live && materialReplicationFailureInvalidates(err) {
-		a.invalidateCandidateMaterialEligibility()
+		a.invalidateCandidateMaterialEligibility(closeMaterialStartup)
 		rejected = err
 	}
 	if canceled := ctx.Err(); canceled != nil {

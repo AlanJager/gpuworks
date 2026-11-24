@@ -91,7 +91,7 @@ func TestNativeFollowingRenewalUsesRealProof(t *testing.T) {
 			}, materialReproofInterval)
 			// Use the real gate's synchronous retirement boundary. Default tests
 			// separately prove failed-proof/fast-success generation fencing.
-			e.setOnInvalidated(func() { gate.setBusinessHandler(nil) })
+			e.setOnInvalidated(func(admissionCloseCause) { gate.setBusinessHandler(nil) })
 			if ready, err := e.Reprove(ctx); !ready || err != nil {
 				t.Fatalf("initial real candidate proof: %v %v", ready, err)
 			}

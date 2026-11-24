@@ -50,7 +50,7 @@ func TestMaterialEligibilityClosedSlowFailureRestsWithReadinessGuard(t *testing.
 		}
 	}, interval)
 	var closed sync.Once
-	e.setOnInvalidated(func() { closed.Do(func() { finished <- time.Now() }) })
+	e.setOnInvalidated(func(admissionCloseCause) { closed.Do(func() { finished <- time.Now() }) })
 	gate, reads := closedRetryReadiness(t, e)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
@@ -178,7 +178,7 @@ func TestMaterialEligibilityClosedFailureClassesRest(t *testing.T) {
 				return false, context.DeadlineExceeded
 			}, interval)
 			var once sync.Once
-			e.setOnInvalidated(func() { once.Do(func() { completed <- time.Now() }) })
+			e.setOnInvalidated(func(admissionCloseCause) { once.Do(func() { completed <- time.Now() }) })
 			gate, reads := closedRetryReadiness(t, e)
 			ctx, cancel := context.WithCancel(t.Context())
 			done := make(chan struct{})
@@ -252,7 +252,7 @@ func TestMaterialEligibilityClosedRestCancellationJoinsWithoutExtraProof(t *test
 		return false, ctx.Err()
 	}, interval)
 	var once sync.Once
-	e.setOnInvalidated(func() { once.Do(func() { completed <- struct{}{} }) })
+	e.setOnInvalidated(func(admissionCloseCause) { once.Do(func() { completed <- struct{}{} }) })
 	gate, reads := closedRetryReadiness(t, e)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})

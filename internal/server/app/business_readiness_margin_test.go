@@ -114,7 +114,7 @@ func TestReadinessRenewalMargin(t *testing.T) {
 			gate := newBusinessHandlerGate()
 			gate.requireMaterialEligibility()
 			gate.setMaterialEligibility(e)
-			e.setOnInvalidated(func() { st.SuspendBusinessWrites(); gate.setBusinessHandler(nil) })
+			e.setOnInvalidated(func(admissionCloseCause) { st.SuspendBusinessWrites(); gate.setBusinessHandler(nil) })
 			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}, nil))
 			reqCtx, cancelRequest := context.WithCancel(t.Context())
 			rec := httptest.NewRecorder()
@@ -152,7 +152,7 @@ func TestReadinessRenewalMargin(t *testing.T) {
 			case "cancel-request":
 				cancelRequest()
 			case "epoch-change":
-				e.Invalidate()
+				e.Invalidate(closeMaterialPass)
 			case "withdraw":
 				gate.setBusinessHandler(nil)
 			case "original-budget":

@@ -106,7 +106,7 @@ func TestBusinessReadinessWaitsForCapturedRenewalBeforePublishing(t *testing.T) 
 			}
 			switch mode {
 			case "invalidate":
-				eligibility.Invalidate()
+				eligibility.Invalidate(closeMaterialPass)
 			case "stop":
 				eligibility.Stop()
 			case "cancel":

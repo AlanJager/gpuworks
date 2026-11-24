@@ -205,7 +205,7 @@ func TestNativeRevokedMemberStopsServingAtItsNextAnswer(t *testing.T) {
 					t.Fatal("an unanswered renewal closed the member within 2 s")
 				}
 				// A write of its own is an answer, and closes it.
-				revoked.OnWriterRefused(eligibility.Invalidate)
+				revoked.OnWriterRefused(func() { eligibility.Invalidate(closeWriterRefused) })
 				if err := revoked.SetBusinessSetting(ctx, key, `"x"`); !errors.Is(err, store.ErrClusterAdmissionRejected) {
 					t.Fatalf("revoked member's write: %v", err)
 				}
@@ -228,7 +228,7 @@ func TestNativeRevokedMemberStopsServingAtItsNextAnswer(t *testing.T) {
 			// A member that was refused comes back by itself once its row
 			// is in order: the next confirmation reopens it and its writes
 			// commit again. Nothing has to be restarted or reset.
-			revoked.OnWriterRefused(eligibility.Invalidate)
+			revoked.OnWriterRefused(func() { eligibility.Invalidate(closeWriterRefused) })
 			if err := revoked.SetBusinessSetting(ctx, key, `"refused"`); !errors.Is(err, store.ErrClusterAdmissionRejected) {
 				t.Fatalf("revoked member's write: %v", err)
 			}

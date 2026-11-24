@@ -137,7 +137,7 @@ func TestReadinessPreFinalCutoff(t *testing.T) {
 			gate := newBusinessHandlerGate()
 			gate.requireMaterialEligibility()
 			gate.setMaterialEligibility(e)
-			e.setOnInvalidated(func() { st.SuspendBusinessWrites(); gate.setBusinessHandler(nil) })
+			e.setOnInvalidated(func(admissionCloseCause) { st.SuspendBusinessWrites(); gate.setBusinessHandler(nil) })
 			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}, nil))
 			reqCtx, cancelRequest := context.WithCancel(t.Context())
 			rec := httptest.NewRecorder()
@@ -209,7 +209,7 @@ func TestReadinessPreFinalCutoff(t *testing.T) {
 				case "retire-at-cutoff":
 					gate.setBusinessHandler(nil)
 				case "epoch-at-cutoff":
-					e.Invalidate()
+					e.Invalidate(closeMaterialPass)
 				case "cancel-at-cutoff":
 					cancelRequest()
 				case "proof-cancel-at-cutoff":
@@ -302,7 +302,7 @@ func TestReadinessPreFinalCutoffTerminalFences(t *testing.T) {
 			gate.setMaterialEligibility(e)
 			gate.setBusinessHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 			captured := gate.active
-			e.setOnInvalidated(func() { gate.setBusinessHandler(nil) })
+			e.setOnInvalidated(func(admissionCloseCause) { gate.setBusinessHandler(nil) })
 			runCtx, cancelRun := context.WithCancel(t.Context())
 			runDone := make(chan struct{})
 			go func() { defer close(runDone); e.Run(runCtx) }()
@@ -320,7 +320,7 @@ func TestReadinessPreFinalCutoffTerminalFences(t *testing.T) {
 					case "retire":
 						gate.setBusinessHandler(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 					case "epoch":
-						e.Invalidate()
+						e.Invalidate(closeMaterialPass)
 					case "cancel":
 						cancel()
 					}
@@ -385,7 +385,7 @@ func TestReadinessPreFinalCutoffCapIsNotAuthority(t *testing.T) {
 				t.Fatalf("seed %v %v", ok, err)
 			}
 			age.Store(int64(renewalStart))
-			e.setOnInvalidated(func() {}) // No failed result is produced in this parameter-bound test.
+			e.setOnInvalidated(func(admissionCloseCause) {}) // No failed result is produced in this parameter-bound test.
 			runCtx, cancelRun := context.WithCancel(t.Context())
 			runDone := make(chan struct{})
 			go func() { defer close(runDone); e.Run(runCtx) }()

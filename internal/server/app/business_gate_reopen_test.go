@@ -23,7 +23,7 @@ func reopenGateFixtureClock(t *testing.T, now func() time.Time, interval time.Du
 	gate := newBusinessHandlerGate()
 	gate.requireMaterialEligibility()
 	e := newMaterialEligibility(now, prove, interval)
-	e.setOnInvalidated(func() {})
+	e.setOnInvalidated(func(admissionCloseCause) {})
 	gate.setMaterialEligibility(e)
 	gate.setBusinessHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
@@ -62,7 +62,7 @@ func awaitClosedAfterProof(t *testing.T, e *materialEligibility) {
 		proved := !e.provedAt.IsZero()
 		e.mu.Unlock()
 		if proved {
-			e.Invalidate()
+			e.Invalidate(closeMaterialPass)
 			if !e.Eligible() {
 				return
 			}
@@ -160,7 +160,7 @@ func TestBusinessGateDefinitiveClosureStaysImmediate(t *testing.T) {
 			case "never-started":
 				// Replace the loop owner with one that never runs.
 				quiet := newMaterialEligibility(nil, func(context.Context) (bool, error) { return false, nil }, time.Second)
-				quiet.setOnInvalidated(func() {})
+				quiet.setOnInvalidated(func(admissionCloseCause) {})
 				quiet.mu.Lock()
 				quiet.provedAt = quiet.now()
 				quiet.mu.Unlock()
