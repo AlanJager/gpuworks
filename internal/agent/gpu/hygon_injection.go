@@ -73,11 +73,9 @@ func (p *HygonProber) RuntimeInjection(indexes []int) RuntimeInjection {
 		if !ok || gpu.PCIeBDF == "" {
 			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("Hygon device %d is absent from the hy-smi inventory", index)}
 		}
-		p.mu.RLock()
-		expected, hasExpected := p.lastSeen[index]
-		p.mu.RUnlock()
-		if hasExpected && expected.bdf != "" && expected.bdf != gpu.PCIeBDF {
-			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("Hygon index %d changed from PCI %s to %s since probe", index, expected.bdf, gpu.PCIeBDF)}
+		expected, hasExpected := p.seen.at(index)
+		if hasExpected && expected.PCIeBDF != "" && expected.PCIeBDF != gpu.PCIeBDF {
+			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("Hygon index %d changed from PCI %s to %s since probe", index, expected.PCIeBDF, gpu.PCIeBDF)}
 		}
 		nodes, err := p.drmNodes(gpu.PCIeBDF)
 		if err != nil {

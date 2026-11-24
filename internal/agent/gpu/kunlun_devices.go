@@ -66,9 +66,7 @@ func (p *KunlunProber) runtimeInjectionForDriver(ctx context.Context, indexes []
 	managedPaths = append(managedPaths, "/dev/xpuctrl")
 	// Probe publishes a new immutable map. Retain one generation for all
 	// selected cards without holding its publication lock during filesystem I/O.
-	p.mu.RLock()
-	previous := p.lastSeen
-	p.mu.RUnlock()
+	previous := p.seen.all()
 	// Docker and nerdctl name runc so a node whose default runtime injects
 	// another vendor's devices cannot add them. A pod has no such option: its
 	// --runtime would become a RuntimeClass named "runc", which no cluster

@@ -168,7 +168,7 @@ func TestPPURuntimeInjectionFailsClosed(t *testing.T) {
 func TestPPURuntimeInjectionSelectsDevicesInRequestedOrder(t *testing.T) {
 	const first = "GPU-011ef111-c280-0918-0000-000020462378"
 	const second = "GPU-019ec20c-0692-0214-0000-0000c0e5b553"
-	p := &PPUProber{lastSeen: map[int]ppuIdentity{8: {uuid: first}, 9: {uuid: second}}}
+	p := &PPUProber{seen: cardBaseline{cards: map[int]proto.GPUInfo{8: {UUID: first}, 9: {UUID: second}}}}
 	rows := "8, " + first + "\n9, " + second
 	resolve := func(index int, id string) (string, error) {
 		if (index == 8 && id == first) || (index == 9 && id == second) {
@@ -204,7 +204,7 @@ func TestPPURuntimeInjectionSelectsDevicesInRequestedOrder(t *testing.T) {
 				t.Fatalf("missing verified identities: %+v", inj)
 			}
 			for i, index := range tc.indexes {
-				if identities[i] != p.lastSeen[index].uuid {
+				if identities[i] != p.seen.cards[index].UUID {
 					t.Fatalf("identity order differs from selected devices: %+v", inj)
 				}
 				path := fmt.Sprintf("/dev/alixpu_ppu%d", index+1)
@@ -228,7 +228,7 @@ func TestPPURuntimeInjectionSelectsDevicesInRequestedOrder(t *testing.T) {
 func TestPPURuntimeInjectionUsesDriverInventory(t *testing.T) {
 	const first = "GPU-00000000-0000-0000-0000-000000000008"
 	const second = "GPU-00000000-0000-0000-0000-000000000012"
-	p := &PPUProber{lastSeen: map[int]ppuIdentity{8: {uuid: first}, 12: {uuid: second}}}
+	p := &PPUProber{seen: cardBaseline{cards: map[int]proto.GPUInfo{8: {UUID: first}, 12: {UUID: second}}}}
 	rows := "8, " + first + "\n12, " + second
 	resolve := func(index int, _ string) (string, error) {
 		return fmt.Sprintf("/dev/alixpu_ppu%d", index+1), nil
@@ -260,7 +260,7 @@ func TestPPURuntimeInjectionUsesDriverInventory(t *testing.T) {
 				t.Fatalf("missing verified identities: %+v", inj)
 			}
 			for i, index := range tc.indexes {
-				if identities[i] != p.lastSeen[index].uuid {
+				if identities[i] != p.seen.cards[index].UUID {
 					t.Fatalf("identity must be independent of the runtime view: %+v", inj)
 				}
 				path := fmt.Sprintf("/dev/alixpu_ppu%d", index+1)

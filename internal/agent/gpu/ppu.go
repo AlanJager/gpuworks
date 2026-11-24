@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 
 	"gpuworks.ai/gpuworks/internal/accelerator"
@@ -23,18 +22,13 @@ import (
 // Enumeration indexes are deliberately treated as ephemeral: a PPU assigned
 // to VFIO disappears from the host and all following indexes can be renumbered.
 type PPUProber struct {
-	mu       sync.RWMutex
-	lastSeen map[int]ppuIdentity
+	// seen is what each card was when ppu-smi last listed it.
+	seen cardBaseline
 
 	// hostRoot is where the host's /sys is read for the PCI roster; empty
 	// means "/". A test sets it so the roster describes its fixture
 	// rather than whatever is in the machine running the test.
 	hostRoot string
-}
-
-type ppuIdentity struct {
-	uuid string
-	bdf  string
 }
 
 var _ DriverAwareInjector = (*PPUProber)(nil)
@@ -52,28 +46,17 @@ func (p *PPUProber) Available() bool {
 const ppuProbeFields = "index,name,architecture,uuid,minor_number,pci.bus_id,memory.total,memory.used,utilization.ppu,temperature.ppu,power.draw,driver_version,ecc.errors.uncorrected.volatile.dram,ecc.errors.uncorrected.aggregate.dram,retired_pages.double_bit.count,retired_pages.pending,remapped_rows.uncorrectable,remapped_rows.pending,remapped_rows.failure,xid.correctable.ppu_reset,xid.correctable.os_reboot,xid.correctable.cold_reboot"
 
 func (p *PPUProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
-	if _, err := lookCLI("ppu-smi"); err != nil {
-		return p.roster(nil, false), nil //nolint:nilerr // Absence of this vendor CLI is an unavailable probe, not a node failure.
-	}
-	out, err := queryPPU(ctx, "--query-ppu="+ppuProbeFields, "--format=csv,noheader,nounits")
-	if err != nil {
-		return p.roster(nil, false), err
-	}
-	gpus := parsePPUInfo(out)
-	p.mu.Lock()
-	if p.lastSeen == nil {
-		p.lastSeen = make(map[int]ppuIdentity)
-	}
-	for _, g := range gpus {
-		p.lastSeen[g.Index] = ppuIdentity{uuid: g.UUID, bdf: g.PCIeBDF}
-	}
-	p.mu.Unlock()
-	return p.roster(gpus, true), nil
+	_, err := lookCLI("ppu-smi")
+	return probeCards(ctx, accelerator.VendorPPU, p.hostRoot, err == nil, p.list, &p.seen)
 }
 
-// roster places what ppu-smi listed on the roster of what the host has.
-func (p *PPUProber) roster(listed []proto.GPUInfo, answered bool) []proto.GPUInfo {
-	return Roster(accelerator.VendorPPU, p.hostRoot, listed, answered)
+// list is the cards ppu-smi lists.
+func (p *PPUProber) list(ctx context.Context) ([]proto.GPUInfo, error) {
+	out, err := queryPPU(ctx, "--query-ppu="+ppuProbeFields, "--format=csv,noheader,nounits")
+	if err != nil {
+		return nil, err
+	}
+	return parsePPUInfo(out), nil
 }
 
 func (p *PPUProber) DriverVersion(ctx context.Context) string {
@@ -263,11 +246,9 @@ func (p *PPUProber) runtimeInjection(indexes []int, rows string, resolve func(in
 			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("PPU device %d has an invalid or duplicate UUID %q", index, uuid)}
 		}
 		selected[uuid] = true
-		p.mu.RLock()
-		expected, hasExpected := p.lastSeen[index]
-		p.mu.RUnlock()
-		if hasExpected && expected.uuid != uuid {
-			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("PPU index %d changed from UUID %s to %s since probe", index, expected.uuid, uuid)}
+		expected, hasExpected := p.seen.at(index)
+		if hasExpected && expected.UUID != uuid {
+			return RuntimeInjection{UnsupportedReason: fmt.Sprintf("PPU index %d changed from UUID %s to %s since probe", index, expected.UUID, uuid)}
 		}
 		path, err := resolve(index, uuid)
 		if err != nil {

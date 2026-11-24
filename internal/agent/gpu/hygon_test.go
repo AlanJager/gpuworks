@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // TestHygonInspectAndRequireDeviceSeeTheLiveHostDev: a privileged
@@ -168,7 +170,7 @@ func TestParseHygonBWInventory(t *testing.T) {
 }
 
 func TestHygonMetricsUseRealMemoryCapture(t *testing.T) {
-	p := &HygonProber{lastSeen: map[int]hygonIdentity{0: {uuid: "GPU-stable-zero"}}}
+	p := &HygonProber{seen: cardBaseline{cards: map[int]proto.GPUInfo{0: {UUID: "GPU-stable-zero"}}}}
 	metrics := p.parseMetrics(readHygonFixture(t), "")
 	if len(metrics) != 2 {
 		t.Fatalf("metrics = %+v", metrics)
@@ -212,9 +214,9 @@ func TestHygonMetricsFallBackToProvenMemoryQuery(t *testing.T) {
 
 func TestHygonRuntimeInjectionResolvesDRMFromPCI(t *testing.T) {
 	p := testHygonProber(t, readHygonFixture(t))
-	p.lastSeen = map[int]hygonIdentity{
-		0: {uuid: "GPU-a", bdf: "0000:19:00.0"},
-		1: {uuid: "GPU-b", bdf: "0000:67:00.0"},
+	p.seen.cards = map[int]proto.GPUInfo{
+		0: {UUID: "GPU-a", PCIeBDF: "0000:19:00.0"},
+		1: {UUID: "GPU-b", PCIeBDF: "0000:67:00.0"},
 	}
 	inj := p.RuntimeInjection([]int{1})
 	if inj.UnsupportedReason != "" {
@@ -263,9 +265,9 @@ func TestHygonRuntimeInjectionForDriverNumbersCardsAsHIPSeesThem(t *testing.T) {
 		{"udocker", []int{1, 0}, "1,0"},
 	} {
 		p := testHygonProber(t, readHygonFixture(t))
-		p.lastSeen = map[int]hygonIdentity{
-			0: {uuid: "GPU-a", bdf: "0000:19:00.0"},
-			1: {uuid: "GPU-b", bdf: "0000:67:00.0"},
+		p.seen.cards = map[int]proto.GPUInfo{
+			0: {UUID: "GPU-a", PCIeBDF: "0000:19:00.0"},
+			1: {UUID: "GPU-b", PCIeBDF: "0000:67:00.0"},
 		}
 		inj := ResolveInjection(t.Context(), p, InjectionRequest{Indexes: tc.indexes, DriverName: tc.driver})
 		if inj.UnsupportedReason != "" {
@@ -284,7 +286,7 @@ func TestHygonRuntimeInjectionForDriverNumbersCardsAsHIPSeesThem(t *testing.T) {
 
 func TestHygonRuntimeInjectionForDriverKeepsRefusals(t *testing.T) {
 	p := testHygonProber(t, readHygonFixture(t))
-	p.lastSeen = map[int]hygonIdentity{1: {uuid: "GPU-b", bdf: "0000:19:00.0"}}
+	p.seen.cards = map[int]proto.GPUInfo{1: {UUID: "GPU-b", PCIeBDF: "0000:19:00.0"}}
 	inj := p.RuntimeInjectionForDriver([]int{1}, "docker")
 	if !strings.Contains(inj.UnsupportedReason, "changed from PCI") || inj.Env != nil || inj.DockerArgs != nil {
 		t.Fatalf("refused injection = %+v", inj)
@@ -293,7 +295,7 @@ func TestHygonRuntimeInjectionForDriverKeepsRefusals(t *testing.T) {
 
 func TestHygonRuntimeInjectionFailsClosedOnIndexDrift(t *testing.T) {
 	p := testHygonProber(t, readHygonFixture(t))
-	p.lastSeen = map[int]hygonIdentity{1: {uuid: "GPU-b", bdf: "0000:19:00.0"}}
+	p.seen.cards = map[int]proto.GPUInfo{1: {UUID: "GPU-b", PCIeBDF: "0000:19:00.0"}}
 	inj := p.RuntimeInjection([]int{1})
 	if !strings.Contains(inj.UnsupportedReason, "changed from PCI") || len(inj.Env) != 0 || len(inj.DockerArgs) != 0 {
 		t.Fatalf("injection = %+v", inj)

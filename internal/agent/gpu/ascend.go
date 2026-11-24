@@ -164,15 +164,18 @@ func parseCANNFrameworkVersion(text string) string {
 }
 
 func (p *AscendProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
-	if _, err := lookCLI("npu-smi"); err != nil && p.runner == nil {
-		return p.roster(nil, false), nil
-	}
+	_, err := lookCLI("npu-smi")
+	return probeCards(ctx, accelerator.VendorAscend, p.hostRoot, err == nil || p.runner != nil, p.list, nil)
+}
+
+// list is the chips npu-smi lists, each with its health detail.
+func (p *AscendProber) list(ctx context.Context) ([]proto.GPUInfo, error) {
 	out, err := p.info(ctx)
 	if err != nil {
 		// npu-smi could not be asked (on 198.51.100.31 it answers "dcmi
 		// module initialize failed"), so nothing is known about any card.
 		// The eight 910B4 in the machine are still a fact.
-		return p.roster(nil, false), err
+		return nil, err
 	}
 	chips := parseAscendChips(out)
 	enrichAscendHealthDetails(ctx, chips, p.command)
@@ -180,12 +183,7 @@ func (p *AscendProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 	for i, c := range chips {
 		gpus[i] = c.gpu
 	}
-	return p.roster(gpus, true), nil
-}
-
-// roster places what npu-smi listed on the roster of what the host has.
-func (p *AscendProber) roster(listed []proto.GPUInfo, answered bool) []proto.GPUInfo {
-	return Roster(accelerator.VendorAscend, p.hostRoot, listed, answered)
+	return gpus, nil
 }
 
 // chipAddress is how npu-smi addresses the chip a device index names, read
