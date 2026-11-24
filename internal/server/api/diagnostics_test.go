@@ -250,7 +250,7 @@ func TestDiagnosticsBundleRoutes(t *testing.T) {
 // for every status but pass, the failed read's text as evidence only.
 func TestDiagnosticsBundleItemWire(t *testing.T) {
 	var b diagnostics.Bundle
-	manifest := `{"id":"b1","items":[{"path":"server/gpuworks-server.log","status":"pass","bytes":7},` +
+	manifest := `{"id":"b1","complete":false,"items":[{"path":"server/gpuworks-server.log","status":"pass","bytes":7},` +
 		`{"path":"server/host-identity.json","status":"pass","bytes":3},` +
 		`{"path":"nodes/n2","status":"skip","code":"DIAGNOSTICS_NODE_OFFLINE","bytes":0},` +
 		`{"path":"db","status":"fail","code":"DIAGNOSTICS_ITEM_READ_FAILED","evidence":"database is locked","bytes":0},` +
@@ -266,6 +266,14 @@ func TestDiagnosticsBundleItemWire(t *testing.T) {
 	raw, err := json.Marshal(bundleDTO(b).Items)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// A cluster's collection says whether every member's part is there; a
+	// single server's says nothing.
+	if whole, _ := json.Marshal(bundleDTO(b)); !strings.Contains(string(whole), `"size_bytes":0,"complete":false,"items":[`) {
+		t.Fatalf("bundle = %s", whole)
+	}
+	if single, _ := json.Marshal(bundleDTO(diagnostics.Bundle{ID: "b2"})); strings.Contains(string(single), `"complete"`) {
+		t.Fatalf("a single server's bundle = %s", single)
 	}
 	want := `[{"id":"server_log","path":"server/gpuworks-server.log","status":"pass","bytes":7},` +
 		`{"id":"server_host_identity","path":"server/host-identity.json","status":"pass","bytes":3},` +

@@ -205,6 +205,7 @@ func (s *clusterStatus) fillPeerOrigins(ctx context.Context, facts enrollment.Cl
 			s.peers[i].address = member.Address
 			s.peers[i].database = tcpResult(probeDial(ctx, member.Address, timeout))
 		}
+		s.peers[i].key = member.KeyFingerprint
 		if member.EnrollmentOrigin == "" {
 			continue
 		}

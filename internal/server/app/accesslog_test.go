@@ -238,3 +238,22 @@ func TestAccessLogCarriesProductErrorParameters(t *testing.T) {
 type unwrappingWriter struct{ http.ResponseWriter }
 
 func (w *unwrappingWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// The request record of an agent installation must not carry the SSH
+// private key or the password the operator gave for the host.
+func TestAccessLogLeavesOutTheSSHKeyOfAnAgentInstallation(t *testing.T) {
+	var logs strings.Builder
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+	const body = `{"external_id":"i-1","ssh_key_pem":"-----BEGIN OPENSSH PRIVATE KEY-----\nSSHKEY-41c7\n-----END OPENSSH PRIVATE KEY-----","password":"HOSTPASS-9d20","connect_mode":"agent_dial"}`
+	h := accessLogHandler(log, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusAccepted) }))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/providers/3/install", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	h.ServeHTTP(httptest.NewRecorder(), req)
+	out := logs.String()
+	if strings.Contains(out, "SSHKEY-41c7") || strings.Contains(out, "PRIVATE KEY") || strings.Contains(out, "HOSTPASS-9d20") {
+		t.Fatalf("the request record carries a credential:\n%s", out)
+	}
+	if !strings.Contains(out, "i-1") || !strings.Contains(out, "agent_dial") {
+		t.Fatalf("the request record lost its other parameters:\n%s", out)
+	}
+}

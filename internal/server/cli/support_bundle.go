@@ -167,6 +167,9 @@ func clusterMemberSupportBundle(ctx context.Context, log *slog.Logger, dataDir, 
 			fmt.Fprintf(os.Stderr, "support-bundle: %s is missing (%s); the collection does not show what that member saw\n", item.Path, item.Evidence)
 		}
 	}
+	if bundle.Complete != nil && !*bundle.Complete {
+		fmt.Fprintln(os.Stderr, "support-bundle: the collection is incomplete; run support-bundle --local on each missing member's host for its part")
+	}
 	fmt.Println(out)
 	return nil
 }

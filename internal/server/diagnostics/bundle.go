@@ -76,21 +76,24 @@ type BundleRequest struct {
 // Bundle is a collection as it stands; it is also the collection's
 // manifest.json.
 type Bundle struct {
-	ID          string       `json:"id"`
-	RequestedBy string       `json:"requested_by"`
-	CreatedAt   time.Time    `json:"created_at"`
-	FinishedAt  *time.Time   `json:"finished_at,omitempty"`
-	From        time.Time    `json:"from"`
-	To          time.Time    `json:"to"`
-	Deployments []uint       `json:"deployment_ids"`
-	Instances   []string     `json:"instance_uuids"`
-	Nodes       []string     `json:"node_uuids"`
-	Doctor      bool         `json:"doctor"`
-	Version     string       `json:"server_version"`
-	State       string       `json:"state"` // running, ready, failed
-	Error       string       `json:"error,omitempty"`
-	SizeBytes   int64        `json:"size_bytes"`
-	Items       []BundleItem `json:"items"`
+	ID          string     `json:"id"`
+	RequestedBy string     `json:"requested_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+	FinishedAt  *time.Time `json:"finished_at,omitempty"`
+	From        time.Time  `json:"from"`
+	To          time.Time  `json:"to"`
+	Deployments []uint     `json:"deployment_ids"`
+	Instances   []string   `json:"instance_uuids"`
+	Nodes       []string   `json:"node_uuids"`
+	Doctor      bool       `json:"doctor"`
+	Version     string     `json:"server_version"`
+	State       string     `json:"state"` // running, ready, failed
+	Error       string     `json:"error,omitempty"`
+	SizeBytes   int64      `json:"size_bytes"`
+	// Complete is set on a control-plane cluster only: false when a
+	// member's part is missing (members/index.json says which and why).
+	Complete *bool        `json:"complete,omitempty"`
+	Items    []BundleItem `json:"items"`
 }
 
 // BundleItem is one part of a collection, reported as a check (ADR 0067):

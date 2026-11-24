@@ -141,6 +141,9 @@ func sensitiveAccessLogField(key string) bool {
 	return strings.Contains(normalized, "password") ||
 		strings.Contains(normalized, "secret") ||
 		strings.Contains(normalized, "private_key") ||
+		// An SSH key given to install an agent is a private key under
+		// another name (ssh_key_pem).
+		strings.Contains(normalized, "ssh_key") ||
 		strings.Contains(normalized, "api_key") ||
 		strings.Contains(normalized, "credential") ||
 		normalized == "token" || strings.HasSuffix(normalized, "_token")

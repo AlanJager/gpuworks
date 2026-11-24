@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -69,6 +71,7 @@ func memberFixture(t *testing.T, id uint64, address string, now time.Time) fakeM
 // member's fixture, or the failure the test sets for it.
 type fakeCluster struct {
 	t       *testing.T
+	now     time.Time
 	self    fakeMember
 	members []ClusterMember
 	parts   map[string]fakeMember
@@ -77,12 +80,26 @@ type fakeCluster struct {
 	cut map[string]int
 	// hang makes a member never answer within the caller's deadline.
 	hang map[string]bool
+	// busy makes a member answer busy this many times first.
+	busy  map[string]int
+	asked map[string]int
+	mu    sync.Mutex
 }
 
 func (c *fakeCluster) Members(context.Context) []ClusterMember { return c.members }
 func (c *fakeCluster) Self() MemberSource                      { return c.self }
 
 func (c *fakeCluster) OpenMemberPart(ctx context.Context, member ClusterMember, from, to time.Time) (MemberAnswer, error) {
+	c.mu.Lock()
+	c.asked[member.Address]++
+	busy := c.busy[member.Address] > 0
+	if busy {
+		c.busy[member.Address]--
+	}
+	c.mu.Unlock()
+	if busy {
+		return MemberAnswer{}, errors.Join(ErrMemberBusy, errors.New("status 429"))
+	}
 	if c.hang[member.Address] {
 		<-ctx.Done()
 		return MemberAnswer{}, ctx.Err()
@@ -91,15 +108,19 @@ func (c *fakeCluster) OpenMemberPart(ctx context.Context, member ClusterMember, 
 		return MemberAnswer{}, err
 	}
 	var buf bytes.Buffer
-	if err := WriteMemberPart(ctx, &buf, c.t.TempDir(), c.parts[member.Address], from, to); err != nil {
+	if err := WriteMemberPart(ctx, &buf, c.parts[member.Address], from, to); err != nil {
 		return MemberAnswer{}, err
 	}
 	raw := buf.Bytes()
 	if n, ok := c.cut[member.Address]; ok {
 		raw = raw[:n]
 	}
-	// The member's clock runs 132 s behind the collecting member's.
-	return MemberAnswer{Body: io.NopCloser(bytes.NewReader(raw)), Clock: time.Date(2026, 11, 2, 11, 57, 48, 5e6, time.UTC), RoundTrip: 10 * time.Millisecond}, nil
+	// Finding the member took this side 8 s before the request left (no
+	// leader to ask); the offset must not include that. The member's clock
+	// runs 132 s behind the collecting member's.
+	sent := c.now.Add(8 * time.Second)
+	return MemberAnswer{Body: io.NopCloser(bytes.NewReader(raw)), Sent: sent, Clock: sent.Add(5*time.Millisecond - 132*time.Second),
+		RoundTrip: 10 * time.Millisecond, Key: "key-of-" + member.Address}, nil
 }
 
 func clusterFixture(t *testing.T, now time.Time) (*Manager, *fakeCluster) {
@@ -108,7 +129,7 @@ func clusterFixture(t *testing.T, now time.Time) (*Manager, *fakeCluster) {
 	m.now = func() time.Time { return now }
 	self := memberFixture(t, 1, "10.0.0.1:9001", now)
 	m.SetSources(&fakeSources{logFile: self.logFile, dirs: []ServerDir{{Kind: "data", Path: t.TempDir()}}})
-	c := &fakeCluster{t: t, self: self,
+	c := &fakeCluster{t: t, self: self, now: now, busy: map[string]int{}, asked: map[string]int{},
 		members: []ClusterMember{{ID: 2, Address: "10.0.0.2:9001", Role: "voter"}, {ID: 1, Address: "10.0.0.1:9001", Role: "voter", Self: true}, {ID: 3, Address: "10.0.0.3:9001", Role: "voter"}},
 		parts:   map[string]fakeMember{"10.0.0.2:9001": memberFixture(t, 2, "10.0.0.2:9001", now), "10.0.0.3:9001": memberFixture(t, 3, "10.0.0.3:9001", now)},
 		fail:    map[string]error{}, cut: map[string]int{}, hang: map[string]bool{}}
@@ -196,7 +217,8 @@ func TestClusterCollectionHoldsEveryMembersRecords(t *testing.T) {
       "role": "voter",
       "self": false,
       "collected": true,
-      "member_clock": "2026-11-02T11:57:48.005Z",
+      "answered_key": "key-of-10.0.0.2:9001",
+      "member_clock": "2026-11-02T11:57:56.005Z",
       "clock_offset_ms": -132000,
       "round_trip_ms": 10
     },
@@ -207,7 +229,8 @@ func TestClusterCollectionHoldsEveryMembersRecords(t *testing.T) {
       "role": "voter",
       "self": false,
       "collected": true,
-      "member_clock": "2026-11-02T11:57:48.005Z",
+      "answered_key": "key-of-10.0.0.3:9001",
+      "member_clock": "2026-11-02T11:57:56.005Z",
       "clock_offset_ms": -132000,
       "round_trip_ms": 10
     }
@@ -338,7 +361,9 @@ func TestAMembersPartCannotPlaceFilesOutsideItsDirectory(t *testing.T) {
 
 	root := t.TempDir()
 	dir := filepath.Join(root, "members", "m2")
-	files, err := readMemberPart(&buf, dir)
+	var bundle atomic.Int64
+	bundle.Store(MembersBytes)
+	files, err := readMemberPart(&buf, dir, &partBudget{member: MemberPartBytes, bundle: &bundle})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,9 +390,11 @@ func TestAMembersPartCannotPlaceFilesOutsideItsDirectory(t *testing.T) {
 	}
 }
 
-// What a member keeps beside its log must not travel with its part: the
-// part is made of named files, never of a directory's contents.
-func TestAMembersPartLeavesItsSecretsBehind(t *testing.T) {
+// A regression guard, not a proof: a part is made of named files, never of
+// a directory's contents, so nothing beside the log is read today. This
+// fails the day a part starts sweeping a directory. What a log line itself
+// may carry is a separate matter (see the log sources' own redaction).
+func TestAMembersPartIsNamedFilesNotADirectorySweep(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 	member := memberFixture(t, 2, "10.0.0.2:9001", now)
 	data := filepath.Dir(member.logFile)
@@ -388,7 +415,7 @@ func TestAMembersPartLeavesItsSecretsBehind(t *testing.T) {
 		}
 	}
 	var buf bytes.Buffer
-	if err := WriteMemberPart(context.Background(), &buf, t.TempDir(), member, now.Add(-time.Hour), now); err != nil {
+	if err := WriteMemberPart(context.Background(), &buf, member, now.Add(-time.Hour), now); err != nil {
 		t.Fatal(err)
 	}
 	gz, err := gzip.NewReader(&buf)
@@ -409,7 +436,7 @@ func TestAMembersPartLeavesItsSecretsBehind(t *testing.T) {
 		names = append(names, h.Name)
 		_, _ = io.Copy(&all, tr)
 	}
-	if got := strings.Join(names, ","); !strings.HasPrefix(got, "cluster-status.txt,leader-changes.log,member.json,role-events.log,server.log,stalls/stall-") || len(names) != 6 {
+	if got := strings.Join(names, ","); !strings.HasPrefix(got, "member.json,role-events.log,leader-changes.log,cluster-status.txt,server.log,stalls/stall-") || len(names) != 6 {
 		t.Fatalf("part holds %s", got)
 	}
 	for name, body := range secrets {
@@ -423,15 +450,14 @@ func TestAMembersPartRefusesAWindowItCannotServe(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 	member := memberFixture(t, 2, "10.0.0.2:9001", now)
 	for _, w := range [][2]time.Time{{now, now.Add(-time.Hour)}, {now.Add(-8 * 24 * time.Hour), now}} {
-		if err := WriteMemberPart(context.Background(), io.Discard, t.TempDir(), member, w[0], w[1]); err == nil {
+		if err := WriteMemberPart(context.Background(), io.Discard, member, w[0], w[1]); err == nil {
 			t.Fatalf("window %v..%v was served", w[0], w[1])
 		}
 	}
 }
 
-// The whole collection of a cluster, made beside every member's secrets,
-// carries none of them.
-func TestAClusterCollectionCarriesNoMembersSecrets(t *testing.T) {
+// The same regression guard for a whole cluster collection.
+func TestAClusterCollectionIsNamedFilesNotADirectorySweep(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 	m, c := clusterFixture(t, now)
 	secrets := map[string]string{

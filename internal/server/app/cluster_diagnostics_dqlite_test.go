@@ -39,11 +39,33 @@ func memberPEM(t *testing.T, pair tls.Certificate) ([]byte, []byte) {
 		pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key})
 }
 
-// diagnosticsMember is the answering member: a data directory with a log, a
-// secret beside it and a transport policy naming the keys it admits.
+// writeMemberIdentity lays out a member's cluster-enrollment directory.
+func writeMemberIdentity(t *testing.T, f *closedFactsTLSFixture, root, listen string, pair tls.Certificate) {
+	t.Helper()
+	dir := filepath.Join(root, "cluster-enrollment")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cert, key := memberPEM(t, pair)
+	config := `{"cluster_id":"` + f.bundle.info.ClusterID + `","ca_fingerprint":"` + f.bundle.info.CAFingerprint + `","protocol":1,"listen_address":"` + listen + `","public_url":"https://` + listen + `"}`
+	for name, data := range map[string][]byte{"config.json": []byte(config), "ca.pem": f.bundle.ca, "server.pem": cert, "server.key": key} {
+		if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func fixtureMembers() string {
+	return statusMembers(statusIdentity(7, "127.0.0.1:9910", 0), statusIdentity(9, "127.0.0.1:9911", 0), statusIdentity(11, "127.0.0.1:9912", 0))
+}
+
+// diagnosticsMember is the answering member (member 7 of the fixture): a
+// data directory with its raft identity, a log, a secret beside it and a
+// transport policy naming the keys it admits.
 func diagnosticsMember(t *testing.T, f *closedFactsTLSFixture, now time.Time, revoked ...string) (*enrollmentServer, string) {
 	t.Helper()
-	data := t.TempDir()
+	data := writeStatusRaft(t, statusIdentity(7, "127.0.0.1:9910", 0), fixtureMembers(), map[string]string{"dqlite-lock": ""})
+	writeMemberIdentity(t, f, data, closedStatusPort(t), f.serverPair)
 	f.bundle.dataDir = data
 	logFile := filepath.Join(data, "logs", "server.log")
 	_ = os.MkdirAll(filepath.Dir(logFile), 0o700)
@@ -99,6 +121,28 @@ func diagnosticsClient(t *testing.T, f *closedFactsTLSFixture, server *enrollmen
 	return client
 }
 
+// partArchive reads a part's files.
+func partArchive(t *testing.T, body io.Reader) map[string]string {
+	t.Helper()
+	gz, err := gzip.NewReader(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := map[string]string{}
+	tr := tar.NewReader(gz)
+	for {
+		h, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return files
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(tr)
+		files[h.Name] = string(raw)
+	}
+}
+
 // A member gives its part to another member over the enrollment listener's
 // mutual TLS, with no database, no leader and its business closed.
 func TestAMemberGivesItsDiagnosticsPartToAnAdmittedMember(t *testing.T) {
@@ -111,26 +155,13 @@ func TestAMemberGivesItsDiagnosticsPartToAnAdmittedMember(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer answer.Body.Close()
-	if d := answer.Clock.Sub(now); answer.Clock.IsZero() || d < -time.Minute || d > time.Minute {
-		t.Fatalf("member clock = %v, want this host's clock", answer.Clock)
+	if d := answer.Clock.Sub(answer.Sent); answer.Clock.IsZero() || d < 0 || d > answer.RoundTrip {
+		t.Fatalf("member clock = %v, sent %v, round trip %v: on one host the clock lies inside the round trip", answer.Clock, answer.Sent, answer.RoundTrip)
 	}
-	gz, err := gzip.NewReader(answer.Body)
-	if err != nil {
-		t.Fatal(err)
+	if answer.MemberKey != f.serverKey {
+		t.Fatalf("answered by key %s, want the member's %s", answer.MemberKey, f.serverKey)
 	}
-	files := map[string]string{}
-	tr := tar.NewReader(gz)
-	for {
-		h, err := tr.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		body, _ := io.ReadAll(tr)
-		files[h.Name] = string(body)
-	}
+	files := partArchive(t, answer.Body)
 	if log := files[diagnostics.MemberLogFile]; strings.Count(log, "\n") != 2 || strings.Contains(log, "outside the window") {
 		t.Fatalf("log in the part:\n%s", log)
 	}
@@ -141,7 +172,7 @@ func TestAMemberGivesItsDiagnosticsPartToAnAdmittedMember(t *testing.T) {
 		t.Fatalf("leader changes:\n%s", got)
 	}
 	var facts diagnostics.MemberFacts
-	if err := json.Unmarshal([]byte(files[diagnostics.MemberFactsFile]), &facts); err != nil || facts.Version == "" || facts.ServerSHA256 == "" || !strings.HasSuffix(facts.LogFile, "logs/server.log") {
+	if err := json.Unmarshal([]byte(files[diagnostics.MemberFactsFile]), &facts); err != nil || facts.Version == "" || facts.ServerSHA256 == "" || !strings.HasSuffix(facts.LogFile, "logs/server.log") || facts.ID != 7 || facts.Address != "127.0.0.1:9910" {
 		t.Fatalf("member.json = %+v, %v", facts, err)
 	}
 	for name, body := range files {

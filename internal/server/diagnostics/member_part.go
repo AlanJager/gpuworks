@@ -1,17 +1,13 @@
 package diagnostics
 
 import (
-	"archive/tar"
 	"bufio"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -31,12 +27,16 @@ import (
 const (
 	// MemberLogBytes bounds a member's log in a part.
 	MemberLogBytes = int64(64 << 20)
-	// MemberPartBytes bounds what is read of another member's part.
+	// MemberPartBytes bounds one member's part as it is unpacked, and
+	// MembersBytes every member's together.
 	MemberPartBytes = MemberLogBytes + 64<<20
+	MembersBytes    = int64(512 << 20)
 	// MemberPartTimeout bounds one member's answer.
 	MemberPartTimeout = 2 * time.Minute
 	// memberStallReports bounds the stall reports of one part, newest kept.
+	// and memberStallBytes their size together.
 	memberStallReports = 64
+	memberStallBytes   = int64(32 << 20)
 	memberSmallFile    = int64(8 << 20)
 )
 
@@ -85,7 +85,7 @@ type MemberSource interface {
 	Status(ctx context.Context) string
 }
 
-// memberFile is one staged file of a part.
+// memberFile is one file of a part in a collection's staging directory.
 type memberFile struct {
 	name, path string
 	bytes      int64
@@ -105,101 +105,102 @@ func leaderChangeLine(line []byte) bool {
 		bytes.Contains(line, []byte(`msg="business follows a new database leader"`))
 }
 
-// stageMemberPart writes a member's part into dir. With log set, the
-// member's log in the window is already there (the collecting member's own
-// log, staged as server/gpuworks-server.log): only the small files are
-// written, read from it. Otherwise the log and the stall reports in the
-// window are staged too.
-func stageMemberPart(ctx context.Context, dir string, src MemberSource, from, to time.Time, now time.Time, log string) ([]memberFile, error) {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, err
-	}
-	var files []memberFile
-	facts := src.Facts()
-	facts.CollectedAt, facts.From, facts.To, facts.Truncated = now, from, to, []string{}
-	if log == "" {
-		log = filepath.Join(dir, MemberLogFile)
-		f, err := os.Create(log)
-		if err != nil {
-			return nil, err
-		}
-		n, truncated, err := logWindow(src.LogFiles(), f, from, to, MemberLogBytes)
-		if cerr := f.Close(); err == nil {
-			err = cerr
-		}
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, memberFile{name: MemberLogFile, path: log, bytes: n, truncated: truncated})
-		reports := stallwatch.Reports(src.StallDir())
-		sort.Strings(reports)
-		var kept []string
-		for _, report := range reports {
-			if at, ok := stallwatch.ReportTime(report); ok && !at.Before(from) && !at.After(to) {
-				kept = append(kept, report)
-			}
-		}
-		if len(kept) > memberStallReports {
-			kept = kept[len(kept)-memberStallReports:]
-			facts.Truncated = append(facts.Truncated, strings.TrimSuffix(memberStallPrefix, "/"))
-		}
-		for _, report := range kept {
-			if info, err := os.Stat(report); err == nil && info.Mode().IsRegular() && info.Size() <= memberSmallFile {
-				files = append(files, memberFile{name: memberStallPrefix + filepath.Base(report), path: report, bytes: info.Size()})
-			}
-		}
-	}
-	for _, extract := range []struct {
-		name string
-		keep func([]byte) bool
-	}{{MemberRoleEventsFile, roleEventLine}, {MemberLeaderChangesFile, leaderChangeLine}} {
-		local := filepath.Join(dir, extract.name)
-		n, err := extractLines(log, local, extract.keep)
-		if err != nil {
-			return nil, err
-		}
-		files = append(files, memberFile{name: extract.name, path: local, bytes: n})
-	}
-	if status := src.Status(ctx); status != "" {
-		local := filepath.Join(dir, MemberStatusFile)
-		if err := os.WriteFile(local, []byte(status), 0o600); err != nil {
-			return nil, err
-		}
-		files = append(files, memberFile{name: MemberStatusFile, path: local, bytes: int64(len(status))})
-	}
-	for _, f := range files {
-		if f.truncated {
-			facts.Truncated = append(facts.Truncated, f.name)
-		}
-	}
-	raw, err := json.MarshalIndent(facts, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	local := filepath.Join(dir, MemberFactsFile)
-	if err := os.WriteFile(local, raw, 0o600); err != nil {
-		return nil, err
-	}
-	files = append(files, memberFile{name: MemberFactsFile, path: local, bytes: int64(len(raw))})
-	sort.Slice(files, func(i, j int) bool { return files[i].name < files[j].name })
-	return files, nil
+// ctxReader ends a read loop when its context does. A read already inside
+// the kernel (a disk that does not answer) is not interrupted.
+type ctxReader struct {
+	ctx context.Context
+	r   io.Reader
 }
 
-// logWindow writes the lines of a log's generations (given newest first)
-// that lie in the window, oldest first.
-func logWindow(files []string, w io.Writer, from, to time.Time, max int64) (int64, bool, error) {
-	var written int64
+func (c ctxReader) Read(p []byte) (int, error) {
+	if err := c.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return c.r.Read(p)
+}
+
+// capped keeps what fits its bound of the lines it is given.
+type capped struct {
+	buf       bytes.Buffer
+	truncated bool
+}
+
+func (c *capped) add(line []byte) {
+	if int64(c.buf.Len()+len(line)) > memberSmallFile {
+		c.truncated = true
+		return
+	}
+	c.buf.Write(line)
+}
+
+// recordSink is given a log's lines one Write at a time (filterLogWindow
+// does): it counts them, keeps the role records apart, and passes the lines
+// on when out is set.
+type recordSink struct {
+	out            io.Writer
+	n              int64
+	roles, leaders capped
+}
+
+func (s *recordSink) Write(line []byte) (int, error) {
+	switch {
+	case roleEventLine(line):
+		s.roles.add(line)
+	case leaderChangeLine(line):
+		s.leaders.add(line)
+	}
+	s.n += int64(len(line))
+	if s.out != nil {
+		return s.out.Write(line)
+	}
+	return len(line), nil
+}
+
+// memberPart is a member's part, read and measured, before it is written.
+// Nothing is staged on disk: the log's generations stay open between the
+// pass that measures the window and the pass that writes it, so a rotation
+// in between changes nothing, and the small files are held in memory.
+type memberPart struct {
+	facts          MemberFacts
+	from, to       time.Time
+	logs           []*os.File // oldest first
+	logBytes       int64
+	roles, leaders []byte
+	status         string
+	stalls         []memberFile
+}
+
+func (p *memberPart) close() {
+	for _, f := range p.logs {
+		_ = f.Close()
+	}
+}
+
+// openLogWindow opens the generations (given newest first) that can hold a
+// line of the window, oldest first.
+func openLogWindow(files []string, from time.Time) []*os.File {
+	var out []*os.File
 	for i := len(files) - 1; i >= 0; i-- {
 		info, err := os.Stat(files[i])
 		if err != nil || info.ModTime().Before(from) {
 			continue // a generation last written before the window holds nothing in it
 		}
-		f, err := os.Open(files[i])
-		if err != nil {
-			continue
+		if f, err := os.Open(files[i]); err == nil {
+			out = append(out, f)
 		}
-		n, truncated, err := filterLogWindow(f, w, from, to, max-written)
-		_ = f.Close()
+	}
+	return out
+}
+
+// filterFiles writes the lines of the opened generations that lie in the
+// window, each read from its start.
+func filterFiles(ctx context.Context, files []*os.File, w io.Writer, from, to time.Time, max int64) (int64, bool, error) {
+	var written int64
+	for _, f := range files {
+		if _, err := f.Seek(0, io.SeekStart); err != nil {
+			return written, false, err
+		}
+		n, truncated, err := filterLogWindow(ctxReader{ctx, f}, w, from, to, max-written)
 		written += n
 		if err != nil || truncated {
 			return written, truncated, err
@@ -208,134 +209,142 @@ func logWindow(files []string, w io.Writer, from, to time.Time, max int64) (int6
 	return written, false, nil
 }
 
-// extractLines copies the lines of src that keep accepts to dst.
-func extractLines(src, dst string, keep func([]byte) bool) (int64, error) {
-	out, err := os.Create(dst)
-	if err != nil {
-		return 0, err
-	}
-	defer out.Close()
-	in, err := os.Open(src)
-	if errors.Is(err, os.ErrNotExist) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, err
-	}
-	defer in.Close()
-	var written int64
-	sc := bufio.NewScanner(in)
-	sc.Buffer(make([]byte, 64<<10), 4<<20)
-	for sc.Scan() {
-		if line := sc.Bytes(); keep(line) {
-			n, err := out.Write(append(line, '\n'))
-			written += int64(n)
-			if err != nil {
-				return written, err
-			}
+// logWindow writes the lines of a log's generations (given newest first)
+// that lie in the window, oldest first.
+func logWindow(files []string, w io.Writer, from, to time.Time, max int64) (int64, bool, error) {
+	opened := openLogWindow(files, from)
+	defer func() {
+		for _, f := range opened {
+			_ = f.Close()
 		}
-	}
-	return written, sc.Err()
+	}()
+	return filterFiles(context.Background(), opened, w, from, to, max)
 }
 
-// WriteMemberPart writes this member's part for the window as a gzipped
-// tar: what another member asks for over the member-authenticated route.
-// work is a private directory the part is staged in and removed from.
-func WriteMemberPart(ctx context.Context, w io.Writer, work string, src MemberSource, from, to time.Time) error {
-	if !from.Before(to) || to.Sub(from) > MaxBundleWindow {
-		return errors.New("the window must end after it starts and span at most 7 days")
-	}
-	dir, err := os.MkdirTemp(work, ".member-part-*")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(dir)
-	files, err := stageMemberPart(ctx, dir, src, from, to, time.Now(), "")
-	if err != nil {
-		return err
-	}
-	gz := gzip.NewWriter(w)
-	tw := tar.NewWriter(gz)
-	for _, f := range files {
-		if err := ctx.Err(); err != nil {
-			return err
+// memberStalls are the stall reports of the window that fit the bounds,
+// newest kept.
+func memberStalls(dir string, from, to time.Time) (kept []memberFile, truncated bool) {
+	reports := stallwatch.Reports(dir)
+	sort.Sort(sort.Reverse(sort.StringSlice(reports)))
+	var total int64
+	for _, report := range reports {
+		at, ok := stallwatch.ReportTime(report)
+		if !ok || at.Before(from) || at.After(to) {
+			continue
 		}
-		if err := addFileToTar(tw, f.path, f.name); err != nil {
-			return err
+		info, err := os.Stat(report)
+		if err != nil || !info.Mode().IsRegular() || info.Size() > memberSmallFile {
+			continue
 		}
+		if len(kept) == memberStallReports || total+info.Size() > memberStallBytes {
+			truncated = true
+			break
+		}
+		total += info.Size()
+		kept = append(kept, memberFile{name: memberStallPrefix + filepath.Base(report), path: report, bytes: info.Size()})
 	}
-	if err := tw.Close(); err != nil {
-		return err
-	}
-	return gz.Close()
+	sort.Slice(kept, func(i, j int) bool { return kept[i].name < kept[j].name })
+	return kept, truncated
 }
 
-// readMemberPart unpacks another member's part into dir. Only the files a
-// part is made of are taken, each up to its bound; anything else in the
-// stream is ignored, so a member cannot place a file elsewhere.
-func readMemberPart(r io.Reader, dir string) ([]memberFile, error) {
-	gz, err := gzip.NewReader(io.LimitReader(r, MemberPartBytes))
+// readMemberOwnPart reads this member's part for the window. The caller
+// closes it.
+func readMemberOwnPart(ctx context.Context, src MemberSource, from, to, now time.Time) (*memberPart, error) {
+	p := &memberPart{facts: src.Facts(), from: from, to: to}
+	p.facts.CollectedAt, p.facts.From, p.facts.To, p.facts.Truncated = now, from, to, []string{}
+	p.logs = openLogWindow(src.LogFiles(), from)
+	sink := &recordSink{}
+	n, truncated, err := filterFiles(ctx, p.logs, sink, from, to, MemberLogBytes)
+	if err != nil {
+		p.close()
+		return nil, err
+	}
+	p.logBytes = n
+	p.setRecords(sink, truncated)
+	var cut bool
+	if p.stalls, cut = memberStalls(src.StallDir(), from, to); cut {
+		p.facts.Truncated = append(p.facts.Truncated, strings.TrimSuffix(memberStallPrefix, "/"))
+	}
+	p.status = src.Status(ctx)
+	if err := ctx.Err(); err != nil {
+		p.close()
+		return nil, err
+	}
+	return p, nil
+}
+
+func (p *memberPart) setRecords(sink *recordSink, logTruncated bool) {
+	p.roles, p.leaders = sink.roles.buf.Bytes(), sink.leaders.buf.Bytes()
+	for _, f := range []struct {
+		name string
+		cut  bool
+	}{{MemberLogFile, logTruncated}, {MemberRoleEventsFile, sink.roles.truncated}, {MemberLeaderChangesFile, sink.leaders.truncated}} {
+		if f.cut {
+			p.facts.Truncated = append(p.facts.Truncated, f.name)
+		}
+	}
+}
+
+// small are the part's files held in memory, member.json first.
+func (p *memberPart) small() ([]struct {
+	name string
+	data []byte
+}, error) {
+	facts, err := json.MarshalIndent(p.facts, "", "  ")
 	if err != nil {
 		return nil, err
 	}
-	defer gz.Close()
-	if err := os.MkdirAll(filepath.Join(dir, "stalls"), 0o700); err != nil {
+	out := []struct {
+		name string
+		data []byte
+	}{{MemberFactsFile, facts}, {MemberRoleEventsFile, p.roles}, {MemberLeaderChangesFile, p.leaders}}
+	if p.status != "" {
+		out = append(out, struct {
+			name string
+			data []byte
+		}{MemberStatusFile, []byte(p.status)})
+	}
+	return out, nil
+}
+
+// stageMemberPart writes the collecting member's own part into dir. Its log
+// in the window is already staged (as server/gpuworks-server.log, at log)
+// and so are its stall reports: only the small files are written here, the
+// records read out of that log.
+func stageMemberPart(ctx context.Context, dir string, src MemberSource, from, to, now time.Time, log string) ([]memberFile, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	p := &memberPart{facts: src.Facts(), from: from, to: to}
+	p.facts.CollectedAt, p.facts.From, p.facts.To, p.facts.Truncated = now, from, to, []string{}
+	sink := &recordSink{}
+	if f, err := os.Open(log); err == nil {
+		sc := bufio.NewScanner(ctxReader{ctx, f})
+		sc.Buffer(make([]byte, 64<<10), 4<<20)
+		for sc.Scan() {
+			_, _ = sink.Write(append(sc.Bytes(), '\n'))
+		}
+		_ = f.Close()
+		if err := sc.Err(); err != nil {
+			return nil, err
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	p.setRecords(sink, false)
+	p.status = src.Status(ctx)
+	small, err := p.small()
+	if err != nil {
 		return nil, err
 	}
 	var files []memberFile
-	seen := map[string]bool{}
-	tr := tar.NewReader(gz)
-	for {
-		h, err := tr.Next()
-		if errors.Is(err, io.EOF) {
-			break
+	for _, f := range small {
+		local := filepath.Join(dir, f.name)
+		if err := os.WriteFile(local, f.data, 0o600); err != nil {
+			return nil, err
 		}
-		if err != nil {
-			return files, fmt.Errorf("the member's part ended early: %w", err)
-		}
-		name := path.Clean(h.Name)
-		limit, ok := memberFileBound(name)
-		if !ok || seen[name] || h.Typeflag != tar.TypeReg {
-			continue
-		}
-		seen[name] = true
-		local := filepath.Join(dir, filepath.FromSlash(name))
-		f, err := os.OpenFile(local, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
-		if err != nil {
-			return files, err
-		}
-		n, err := io.Copy(f, io.LimitReader(tr, limit))
-		if cerr := f.Close(); err == nil {
-			err = cerr
-		}
-		// A file cut off by the stream's end is not whole either.
-		files = append(files, memberFile{name: name, path: local, bytes: n, truncated: h.Size > limit || err != nil})
-		if err != nil {
-			return files, fmt.Errorf("the member's part ended early: %w", err)
-		}
-	}
-	if !seen[MemberFactsFile] {
-		return files, errors.New("the member's part holds no member.json")
+		files = append(files, memberFile{name: f.name, path: local, bytes: int64(len(f.data))})
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].name < files[j].name })
 	return files, nil
-}
-
-// memberFileBound is the size a part's file may have; ok is false for a
-// name that is not a part's.
-func memberFileBound(name string) (int64, bool) {
-	switch name {
-	case MemberLogFile:
-		return MemberLogBytes, true
-	case MemberFactsFile, MemberRoleEventsFile, MemberLeaderChangesFile, MemberStatusFile:
-		if name == MemberRoleEventsFile {
-			return MemberLogBytes, true
-		}
-		return memberSmallFile, true
-	}
-	if base, ok := strings.CutPrefix(name, memberStallPrefix); ok && base != "" && !strings.Contains(base, "/") &&
-		strings.HasPrefix(base, "stall-") && strings.HasSuffix(base, ".txt") {
-		return memberSmallFile, true
-	}
-	return 0, false
 }

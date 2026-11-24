@@ -113,9 +113,10 @@ type statusPeer struct {
 	database   string
 	enrollment string
 	material   string
-	// origin is the peer's enrollment listener as the leader reported it;
-	// empty when no leader was read.
-	origin string
+	// origin is the peer's enrollment listener and key its member key
+	// fingerprint, as the leader reported them; empty when no leader was
+	// read.
+	origin, key string
 }
 
 type persistedRaftNode struct {

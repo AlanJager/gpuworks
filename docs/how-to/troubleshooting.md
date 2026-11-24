@@ -1452,12 +1452,12 @@ curl -s 'http://127.0.0.1:6060/debug/pprof/goroutine?debug=2' > goroutines.txt
 
 | 路径 | 内容 |
 |---|---|
-| `manifest.json` | 本次收集的范围、server 版本，以及每一项的检查结果：`pass` 完整收集、`warn` 达到大小上限只保留部分、`skip` 未读取（节点离线、agent 版本不支持）、`fail` 读取失败（附错误原文） |
+| `manifest.json` | 本次收集的范围、server 版本，控制面集群上还有 `complete`（有成员的部分没收到时为 `false`），以及每一项的检查结果：`pass` 完整收集、`warn` 达到大小上限只保留部分、`skip` 未读取（节点离线、agent 版本不支持）、`fail` 读取失败（附错误原文） |
 | `server/disk.json` | server 的数据、日志、备份目录与 SQLite 临时目录：所在文件系统的总量与剩余量，以及每个目录下各项的大小（从大到小） |
 | `server/host-identity.json` | server 所在机器的身份（系统 UUID、主板序列号、machine-id、根文件系统 UUID），每项只有加盐摘要 `h` 与原始值的最后 4 个字符 `tail`，读不到的项缺省；盐是固定的，同一台机器在每次收集里摘要相同，见[扩展点](../dev/extensions.md#管理-server-的主机身份) |
 | `server/gpuworks-server.log` | 时间范围内的 server 日志（含 info，日志页只有 warn 以上） |
 | `server/stalls/stall-<时间>.txt` | 时间范围内的[卡顿报告](#server-卡住或偶发变慢时卡顿报告与现场堆栈)，原样收入 |
-| `members/index.json` | 只在[控制面集群](../explanation/control-plane-cluster.md)上有：每个成员一项，收到没有（`collected`），没收到的原因（`missing`：`unreachable` 连不上、`timeout` 超时、`refused` 对方不认本成员的密钥、`failed` 传到一半断了，错误原文在 `evidence`），以及该成员的时钟与收集成员相差多少毫秒（`clock_offset_ms`）。有成员没收到时 `complete` 为 `false` |
+| `members/index.json` | 只在[控制面集群](../explanation/control-plane-cluster.md)上有：每个成员一项，收到没有（`collected`），没收到的原因（`missing`：`unreachable` 连不上、`timeout` 超时、`refused` 对方不认本成员的密钥、`unsupported` 对方的版本还没有这个功能（升级过程中未升级的成员）、`busy` 对方正在为另一次收集读取、`failed` 对方报错、应答的不是要找的成员或传到一半断了，错误原文在 `evidence`），应答的成员密钥指纹（`answered_key`），在收集一侧被截断的文件（`truncated`），以及该成员的时钟与收集成员相差多少毫秒（`clock_offset_ms`，按请求实际发出的时刻计算）。有成员没收到时 `complete` 为 `false` |
 | `members/<成员>/` | 每个成员一个目录，名字是成员的数据库地址（`:` 换成 `_`）。`server.log` 是该成员时间范围内的 server 日志，`role-events.log` 是其中的数据库角色记录，`leader-changes.log` 是其中的 leader 变化汇总，`stalls/` 是它的卡顿报告，`cluster-status.txt` 是它当时看到的集群状态，`member.json` 是它的版本、server 与数据库辅助程序的 SHA-256、存储档位和日志文件位置。发起收集的成员（`self: true`）的日志和卡顿报告在 `server/` 下，不重复放 |
 | `nodes/<uuid>/agent.log`、`doctor.json` | 所选节点（不选时为所选部署的实例所在节点）的 agent 日志与诊断报告 |
 | `instances/<uuid>.log` | 所选部署的实例日志 |
@@ -1469,11 +1469,14 @@ server 起不来时，在 server 主机上执行 [`gpuworks support-bundle`](../
 
 ### 控制面集群：诊断包里有三个成员的记录
 
-在控制面集群上，一次收集包含每个成员的日志、角色记录和卡顿报告。发起收集的成员用自己的成员证书向其他成员的 enrollment 端口要它们各自的部分；每个成员只读自己的目录，不查数据库，所以没有 leader、业务已关闭时照样应答。每个成员的日志最多 64 MiB、最多等 2 分钟，被截断的文件记在该成员的 `member.json` 的 `truncated` 里。成员只交出上表列的那几个文件，密钥、证书和数据库文件不在其中。
+在控制面集群上，一次收集包含每个成员的日志、角色记录和卡顿报告。发起收集的成员用自己的成员证书向其他成员的 enrollment 端口要它们各自的部分；每个成员只读自己的目录，不查数据库，所以没有 leader、业务已关闭时照样应答。每个成员的日志最多 64 MiB、卡顿报告最多 64 份共 32 MiB、最多等 2 分钟，全部成员合计最多 512 MiB；被截断的文件记在该成员的 `member.json` 和 `members/index.json` 的 `truncated` 里。一个成员同一时刻只为一次收集读取；它不往自己的磁盘写任何东西，请求取消或成员自己要停止时立即结束。成员只交出上表列的那几个文件，密钥、证书和数据库文件不在其中。
+
+安全上要知道三点。第一，三个成员的 server 日志经由发起收集的那个成员离开集群，拿到诊断包的人看到的是三台主机的日志。第二，日志行原样收入，不做二次脱敏；日志在写入时已不含密码、token、密钥（请求记录里的凭据字段写成 `[REDACTED]`，引导管理员密码只记文件路径），但其中有主机名、地址、用户名和模型名。第三，成员是否交出日志，由它本机的传输策略文件决定，这个文件在集群有 leader 时才会更新：集群没有 leader 期间，刚被移出集群的成员仍可能被其他成员接受，直到 leader 恢复、策略更新为止。
 
 - **有成员没应答**：收集照常完成。`members/index.json` 的 `complete` 为 `false`，列表里对应一项 `members/<成员>` 为 `fail`（`DIAGNOSTICS_MEMBER_UNAVAILABLE`）。这个包看不到那个成员的记录：待它恢复后重新收集，或到那个成员上执行 `gpuworks support-bundle`。
 - **集群没有 leader，或控制台打不开**：在任意一个成员的主机上执行 `gpuworks support-bundle`。它不打开集群数据库，读本成员的文件并照样去要其他成员的部分；`db/` 那几项（节点、部署、设置等只在数据库里的记录）标为 `fail` 并写明原因。只要本成员的部分时加 `--local`。
-- **从控制台收集**：请求由当前的 leader 处理，`server/` 下是 leader 的日志，其余成员在 `members/` 下。
+- **从控制台收集**：请求由当前的 leader 处理，`server/` 下是 leader 的日志，其余成员在 `members/` 下。出问题的正是 leader（卡住、磁盘慢）时，控制台的收集可能一直不完成或失败：到一个健康成员的主机上执行 `gpuworks support-bundle`，它不经过 leader，leader 的部分收得到就收，收不到就在 `index.json` 里写明。
+- **升级过程中**：还没升级的成员没有这个功能，记为 `unsupported`，不算故障；升级完成后重新收集。
 
 ### 在三个成员的日志里读一次 leader 变化
 

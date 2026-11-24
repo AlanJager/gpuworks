@@ -87,20 +87,23 @@ type DiagnosticsBundlesLimits struct {
 // DiagnosticsBundle is a collection: running, ready (downloadable) or
 // failed.
 type DiagnosticsBundle struct {
-	ID            string                  `json:"id"`
-	RequestedBy   string                  `json:"requested_by"`
-	CreatedAt     string                  `json:"created_at"`
-	FinishedAt    string                  `json:"finished_at,omitempty"`
-	From          string                  `json:"from"`
-	To            string                  `json:"to"`
-	DeploymentIDs []uint                  `json:"deployment_ids"`
-	InstanceUUIDs []string                `json:"instance_uuids"`
-	NodeUUIDs     []string                `json:"node_uuids"`
-	Doctor        bool                    `json:"doctor"`
-	State         string                  `json:"state"`
-	Error         string                  `json:"error,omitempty"`
-	SizeBytes     int64                   `json:"size_bytes"`
-	Items         []DiagnosticsBundleItem `json:"items"`
+	ID            string   `json:"id"`
+	RequestedBy   string   `json:"requested_by"`
+	CreatedAt     string   `json:"created_at"`
+	FinishedAt    string   `json:"finished_at,omitempty"`
+	From          string   `json:"from"`
+	To            string   `json:"to"`
+	DeploymentIDs []uint   `json:"deployment_ids"`
+	InstanceUUIDs []string `json:"instance_uuids"`
+	NodeUUIDs     []string `json:"node_uuids"`
+	Doctor        bool     `json:"doctor"`
+	State         string   `json:"state"`
+	Error         string   `json:"error,omitempty"`
+	SizeBytes     int64    `json:"size_bytes"`
+	// Complete is present on a control-plane cluster only: false when a
+	// member's part is missing from the collection.
+	Complete *bool                   `json:"complete,omitempty"`
+	Items    []DiagnosticsBundleItem `json:"items"`
 }
 
 // DiagnosticsBundleItem is one part of a collection, as a check (ADR 0067).

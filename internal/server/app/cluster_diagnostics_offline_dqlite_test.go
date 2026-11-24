@@ -79,9 +79,18 @@ func TestAMemberCollectsWithoutItsDatabaseWhileTheClusterDoesNotServe(t *testing
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	req := ClusterMemberDiagnosticsRequest{DataDir: cfg.DataDir, LogFile: cfg.LogFile, WorkDir: t.TempDir(), Request: diagnostics.BundleRequest{RequestedBy: "support-bundle", From: now.Add(-time.Hour), To: now.Add(time.Minute)}}
+	began := time.Now()
 	bundle, archive, err := CollectClusterMemberDiagnostics(ctx, req, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil || bundle.State != "ready" {
 		t.Fatalf("collection = %q, %v", bundle.State, err)
+	}
+	// Nothing here waits for a leader or opens the replicated store: with
+	// every peer down the probes are refused and the collection is done.
+	if took := time.Since(began); took > 20*time.Second {
+		t.Fatalf("the collection took %v with no leader", took)
+	}
+	if bundle.Complete == nil || *bundle.Complete {
+		t.Fatalf("manifest complete = %v, want false", bundle.Complete)
 	}
 	files := archiveFiles(t, archive)
 	if !strings.Contains(files["server/gpuworks-server.log"], "event=loop_late") {

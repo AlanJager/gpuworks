@@ -3,7 +3,9 @@ package enrollment
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -35,9 +37,14 @@ type ClusterDiagnosticsRequest struct {
 type ClusterDiagnosticsAnswer struct {
 	Body io.ReadCloser
 	// Clock is the member's clock when it began to answer (zero when it
-	// did not say) and RoundTrip how long the answer's start took.
+	// did not say), Sent this side's clock when the request was sent and
+	// RoundTrip how long the answer's start then took.
 	Clock     time.Time
+	Sent      time.Time
 	RoundTrip time.Duration
+	// MemberKey is the fingerprint of the member key whose certificate
+	// answered (the SHA-256 of its public key, as admissions name it).
+	MemberKey string
 }
 
 type diagnosticsBody struct {
@@ -87,7 +94,11 @@ func (c *Client) OpenClusterDiagnostics(ctx context.Context, certificate, key []
 		transport.CloseIdleConnections()
 		return none, err
 	}
-	answer := ClusterDiagnosticsAnswer{RoundTrip: time.Since(asked)}
+	answer := ClusterDiagnosticsAnswer{Sent: asked, RoundTrip: time.Since(asked)}
+	if response.TLS != nil && len(response.TLS.PeerCertificates) > 0 {
+		sum := sha256.Sum256(response.TLS.PeerCertificates[0].RawSubjectPublicKeyInfo)
+		answer.MemberKey = hex.EncodeToString(sum[:])
+	}
 	if response.StatusCode != http.StatusOK {
 		_ = response.Body.Close()
 		transport.CloseIdleConnections()
