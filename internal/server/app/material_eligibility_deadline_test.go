@@ -4,6 +4,7 @@ package app
 
 import (
 	"context"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"sync"
@@ -289,4 +290,96 @@ func TestMaterialEligibilityExpiresAtItsDeadlineWithoutARequest(t *testing.T) {
 		t.Fatalf("deadline passed without closing admission: invalidated=%d", invalidated.Load())
 	}
 	eligibility.Stop()
+}
+
+// A proof can return after its window while its context's own timer has not
+// run yet: its stages time out at the window's end, or the process was not
+// scheduled across it (seen on the real hosts: 15.8 s standing still, the
+// member closed about 50 s after its last confirmation instead of at the
+// limit). With no answer, in every shape that is no answer, the member stays
+// open on its last confirmation; an answer that arrives late closes it; and
+// at the limit it closes once.
+func TestMaterialEligibilityProofReturningPastItsWindowBeforeItsContextEndsKeepsTheMember(t *testing.T) {
+	late := []struct {
+		name string
+		err  error
+		keep bool
+	}{
+		{"deadline", context.DeadlineExceeded, true},
+		{"wrapped deadline", fmt.Errorf("membership grant: %w", context.DeadlineExceeded), true},
+		{"joined deadlines", errors.Join(context.DeadlineExceeded, fmt.Errorf("transport grant: %w", context.DeadlineExceeded)), true},
+		{"dropped connection", driver.ErrBadConn, true},
+		{"no leader read in time", store.ErrClusterMembershipObservationTimeout, true},
+		{"an unclassified error", errors.New("material manifest differs"), false},
+		{"deadline joined with an answer", errors.Join(context.DeadlineExceeded, errors.New("material manifest differs")), false},
+	}
+	for _, tc := range late {
+		t.Run(tc.name, func(t *testing.T) {
+			clock := &materialTestClock{now: time.Unix(100, 0)}
+			var calls, invalidated atomic.Int32
+			var lateErr atomic.Pointer[error]
+			var jump atomic.Int64
+			eligibility := newMaterialEligibility(clock.Now, func(ctx context.Context) (bool, error) {
+				if calls.Add(1) == 1 {
+					return true, nil
+				}
+				// The clock passes the window; the context has not ended.
+				clock.Advance(time.Duration(jump.Load()))
+				if ctx.Err() != nil {
+					t.Error("the proof context ended; this case needs it alive")
+				}
+				return false, *lateErr.Load()
+			}, time.Hour)
+			eligibility.setOnInvalidated(func() { invalidated.Add(1) })
+			if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready {
+				t.Fatalf("initial proof: ready=%t err=%v", ready, err)
+			}
+			confirmed := clock.Now()
+			// Unanswered proofs for 34 s, as on the hosts, each inside its window.
+			lateErr.Store(&tc.err)
+			if tc.keep {
+				jump.Store(int64(5 * time.Second))
+				for range 6 {
+					if ready, _ := eligibility.Reprove(t.Context()); ready {
+						t.Fatal("an unanswered proof reported ready")
+					}
+				}
+				if !eligibility.Eligible() || invalidated.Load() != 0 {
+					t.Fatalf("unanswered proofs inside their windows closed the member: invalidated=%d", invalidated.Load())
+				}
+			}
+			// The next one returns 16 s after it began.
+			jump.Store(int64(materialEligibilityWindow + time.Second))
+			if ready, _ := eligibility.Reprove(t.Context()); ready {
+				t.Fatal("a proof that returned past its window reported ready")
+			}
+			if !tc.keep {
+				if eligibility.Eligible() || invalidated.Load() != 1 {
+					t.Fatalf("a late answer left the member open: eligible=%t invalidated=%d", eligibility.Eligible(), invalidated.Load())
+				}
+				return
+			}
+			if since := clock.Now().Sub(confirmed); since >= materialUnconfirmedLimit {
+				t.Fatalf("the scenario ran %s, past the limit it is meant to stay under", since)
+			}
+			if !eligibility.Eligible() || invalidated.Load() != 0 {
+				t.Fatalf("a proof that only returned late closed the member %s after its last confirmation: eligible=%t invalidated=%d",
+					clock.Now().Sub(confirmed), eligibility.Eligible(), invalidated.Load())
+			}
+			// Nothing earlier than the limit ends it, and the limit ends it once.
+			clock.Advance(confirmed.Add(materialUnconfirmedLimit).Sub(clock.Now()) - time.Millisecond)
+			if !eligibility.Eligible() || invalidated.Load() != 0 {
+				t.Fatalf("the member closed before the limit: invalidated=%d", invalidated.Load())
+			}
+			clock.Advance(time.Millisecond)
+			if eligibility.Eligible() || eligibility.Eligible() || invalidated.Load() != 1 {
+				t.Fatalf("at the limit: eligible=%t invalidated=%d, want closed once", eligibility.Eligible(), invalidated.Load())
+			}
+			// Another late return past the limit extends nothing.
+			jump.Store(int64(materialEligibilityWindow + time.Second))
+			if ready, _ := eligibility.Reprove(t.Context()); ready || eligibility.Eligible() {
+				t.Fatal("a late return past the limit reopened the member")
+			}
+		})
+	}
 }

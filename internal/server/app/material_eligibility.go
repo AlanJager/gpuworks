@@ -370,9 +370,14 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	attemptDeadline := started.Add(materialEligibilityWindow)
 	noAnswer := !verdict && materialProofUnanswered(err)
 	refused := errors.Is(err, store.ErrClusterAdmissionRejected) || errors.Is(err, store.ErrClusterIdentityConflict)
-	live := proofCtx.Err() == nil && e.epoch == epoch && !e.stopped
+	// The window is over when the clock says so, whether or not the proof
+	// context's own timer has run yet: a proof whose stages time out at the
+	// window's end, or a process that was not scheduled across it, returns
+	// here first. Deciding by the context alone closed such a member early.
+	pastWindow := !now.Before(attemptDeadline)
+	live := proofCtx.Err() == nil && !pastWindow && e.epoch == epoch && !e.stopped
 	unexpired := !e.deadline.IsZero() && now.Before(e.deadline)
-	outlived := noAnswer && e.outlivedWindow(ctx, proofCtx, epoch) && e.confirmedRecently(now)
+	outlived := noAnswer && (e.outlivedWindow(ctx, proofCtx, epoch) || (pastWindow && e.undisturbed(ctx, proofCtx, epoch))) && e.confirmedRecently(now)
 	proved := err == nil && ready && live && now.Before(attemptDeadline)
 	keepEarlier := !proved && !refused && live && unexpired
 	renewAttempt := !keepEarlier && noAnswer && live && now.Before(attemptDeadline) && e.confirmedRecently(now)

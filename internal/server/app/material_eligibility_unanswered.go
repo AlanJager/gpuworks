@@ -116,6 +116,14 @@ func (e *materialEligibility) outlivedWindow(parent, proofCtx context.Context, e
 		e.epoch == epoch && !e.stopped && (e.runCtx == nil || e.runCtx.Err() == nil)
 }
 
+// undisturbed reports a proof nobody cancelled, invalidated or stopped and
+// whose context has not ended by itself either: the caller knows by the clock
+// that its window is over. Called with e.mu held.
+func (e *materialEligibility) undisturbed(parent, proofCtx context.Context, epoch uint64) bool {
+	return proofCtx.Err() == nil && parent.Err() == nil &&
+		e.epoch == epoch && !e.stopped && (e.runCtx == nil || e.runCtx.Err() == nil)
+}
+
 // unconfirmedDeadline is how long admission continues after an attempt that
 // brought no answer: one more proof window, never past the unconfirmed limit
 // counted from the last successful proof. Called with e.mu held.
