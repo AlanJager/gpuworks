@@ -30,6 +30,9 @@ type limitShape struct {
 	// line, and reports whether the line is about a device as large as the
 	// limit.
 	read func(line string, m []string, limitBytes int64, c *Cause) bool
+	// replaces is the table's cause for the same line, which the limit stands
+	// in for; the out-of-memory cause is replaced whichever shape matched.
+	replaces string
 }
 
 var (
@@ -46,6 +49,11 @@ var (
 	torchCapacityRE = regexp.MustCompile(`total capacity of ` + sizeRE + `|` + sizeRE + ` total capacity`)
 	torchTriedRE    = regexp.MustCompile(`Tried to allocate ` + sizeRE)
 	torchFreeRE     = regexp.MustCompile(`of which ` + sizeRE + ` is free|` + sizeRE + ` free;`)
+	// vLLM's KV cache check: "(0.44 GiB KV cache is needed, which is larger
+	// than the available KV cache memory (0.09 GiB)". It names no device and
+	// no capacity; what it leaves for the KV cache is what the device the
+	// engine sees has after the weights.
+	kvCacheRE = regexp.MustCompile(`\(([0-9.]+) GiB KV cache is needed, which is larger than the available KV cache memory \(([0-9.]+) GiB\)`)
 	// torch_npu's error codes are not here. On Ascend the interposer prints
 	// its own refusal (the table's signature), so an allocator error without
 	// it (error code 300000) was not refused by the limit; and a device that
@@ -80,6 +88,18 @@ var limitShapes = []limitShape{
 		if hasTried && hasFree {
 			c.NeededBytes = capacity - free + tried
 		}
+		return true
+	}},
+	{match: kvCacheRE, replaces: CodeKVCacheInsufficient, read: func(_ string, m []string, limitBytes int64, c *Cause) bool {
+		needed, available := gibBytes(m[1]), gibBytes(m[2])
+		// More left for the KV cache than the whole limit: the engine saw a
+		// larger device, and the limit did not size it.
+		if available > limitBytes+limitTolerance(limitBytes) {
+			return false
+		}
+		// What is held inside the limit before the KV cache, plus the KV
+		// cache the engine asked for.
+		c.NeededBytes = limitBytes - available + needed
 		return true
 	}},
 }
@@ -130,7 +150,8 @@ func firstSize(re *regexp.Regexp, line string) (int64, bool) {
 // own refusal is the limit wherever it prints. Where it does not, an
 // engine's report of running out of memory on a device as large as the limit
 // is the limit too: it is reported as CodeDGPUMemoryLimit, with the numbers
-// the line gives, in place of the out-of-memory cause the same lines show.
+// the line gives, in place of the out-of-memory or KV cache cause the same
+// lines show.
 func MatchWithLimit(lines []string, limitBytes int64) []Cause {
 	causes := Match(lines)
 	if limitBytes <= 0 {
@@ -142,6 +163,7 @@ func MatchWithLimit(lines []string, limitBytes int64) []Cause {
 		}
 	}
 	limit := Cause{Code: CodeDGPUMemoryLimit, Device: DeviceUnknown, LimitBytes: limitBytes}
+	replaced := map[string]bool{CodeCUDAOOM: true}
 	for i, line := range lines {
 		for _, shape := range limitShapes {
 			m := shape.match.FindStringSubmatch(line)
@@ -154,6 +176,9 @@ func MatchWithLimit(lines []string, limitBytes int64) []Cause {
 				continue
 			}
 			limit.Device, limit.NeededBytes = read.Device, read.NeededBytes
+			if shape.replaces != "" {
+				replaced[shape.replaces] = true
+			}
 			limit.Evidence = append(limit.Evidence, Evidence{Index: i, Line: line})
 			break
 		}
@@ -173,7 +198,7 @@ func MatchWithLimit(lines []string, limitBytes int64) []Cause {
 		if !placed && c.Code != CodeGLIBCTooOld {
 			out, placed = append(out, limit), true
 		}
-		if c.Code != CodeCUDAOOM {
+		if !replaced[c.Code] {
 			out = append(out, c)
 		}
 	}

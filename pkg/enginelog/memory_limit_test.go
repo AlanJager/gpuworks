@@ -9,6 +9,7 @@ import (
 // small for the engine to start.
 const (
 	vllmFreeMemoryLine  = "ValueError: Free memory on device cuda:0 (0.75/1.0 GiB) on startup is less than desired GPU memory utilization (0.9, 0.9 GiB). Decrease GPU memory utilization or reduce GPU memory used by other processes."
+	vllmKVCacheLine     = "ValueError: To serve at least one request with the models's max seq len (40960), (0.44 GiB KV cache is needed, which is larger than the available KV cache memory (0.09 GiB). Based on the available memory, the estimated maximum model length is 8368."
 	torchOOMElidedLine  = "torch.OutOfMemoryError: CUDA out of memory ... GPU 0 has a total capacity of 1024.00 MiB ..."
 	torchOOMLine        = "torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB. GPU 0 has a total capacity of 1024.00 MiB of which 0 bytes is free. Including non-PyTorch memory, this process has 1024.00 MiB memory in use."
 	ascendSetDeviceLine = "(EngineCore pid=179) RuntimeError: ExchangeDevice:../torch_npu/csrc/core/npu/sys_ctrl/npu_sys_ctrl.cpp:285 NPU function error: c10_npu::SetDevice(device), error code is 507033"
@@ -35,6 +36,8 @@ func TestMatchWithLimitReadsTheEnginesOwnReport(t *testing.T) {
 		{"vLLM startup check", vllmFreeMemoryLine, testGiB, 0, 1234803097, "dGPU memory limit reached on GPU 0: the engine needed 1.1 GiB, its limit is 1.0 GiB"},
 		{"PyTorch allocator", torchOOMLine, testGiB, 0, testGiB + 20<<20, "dGPU memory limit reached on GPU 0: the engine needed 1.02 GiB, its limit is 1.00 GiB"},
 		{"PyTorch allocator, as the ticket quotes it", torchOOMElidedLine, testGiB, 0, 0, "dGPU memory limit reached on GPU 0: the engine could not get the memory it needs within its 1.0 GiB limit"},
+		// The reopened ticket's start: a 1 GiB limit, 0.09 GiB left for a KV cache of 0.44 GiB.
+		{"vLLM KV cache check", vllmKVCacheLine, testGiB, DeviceUnknown, testGiB - gibBytes("0.09") + gibBytes("0.44"), "dGPU memory limit reached: the engine needed 1.3 GiB, its limit is 1.0 GiB"},
 		{"PyTorch allocator, older wording", "RuntimeError: CUDA out of memory. Tried to allocate 2.00 GiB (GPU 1; 8.00 GiB total capacity; 7.10 GiB already allocated; 512.00 MiB free; 7.20 GiB reserved in total by PyTorch)", 8 * testGiB, 1, 8*testGiB - 512<<20 + 2*testGiB, "dGPU memory limit reached on GPU 1: the engine needed 9.5 GiB, its limit is 8.0 GiB"},
 	}
 	for _, tc := range cases {
@@ -64,6 +67,7 @@ func TestMatchWithLimitReadsTheEnginesOwnReport(t *testing.T) {
 func TestTheSameLinesWithoutALimitAreNotTheLimit(t *testing.T) {
 	for line, want := range map[string]string{
 		vllmFreeMemoryLine:  "",
+		vllmKVCacheLine:     CodeKVCacheInsufficient,
 		torchOOMLine:        CodeCUDAOOM,
 		torchOOMElidedLine:  CodeCUDAOOM,
 		ascendMallocLine:    "",
@@ -87,6 +91,10 @@ func TestALimitIsNotBlamedForADeviceItDoesNotSize(t *testing.T) {
 		"ValueError: Free memory on device cuda:0 (0.75/23.69 GiB) on startup is less than desired GPU memory utilization (0.9, 21.32 GiB). Decrease GPU memory utilization or reduce GPU memory used by other processes.": "",
 		"torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB. GPU 0 has a total capacity of 23.69 GiB of which 3.25 MiB is free.":                                                                      CodeCUDAOOM,
 		"RuntimeError: CUDA error: out of memory": CodeCUDAOOM,
+		// 20 GiB left for the KV cache is not a device of 1 GiB.
+		"ValueError: To serve at least one request with the models's max seq len (1048576), (36.50 GiB KV cache is needed, which is larger than the available KV cache memory (20.00 GiB). Based on the available memory, the estimated maximum model length is 574000.": CodeKVCacheInsufficient,
+		// A KV cache shortage that states no amounts cannot be held against the limit.
+		"ValueError: The model's max seq len (32768) is larger than the maximum number of tokens that can be stored in KV cache (12000).": CodeKVCacheInsufficient,
 	} {
 		got := MatchWithLimit([]string{line}, testGiB)
 		switch {
