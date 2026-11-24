@@ -455,8 +455,8 @@ func TestAMembersPartRefusesAWindowItCannotServe(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 	member := memberFixture(t, 2, "10.0.0.2:9001", now)
 	for _, w := range [][2]time.Time{{now, now.Add(-time.Hour)}, {now.Add(-8 * 24 * time.Hour), now}} {
-		if err := WriteMemberPart(context.Background(), io.Discard, member, w[0], w[1]); err == nil {
-			t.Fatalf("window %v..%v was served", w[0], w[1])
+		if err := WriteMemberPart(context.Background(), io.Discard, member, w[0], w[1]); err == nil || !strings.Contains(err.Error(), "span at most 7 days") {
+			t.Fatalf("window %v..%v: %v, want a refusal naming the bound", w[0], w[1], err)
 		}
 	}
 }

@@ -90,8 +90,9 @@ type MemberSource interface {
 	LogFiles() []string
 	// StallDir is where the server keeps its stall reports.
 	StallDir() string
-	// Status is the cluster as this member observes it now, as the status
-	// report words it; empty when it could not be observed.
+	// Status is the cluster as this member observed it, as the status
+	// report words it, under a line saying when: the observation may be up
+	// to 30 s old. Empty when the cluster could not be observed.
 	Status(ctx context.Context) string
 }
 

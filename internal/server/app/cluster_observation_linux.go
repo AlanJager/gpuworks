@@ -24,15 +24,10 @@ func observeCluster(ctx context.Context, cfg Config, timeout time.Duration) (Clu
 	if !member {
 		return ClusterObservation{ObservedAt: time.Now()}, nil
 	}
-	report, err := readClusterStatus(cfg)
+	report, err := observeClusterStatus(ctx, cfg, "", timeout)
 	if err != nil {
 		return ClusterObservation{}, err
 	}
-	report.probeLocal(ctx, "", timeout)
-	report.peers = probePeerDatabases(ctx, report, timeout)
-	report.observeQuorum(ctx, cfg, timeout)
-	report.observeTransportPolicy(cfg)
-	report.observedAt, report.probeTimeout = time.Now(), timeout
 	if err := ctx.Err(); err != nil {
 		return ClusterObservation{}, err
 	}

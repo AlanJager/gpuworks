@@ -23,7 +23,7 @@ import (
 // inside a read the disk does not answer.
 func WriteMemberPart(ctx context.Context, w io.Writer, src MemberSource, from, to time.Time) error {
 	if !ValidWindow(from, to) {
-		return errors.New("the window must end after it starts and be no longer than a collection's longest")
+		return fmt.Errorf("the window must end after it starts and span at most %d days", int(MaxBundleWindow.Hours()/24))
 	}
 	p, err := readMemberOwnPart(ctx, src, from, to, time.Now())
 	if err != nil {
