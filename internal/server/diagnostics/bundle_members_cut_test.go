@@ -398,3 +398,31 @@ func TestRoleRecordsBesideTheLogAreReportedWhenCutOrUnreadable(t *testing.T) {
 		}
 	})
 }
+
+// A part that fails to be staged says which of its files the failure is
+// about.
+func TestAStagingFailureNamesItsFile(t *testing.T) {
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	member := memberFixture(t, 2, "10.0.0.2:9001", now)
+	dir := t.TempDir()
+	// A directory where the second extract is to be written.
+	if err := os.Mkdir(filepath.Join(dir, MemberLeaderChangesFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	files, failed, err := stageMemberPart(context.Background(), dir, member, now.Add(-time.Hour), now, now)
+	if err == nil || failed != MemberLeaderChangesFile {
+		t.Fatalf("failed = %q, err = %v; want the file that could not be written", failed, err)
+	}
+	// What was written before it is still reported.
+	var names []string
+	for _, f := range files {
+		names = append(names, f.name)
+	}
+	if strings.Join(names, ",") != MemberFactsFile+","+MemberRoleEventsFile {
+		t.Fatalf("staged before the failure = %v", names)
+	}
+	member.logFile = t.TempDir() // a log that opens and cannot be read
+	if _, failed, err := stageMemberPart(context.Background(), t.TempDir(), member, now.Add(-time.Hour), now, now); err == nil || failed != MemberRoleEventsFile {
+		t.Fatalf("an unreadable log: failed = %q, err = %v", failed, err)
+	}
+}

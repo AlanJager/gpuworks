@@ -62,12 +62,18 @@ type clusterDiagnostics struct {
 func newClusterDiagnostics(cfg Config) diagnostics.Cluster {
 	member, err := selfinstall.ClusterMember(cfg.DataDir)
 	if err != nil {
-		return &clusterDiagnostics{cfg: cfg, undecided: unclassifiedDirectory(err)}
+		return unclassifiedMember(cfg, err)
 	}
 	if !member {
 		return nil
 	}
 	return &clusterDiagnostics{cfg: cfg}
+}
+
+// unclassifiedMember is the cluster of a data directory whose cluster
+// markers could not be read, for the reason err.
+func unclassifiedMember(cfg Config, err error) diagnostics.Cluster {
+	return &clusterDiagnostics{cfg: cfg, undecided: unclassifiedDirectory(err)}
 }
 
 func (c *clusterDiagnostics) Self() diagnostics.MemberSource { return c }

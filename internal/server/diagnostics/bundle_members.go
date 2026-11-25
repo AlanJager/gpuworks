@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -176,9 +177,9 @@ func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add
 		// This member's own role records need its log alone. With no
 		// membership to name its directory by, they go beside that log.
 		dir := filepath.Join(work, "server")
-		files, err := stageMemberPart(ctx, dir, m.cluster.Self(), b.From, b.To, m.now())
+		files, failed, err := stageMemberPart(ctx, dir, m.cluster.Self(), b.From, b.To, m.now())
 		if err != nil {
-			add(failedItem("server/"+MemberRoleEventsFile, messages.CheckDiagnosticsItemReadFailed, err, 0), nil)
+			add(failedItem(path.Join("server", failed), messages.CheckDiagnosticsItemReadFailed, err, 0), nil)
 		}
 		cut := memberCuts(dir)
 		for _, f := range files {
@@ -207,7 +208,7 @@ func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add
 			var files []memberFile
 			var err error
 			if member.Self {
-				files, err = stageMemberPart(ctx, dir, m.cluster.Self(), b.From, b.To, m.now())
+				files, _, err = stageMemberPart(ctx, dir, m.cluster.Self(), b.From, b.To, m.now())
 				if err != nil {
 					entry.Missing = "failed"
 				}

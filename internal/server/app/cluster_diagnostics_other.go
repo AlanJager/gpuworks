@@ -19,9 +19,15 @@ import (
 // read.
 func newClusterDiagnostics(cfg Config) diagnostics.Cluster {
 	if _, err := selfinstall.ClusterMember(cfg.DataDir); err != nil {
-		return unclassifiedFiles{cfg: cfg, err: unclassifiedDirectory(err)}
+		return unclassifiedMember(cfg, err)
 	}
 	return nil
+}
+
+// unclassifiedMember is the cluster of a data directory whose cluster
+// markers could not be read, for the reason err.
+func unclassifiedMember(cfg Config, err error) diagnostics.Cluster {
+	return unclassifiedFiles{cfg: cfg, err: unclassifiedDirectory(err)}
 }
 
 // unclassifiedFiles is such a directory in this build: its membership is the

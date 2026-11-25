@@ -18,10 +18,12 @@ func unclassifiedDirectory(err error) error {
 // single server made without the server (gpuworks support-bundle) carries
 // the failed item for the first, and is otherwise left as it is.
 func unclassifiedCluster(cfg Config) diagnostics.Cluster {
-	if _, err := selfinstall.ClusterMember(cfg.DataDir); err == nil {
-		return nil
+	// The directory is looked at once: a second look could find it readable
+	// and a member's, and a single server's collection would ask members.
+	if _, err := selfinstall.ClusterMember(cfg.DataDir); err != nil {
+		return unclassifiedMember(cfg, err)
 	}
-	return newClusterDiagnostics(cfg)
+	return nil
 }
 
 // ClusterMemberDiagnosticsRequest is a collection made on a control-plane
