@@ -28,32 +28,3 @@ func refusedKey(err error, key string) error {
 	}
 	return &ClusterAdmissionRefusal{Key: key}
 }
-
-// RefusesMember reports whether err is the database's verdict against the
-// member with this key: its admission was refused, or the cluster identity
-// the member holds is not the database's. A refusal of another member's
-// key, a refusal that names no key, and a cluster that is not serving are
-// not: they say nothing against this member. Every cause of a joined error
-// is looked at.
-func RefusesMember(err error, key string) bool {
-	if err == nil || key == "" {
-		return false
-	}
-	if err == ErrClusterIdentityConflict {
-		return true
-	}
-	if named, ok := err.(*ClusterAdmissionRefusal); ok {
-		return named.Key == key
-	}
-	switch wrapped := err.(type) {
-	case interface{ Unwrap() error }:
-		return RefusesMember(wrapped.Unwrap(), key)
-	case interface{ Unwrap() []error }:
-		for _, cause := range wrapped.Unwrap() {
-			if RefusesMember(cause, key) {
-				return true
-			}
-		}
-	}
-	return false
-}

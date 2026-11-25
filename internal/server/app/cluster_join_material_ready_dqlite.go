@@ -54,13 +54,30 @@ func checkJoinedStoreMaterialReadiness(ctx context.Context, st *store.Store, bun
 	if st == nil || bundle == nil || bundle.trust == nil || bundle.tls == nil || len(bundle.tls.Certificates) != 1 || bundle.tls.Certificates[0].Leaf == nil || memberID == 0 {
 		return false, nil
 	}
-	log := slog.Default()
-	if len(loggers) != 0 && loggers[0] != nil {
-		log = loggers[0]
-	}
 	localKey, err := bundle.trust.VerifyMember(bundle.tls.Certificates[0].Leaf, time.Now().UTC())
 	if err != nil {
 		return materialReadinessFailure(ctx, err)
+	}
+	ready, err := proveJoinedStoreMaterial(ctx, st, bundle, memberID, localKey, cfg, loggers...)
+	return thisMembersVerdict(localKey, ready, err)
+}
+
+// thisMembersVerdict is the one exit of a member's proof. The worker closes
+// admission at once on a refusal, so the only refusal a proof may return is
+// the database's refusal of the proving member itself. Any other, such as the
+// refusal of another member's key that the same grant returns when that
+// member is removed, leaves here as "not ready".
+func thisMembersVerdict(localKey string, ready bool, err error) (bool, error) {
+	if store.Causes(err, store.CauseMemberRefused) != 0 && !store.RefusesMember(err, localKey) {
+		return false, nil
+	}
+	return ready, err
+}
+
+func proveJoinedStoreMaterial(ctx context.Context, st *store.Store, bundle *enrollmentBundle, memberID uint64, localKey string, cfg Config, loggers ...*slog.Logger) (bool, error) {
+	log := slog.Default()
+	if len(loggers) != 0 && loggers[0] != nil {
+		log = loggers[0]
 	}
 	// From here on a failure may be the database's refusal of this member.
 	fail := func(cause ...error) (bool, error) { return materialProofFailure(ctx, localKey, cause...) }
@@ -201,6 +218,8 @@ func checkJoinedStoreMaterialReadiness(ctx context.Context, st *store.Store, bun
 	// re-observes live membership before the final pointer recheck.
 	_, current, err := grantMaterialProofMembershipKeys(ctx, st, expected, grantKeys)
 	if store.RefusesMember(err, localKey) {
+		// Before the interruption check, which answers with the context's
+		// error once the context has ended.
 		return false, err
 	}
 	if interrupted, interruptErr := materialMembershipInterrupted(ctx, err, members, current); interrupted || err != nil || !slices.Equal(members, current) {
@@ -296,12 +315,9 @@ func materialMembershipInterrupted(ctx context.Context, err error, previous, cur
 	return false, nil
 }
 
-// materialProofFailure is how a stage of the proof fails. The database's
-// refusal of this member is returned as it is, also when the proof's context
-// has ended meanwhile: the database answered, and an expired context must
-// not turn its answer into none. A refusal of another member's key, which
-// the same grant can return, is not this member's and fails like any other
-// cause.
+// materialProofFailure is how a stage of the proof fails: the database's
+// refusal of this member as it is, also when the context has ended, and
+// everything else as materialReadinessFailure has it.
 func materialProofFailure(ctx context.Context, localKey string, cause ...error) (bool, error) {
 	for _, err := range cause {
 		if store.RefusesMember(err, localKey) {

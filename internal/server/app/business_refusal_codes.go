@@ -22,6 +22,7 @@ const (
 	refusalProofStopped       = "proof_stopped"             // the proof worker was stopped
 	refusalProofRunCanceled   = "proof_run_canceled"        // the proof worker's run was cancelled
 	refusalProofCanceled      = "proof_canceled"            // the proof in progress was cancelled
+	refusalMemberRevoked      = "member_revoked"            // the database refused this member: revoked, or not its cluster
 	refusalProofHeadroom      = "proof_headroom"            // readiness only: the proof ends too soon to advertise
 	refusalProofEpochChanged  = "proof_epoch_changed"       // readiness only: admission changed under the probe
 	refusalProofOwnerChanged  = "proof_owner_changed"       // readiness only: another proof worker took over
@@ -43,7 +44,7 @@ var businessRefusalCodes = []string{
 	refusalNoGeneration, refusalGenerationChanged, refusalClusterUpgrade, refusalNoHandler,
 	refusalSessionsUnroutable, refusalTargetNotCurrent,
 	refusalProofNotEligible, refusalProofMissing, refusalProofExpired, refusalProofStopped,
-	refusalProofRunCanceled, refusalProofCanceled, refusalProofHeadroom, refusalProofEpochChanged,
+	refusalProofRunCanceled, refusalProofCanceled, refusalMemberRevoked, refusalProofHeadroom, refusalProofEpochChanged,
 	refusalProofOwnerChanged, refusalRenewalUnavailable, refusalRequestCanceled, refusalRequestDeadline,
 	refusalNoKnownLeader, refusalNotTheLeader, refusalLeaderUnreachable,
 	refusalPeerUnidentified, refusalForwardNotReady, refusalPeerUndecided, refusalPeerNotAdmitted,

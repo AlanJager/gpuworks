@@ -97,17 +97,29 @@ const (
 	CauseRefused           = CauseMemberRefused | CauseClusterNotServing
 )
 
-// Causes reports which of the causes in among err carries anywhere in it,
-// wrapped or joined.
-func Causes(err error, among AnswerCause) AnswerCause { return carries(err, among) }
+// RefusesMember reports whether err is the database's verdict against the
+// member with this key: the cluster identity the member holds is not the
+// database's, or the admission the database refused is this member's. A
+// refusal of another member's key, one that names no key, and a cluster that
+// is not serving say nothing against this member.
+func RefusesMember(err error, key string) bool {
+	if key == "" {
+		return false
+	}
+	if Causes(err, CauseIdentityConflict) != 0 {
+		return true
+	}
+	var refusal *ClusterAdmissionRefusal
+	return errors.As(err, &refusal) && refusal.Key == key
+}
 
 // CauseLostConnection is the ways a peer's connection goes away under a
 // request, as the material paths take them when no file is involved.
 const CauseLostConnection = CauseNetTimeout | CausePeerUnreachable | CauseBrokenPipe | CauseIODeadline
 
-// carries reports which of the causes in among err carries anywhere in it,
+// Causes reports which of the causes in among err carries anywhere in it,
 // wrapped or joined.
-func carries(err error, among AnswerCause) AnswerCause {
+func Causes(err error, among AnswerCause) AnswerCause {
 	if err == nil {
 		return 0
 	}
@@ -320,7 +332,7 @@ func (p AnswerPolicy) Unanswered(err error) bool {
 			return false
 		}
 	}
-	if p.Verdict != 0 && carries(err, p.Verdict) != 0 {
+	if p.Verdict != 0 && Causes(err, p.Verdict) != 0 {
 		return false
 	}
 	return p.accepted(err)
@@ -332,12 +344,12 @@ func (p AnswerPolicy) accepted(err error) bool {
 	if p.also != nil && p.also(err) {
 		return true
 	}
-	if p.Requires != 0 && carries(err, p.Requires) != p.Requires {
+	if p.Requires != 0 && Causes(err, p.Requires) != p.Requires {
 		return false
 	}
 	accept := p.NoAnswer
-	if p.UnlessFile != 0 && carries(err, CauseFile) != 0 {
+	if p.UnlessFile != 0 && Causes(err, CauseFile) != 0 {
 		accept &^= p.UnlessFile
 	}
-	return (accept != 0 && carries(err, accept) != 0) || leafCause(err)&p.NoAnswerLeaf != 0
+	return (accept != 0 && Causes(err, accept) != 0) || leafCause(err)&p.NoAnswerLeaf != 0
 }

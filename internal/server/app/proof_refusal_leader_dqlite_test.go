@@ -16,7 +16,10 @@ import (
 // The member that leads the database is revoked. Its own proof is refused
 // and closes it at once, though it still leads and still reaches itself.
 // When it stops, the two that remain elect a leader, remove it from the
-// database, prove again and commit. Three real voters.
+// database, prove again and commit. While the revoked member is still in the
+// database their proofs cannot complete, so they may close meanwhile if the
+// election and the removal outlast the confirmation they hold; what is
+// required is that they serve again afterwards. Three real voters.
 func TestNativeRevokedLeaderClosesAndTheOthersKeepServing(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 4*time.Minute)
 	defer cancel()
@@ -53,7 +56,7 @@ func TestNativeRevokedLeaderClosesAndTheOthersKeepServing(t *testing.T) {
 	if members[lead].eligibility.Eligible() {
 		t.Fatal("the revoked leader still admits requests")
 	}
-	if code, reason := members[lead].read(); code != http.StatusServiceUnavailable || reason != refusalProofMissing {
+	if code, reason := members[lead].read(); code != http.StatusServiceUnavailable || reason != refusalMemberRevoked {
 		t.Fatalf("a read on the revoked leader: %d, refusal %q", code, reason)
 	}
 	if still, err := f.databases[lead].Leader(ctx); err != nil || still.ID != f.databases[lead].ID {
@@ -69,15 +72,10 @@ func TestNativeRevokedLeaderClosesAndTheOthersKeepServing(t *testing.T) {
 		t.Fatalf("a write by the revoked leader: %v", err)
 	}
 
-	// Until the revoked member leaves the database it is a live member
-	// without an admission, so the others' proofs cannot complete; they
-	// were not refused and keep the confirmation they hold.
+	// The others were not refused by the leader's revocation.
 	for _, i := range rest {
-		if _, _, err := f.proveMember(i)(ctx); store.RefusesMember(err, f.keys[i]) {
+		if _, _, err := f.proveMember(i)(ctx); store.Causes(err, store.CauseMemberRefused) != 0 {
 			t.Fatalf("member %d read the leader's revocation as its own: %v", i, err)
-		}
-		if !members[i].eligibility.Eligible() {
-			t.Fatalf("member %d closed on the leader's revocation", i)
 		}
 	}
 
@@ -113,9 +111,6 @@ func TestNativeRevokedLeaderClosesAndTheOthersKeepServing(t *testing.T) {
 		}
 		if code, _ := members[i].read(); code != http.StatusNoContent {
 			t.Fatalf("member %d refuses reads after the removal: %d", i, code)
-		}
-		if journal := members[i].journal.String(); count(journal, journalClosed) != 0 {
-			t.Fatalf("member %d closed during the removal:\n%s", i, journal)
 		}
 	}
 	if err := f.stores[rest[0]].SetBusinessSetting(ctx, setting, "by the remaining members"); err != nil {

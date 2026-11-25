@@ -65,16 +65,24 @@ type materialEligibility struct {
 	mu        sync.Mutex
 	proofSlot chan struct{}
 	now       func() time.Time
-	prove     func(context.Context) (bool, error)
-	interval  time.Duration
-	idleRest  time.Duration
-	deadline  time.Time
-	bridging  bool
-	provedAt  time.Time
+	// prove runs one proof. A refusal of a member (store.CauseMemberRefused)
+	// in its error closes admission at once, so it must return only the
+	// refusal of the proving member itself; thisMembersVerdict is the exit
+	// that guarantees it.
+	prove    func(context.Context) (bool, error)
+	interval time.Duration
+	idleRest time.Duration
+	deadline time.Time
+	bridging bool
+	provedAt time.Time
 	// answered is set when an answer other than success, an invalidation or
 	// Stop was seen since the last successful proof. From then on an attempt
 	// that brings no answer extends nothing; only a successful proof clears it.
-	answered      bool
+	answered bool
+	// revoked is set when a proof ended on the database's refusal of this
+	// member and cleared by the next successful proof. While it stands the
+	// closed member answers "revoked", not "no proof yet".
+	revoked       bool
 	expiry        *time.Timer
 	epoch         uint64
 	cancel        context.CancelFunc
@@ -174,6 +182,8 @@ func (e *materialEligibility) eligibleForResult(minRemaining time.Duration) (boo
 			reason = "stopped"
 		} else if !e.deadline.IsZero() {
 			reason = "run_canceled"
+		} else if e.revoked {
+			reason = refusalMemberRevoked
 		}
 		e.mu.Unlock()
 		return false, reason, 0
@@ -379,7 +389,6 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	//     the unconfirmed limit. Otherwise one blip closes every member.
 	//   - a refusal of this member by the database: closes at once, also
 	//     inside a live window and also when it arrives after the window.
-	//     The proof returns only a refusal of this member's own key.
 	//   - any other answer ("not ready", an error nothing classifies): a read
 	//     cut by a leadership change looks the same, so the earlier result
 	//     keeps its own window, but the answer is latched:
@@ -398,7 +407,7 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	notifyInvalidated := invalidated && e.epoch == epoch
 	switch {
 	case proved:
-		e.provedAt, e.answered = started, false
+		e.provedAt, e.answered, e.revoked = started, false, false
 		e.admitUntil(attemptDeadline)
 	case keepEarlier:
 		e.answered = e.answered || !noAnswer
@@ -419,6 +428,7 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 		if e.epoch == epoch {
 			e.closeAdmission()
 		}
+		e.revoked = e.revoked || refused
 		ready = false
 	}
 	onInvalidated, onOutcome := e.onInvalidated, e.onOutcome

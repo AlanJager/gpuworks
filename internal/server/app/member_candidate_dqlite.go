@@ -4,7 +4,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -60,7 +59,7 @@ func (a *App) CandidateMemberReady(ctx context.Context) (bool, error) {
 	}
 	bundle, memberID, key, cause := a.candidateEnrollmentWithCause(ctx)
 	if bundle == nil {
-		return materialProofFailure(ctx, key, cause)
+		return ownEnrollmentVerdict(ctx, key, cause)
 	}
 	// Membership is established by the material checker against a fresh live
 	// snapshot. The route supplies only the local member ID, never authority.
@@ -70,12 +69,38 @@ func (a *App) CandidateMemberReady(ctx context.Context) (bool, error) {
 	}
 	current, currentID, currentKey, cause := a.candidateEnrollmentWithCause(ctx)
 	if current == nil {
-		return materialProofFailure(ctx, currentKey, cause)
+		return ownEnrollmentVerdict(ctx, currentKey, cause)
 	}
 	if currentID != memberID || currentKey != key || current.info != bundle.info {
 		return materialReadinessFailure(ctx)
 	}
 	return true, nil
+}
+
+// seedAdmissionFailure reads the answer to a seed member's direct read of
+// its own admission. The database's refusal of this member is returned with
+// the member's key. Any other failure of the read is returned as the cause
+// without a key, so that a read the database did not answer (no leader, the
+// read's own time limit) is classified as no answer and not as "not ready",
+// which is a verdict the worker latches. A row that is there but does not
+// admit the member is "not ready".
+func seedAdmissionFailure(admission store.ClusterAdmission, err error, key string) (refusedKey string, cause error, failed bool) {
+	switch {
+	case store.RefusesMember(err, key):
+		return key, err, true
+	case err != nil:
+		return "", err, true
+	case admission.InvitationHash != "" || admission.RevokedAt != nil:
+		return "", nil, true
+	}
+	return "", nil, false
+}
+
+// ownEnrollmentVerdict is how the proof fails on the member's own enrollment
+// check, through the proof's one exit.
+func ownEnrollmentVerdict(ctx context.Context, key string, cause error) (bool, error) {
+	ready, err := materialProofFailure(ctx, key, cause)
+	return thisMembersVerdict(key, ready, err)
 }
 
 // CandidateMemberReadyMeasured runs the same on-demand proof and returns its
@@ -114,6 +139,10 @@ func (a *App) candidateEnrollmentWithCause(ctx context.Context) (*enrollmentBund
 		return nil, 0, "", nil
 	}
 	if err := verifyEnrollmentState(ctx, a.store, bundle); err != nil {
+		// Never the database's refusal: this check compares the files on
+		// this member's disk with an identity row that is written once, so
+		// a difference is a finding about the local files. It carries no
+		// key and leaves the proof as "not ready".
 		return nil, 0, "", err
 	}
 	key, err := bundle.trust.VerifyMember(bundle.tls.Certificates[0].Leaf, time.Now().UTC())
@@ -132,16 +161,8 @@ func (a *App) candidateEnrollmentWithCause(ctx context.Context) (*enrollmentBund
 		}
 	case os.IsNotExist(err):
 		admission, err := a.store.ClusterAdmissionForVerifiedKey(ctx, bundle.info.ClusterID, key)
-		if store.Causes(err, store.CauseMemberRefused) != 0 || (err == nil && admission.RevokedAt != nil) {
-			// This member's own admission, read directly: the same
-			// verdict the proof's grant would return for its key.
-			if errors.Is(err, store.ErrClusterIdentityConflict) {
-				return nil, 0, key, err
-			}
-			return nil, 0, key, &store.ClusterAdmissionRefusal{Key: key}
-		}
-		if err != nil || admission.InvitationHash != "" {
-			return nil, 0, "", nil
+		if refusedKey, cause, failed := seedAdmissionFailure(admission, err, key); failed {
+			return nil, 0, refusedKey, cause
 		}
 	default:
 		return nil, 0, "", nil

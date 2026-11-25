@@ -103,8 +103,14 @@ func TestNativeRevokedMemberClosesAtItsNextProof(t *testing.T) {
 	if member.eligibility.Eligible() {
 		t.Fatalf("the revoked member still admits requests %v after its proof was refused", closedAfter)
 	}
-	if code, reason := member.read(); code != http.StatusServiceUnavailable || reason != refusalProofMissing {
+	if code, reason := member.read(); code != http.StatusServiceUnavailable || reason != refusalMemberRevoked {
 		t.Fatalf("a read on the revoked member: %d, refusal %q", code, reason)
+	}
+	// A business request, not only a probe, carries the code and is counted.
+	rec := httptest.NewRecorder()
+	member.gate.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/nodes", nil))
+	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get(businessRefusalHeader) != "member_revoked" || member.refusals.snapshot()["member_revoked"] != 1 {
+		t.Fatalf("a business request on the revoked member: %d %q counts=%v", rec.Code, rec.Header().Get(businessRefusalHeader), member.refusals.snapshot())
 	}
 	if closedAfter >= materialEligibilityWindow {
 		t.Fatalf("closed %v after the revocation, not sooner than the proof's window of %v", closedAfter, materialEligibilityWindow)
@@ -118,13 +124,16 @@ func TestNativeRevokedMemberClosesAtItsNextProof(t *testing.T) {
 	}
 	t.Logf("closed %v after the revocation; the proof's window is %v", closedAfter.Round(time.Millisecond), materialEligibilityWindow)
 
-	// The other members were not refused: their grant names the revoked
-	// member's key no longer, and they keep the proof they hold.
-	other := f.refusalMember(t, 0, time.Now, nil)
-	if _, _, err := f.proveMember(0)(ctx); store.RefusesMember(err, f.keys[0]) {
+	// A member that has not proved yet answers differently: an entry layer
+	// and an operator can tell "revoked" from "starting".
+	starting := f.refusalMember(t, 0, time.Now, nil)
+	if code, reason := starting.read(); code != http.StatusServiceUnavailable || reason != refusalProofMissing {
+		t.Fatalf("a read on a member without a proof: %d, refusal %q", code, reason)
+	}
+	// The other members were not refused by this revocation.
+	if _, _, err := f.proveMember(0)(ctx); store.Causes(err, store.CauseMemberRefused) != 0 {
 		t.Fatalf("another member read the revocation as its own: %v", err)
 	}
-	_ = other
 }
 
 // One grant covers this member's key and the key of every member that
@@ -182,6 +191,47 @@ func TestNativeAnotherMembersRevocationMidProofKeepsTheMemberOpen(t *testing.T) 
 	}
 	if store.RefusesMember(grantErr, f.keys[0]) || !store.RefusesMember(grantErr, f.keys[2]) {
 		t.Fatalf("the refusal does not say whose it is: %v", grantErr)
+	}
+
+	// The proof has one exit. A stage that returned the grant's error raw
+	// would hand the worker another member's refusal, and the worker closes
+	// on any member refusal; through the exit it is "not ready".
+	var refuse atomic.Bool
+	stage := func(exit func(bool, error) (bool, error)) func(context.Context) (bool, CandidateProofMetrics, error) {
+		return func(context.Context) (bool, CandidateProofMetrics, error) {
+			if !refuse.Load() {
+				return true, CandidateProofMetrics{}, nil
+			}
+			ready, err := exit(false, grantErr)
+			return ready, CandidateProofMetrics{}, err
+		}
+	}
+	raw := f.refusalMember(t, 0, time.Now, stage(func(ready bool, err error) (bool, error) { return ready, err }))
+	filtered := f.refusalMember(t, 0, time.Now, stage(func(ready bool, err error) (bool, error) {
+		return thisMembersVerdict(f.keys[0], ready, err)
+	}))
+	raw.mustProve(t, ctx, "first proof of the member with a raw stage")
+	filtered.mustProve(t, ctx, "first proof of the member with the exit")
+	refuse.Store(true)
+	if _, _ = raw.eligibility.Reprove(ctx); raw.eligibility.Eligible() {
+		t.Fatal("the worker kept a member open on a raw member refusal: the exit would not be needed")
+	}
+	if ready, err := filtered.eligibility.Reprove(ctx); ready || err != nil || !filtered.eligibility.Eligible() {
+		t.Fatalf("another member's refusal through the proof's exit: ready=%t err=%v eligible=%t", ready, err, filtered.eligibility.Eligible())
+	}
+	if code, reason := filtered.read(); code != http.StatusNoContent {
+		t.Fatalf("a read after another member's refusal went through the exit: %d %q", code, reason)
+	}
+	// This member's own refusal and an identity conflict pass the exit.
+	own := &store.ClusterAdmissionRefusal{Key: f.keys[0]}
+	if _, err := thisMembersVerdict(f.keys[0], false, own); err != own {
+		t.Fatalf("the exit dropped this member's own refusal: %v", err)
+	}
+	if _, err := thisMembersVerdict(f.keys[0], false, store.ErrClusterIdentityConflict); err != store.ErrClusterIdentityConflict {
+		t.Fatalf("the exit dropped an identity conflict: %v", err)
+	}
+	if _, err := thisMembersVerdict(f.keys[0], false, store.ErrClusterAdmissionRejected); err != nil {
+		t.Fatalf("the exit passed a refusal that names nobody: %v", err)
 	}
 }
 

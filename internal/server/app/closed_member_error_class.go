@@ -17,7 +17,6 @@ import (
 // by the caller for its normal fail-closed behavior.
 func closedMemberErrorClass(err error) string {
 	var timeout net.Error
-	// What a refusal is has one definition, the store's.
 	refused := store.Causes(err, store.CauseRefused)
 	switch {
 	case err == nil:

@@ -198,6 +198,23 @@ tail -n 50 <install dir>/slurm-check.log
 
 Once fixed, confirm the node appears on the Compute Nodes page and is online. If none of this matches, keep the connect command's output on the Slurm manager node, `scontrol show config | grep -i HealthCheck`, and `slurm-check.log` on the node, and see “Still Unresolved?” at the end of this page.
 
+## A Control-Plane Cluster Member Refuses Requests
+
+**Symptom**: requests sent through one member get 503 with the body `member business service is not ready`.
+
+**How to confirm**: read the code in the response header `X-Gpuworks-Refusal` (meanings in [Control-Plane Cluster Behaviour and Limits](../explanation/control-plane-cluster.md#behaviour-on-failure)), then look in that member's server log for why it closed its business (`<install-dir>` is that member's installation directory):
+
+```bash
+grep -E 'closed business admission|candidate material proof (failed|succeeded)' <install-dir>/logs/server.log | tail
+```
+
+| What you see | Meaning | What to do |
+|---|---|---|
+| Code `member_revoked`; log `closed business admission caller=proof_failed`, then `candidate material proof failed while business admission is closed` with `err_class=admission_rejected` (or `identity_conflict`) | The database refused this member: its admission was revoked, or it does not belong to this cluster | This is a revocation taking effect. Remove the member from the cluster's members; if the revocation was not intended, check its cluster identity files |
+| Code `proof_missing`, no `closed business admission` in the log | The member has just started and has not completed its first confirmation | Wait a few seconds; if it stays, read `failure_stage` in the same log line |
+| The other members show `proof_expired` at the same time, and another member was just revoked | The revoked member is still among the database's members, so the others' confirmations cannot complete | Remove the revoked member from the cluster's members; the others serve again after their next confirmation succeeds |
+
+
 ## Automatic Recovery After a Node Disconnects
 
 **Symptoms**: A node changes from “Online” to “Offline”, and an “Out-of-band recovery” card appears in its details.
@@ -1536,6 +1553,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 3bc7c7048ed30ac57def9759bfcf0451f1fe02b8303d0cee71be65c485381d42 ## Node Stays Connecting or Does Not Come Online -->
 <!-- translation-source-sha256: 9bbfc75c9e814806ed623222d9fe20491062362cc3754a3a6db0bf2016ccde0e ## Kubernetes Node Does Not Join or Does Not Come Online -->
 <!-- translation-source-sha256: 5063b7bd23f4b8a1300866f0a58f968b44a51dc23d1a3535012132ec037571e2 ## Slurm Node Does Not Join or Does Not Come Online -->
+<!-- translation-source-sha256: 8a6097f65c0c31e7fe0106f511f166c1d608a393136aa98de54504532e51b4af ## A Control-Plane Cluster Member Refuses Requests -->
 <!-- translation-source-sha256: fc8263c67b6c2225a36d30fbd133f1a560cc7ba87dbb0da987cb34f48aef0e05 ## Automatic Recovery After a Node Disconnects -->
 <!-- translation-source-sha256: f5d0d9e846c70e500b3966eb47977458ce0749b0d0b7373d0f73edb28941459f ### Check Recovery Progress -->
 <!-- translation-source-sha256: eff0f8cdc1fc6886c10dc53cd6c1f66d5c3447d6318015a3a7fa450ff2a50ed1 ### Reconnect Manually -->
