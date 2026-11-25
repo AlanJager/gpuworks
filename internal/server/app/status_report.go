@@ -192,17 +192,20 @@ func readClusterStatus(cfg Config) (clusterStatus, error) {
 }
 
 func readPersistedRaft(dir string) (persistedRaftNode, []persistedRaftNode, error) {
-	info, err := readRaftNode(filepath.Join(dir, "info.yaml"))
+	// Each refusal names the file it is about: the text is what a
+	// diagnostics collection shows as the reason it holds no members.
+	identity, membership := filepath.Join(dir, "info.yaml"), filepath.Join(dir, "cluster.yaml")
+	info, err := readRaftNode(identity)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return persistedRaftNode{}, nil, errors.New("database identity is not in the data directory")
+			return persistedRaftNode{}, nil, fmt.Errorf("database identity is not in the data directory (%s)", identity)
 		}
 		return persistedRaftNode{}, nil, err
 	}
 	if info.ID == 0 || info.Address == "" {
-		return persistedRaftNode{}, nil, errors.New("database identity is incomplete")
+		return persistedRaftNode{}, nil, fmt.Errorf("database identity is incomplete (%s)", identity)
 	}
-	raw, err := readStatusFile(filepath.Join(dir, "cluster.yaml"))
+	raw, err := readStatusFile(membership)
 	if err != nil {
 		return persistedRaftNode{}, nil, err
 	}
@@ -210,13 +213,13 @@ func readPersistedRaft(dir string) (persistedRaftNode, []persistedRaftNode, erro
 	decoder.KnownFields(true)
 	var members []persistedRaftNode
 	if err := decoder.Decode(&members); err != nil {
-		return persistedRaftNode{}, nil, errors.New("invalid persisted membership")
+		return persistedRaftNode{}, nil, fmt.Errorf("invalid persisted membership (%s)", membership)
 	}
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		return persistedRaftNode{}, nil, errors.New("invalid persisted membership")
+		return persistedRaftNode{}, nil, fmt.Errorf("invalid persisted membership (%s)", membership)
 	}
 	if len(members) == 0 {
-		return persistedRaftNode{}, nil, errors.New("persisted membership is empty")
+		return persistedRaftNode{}, nil, fmt.Errorf("persisted membership is empty (%s)", membership)
 	}
 	return info, members, nil
 }
@@ -230,10 +233,10 @@ func readRaftNode(path string) (persistedRaftNode, error) {
 	decoder.KnownFields(true)
 	var info persistedRaftNode
 	if err := decoder.Decode(&info); err != nil {
-		return persistedRaftNode{}, errors.New("invalid database identity")
+		return persistedRaftNode{}, fmt.Errorf("invalid database identity (%s)", path)
 	}
 	if err := decoder.Decode(new(any)); !errors.Is(err, io.EOF) {
-		return persistedRaftNode{}, errors.New("invalid database identity")
+		return persistedRaftNode{}, fmt.Errorf("invalid database identity (%s)", path)
 	}
 	return info, nil
 }

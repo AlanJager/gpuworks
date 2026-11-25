@@ -122,7 +122,7 @@ func TestOrdinaryEnrollmentRecoversMaterialStagesBeforeListenerStarts(t *testing
 	if err := os.WriteFile(secondOrphan, []byte("active transfer"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := prepareEnrollmentServerWithOwner(bundle, st, signer, log, nil, server)
+	prepared, err := prepareEnrollmentServerWithOwner(bundle, st, signer, log, nil, server, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestOrdinaryEnrollmentRecoversMaterialStagesBeforeListenerStarts(t *testing
 		materialReceiver: &materialReceiver{root: server.materialReceiver.root, memberID: server.materialReceiver.memberID + 1},
 		materialRequests: server.materialRequests,
 	}
-	if candidate, err := prepareEnrollmentServerWithOwner(bundle, st, signer, log, nil, wrongOwner); err == nil || candidate != nil {
+	if candidate, err := prepareEnrollmentServerWithOwner(bundle, st, signer, log, nil, wrongOwner, nil); err == nil || candidate != nil {
 		t.Fatalf("accepted material owner for another member: server=%v err=%v", candidate, err)
 	}
 	shutdown, cancel := context.WithTimeout(context.Background(), 3*time.Second)

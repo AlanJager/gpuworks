@@ -127,6 +127,10 @@ func CollectDiagnosticsOffline(ctx context.Context, in OfflineDiagnosticsRequest
 	defer obs.Close()
 	m := diagnostics.NewManager(filepath.Join(in.DataDir, "diagnostics"), debuglog.New(slog.DiscardHandler), offlineNodes{}, diagnosticsScope{st}, log)
 	m.SetSources(diagnosticsSources{st: st, logs: obs.Logs(), ux: obs.UX(), logFile: in.LogFile, dataDir: in.DataDir})
+	if unclassified := unclassifiedCluster(Config{DataDir: in.DataDir, DBPath: in.DBPath, LogFile: in.LogFile}); unclassified != nil {
+		// The command said so on its way here; the archive says so too.
+		m.SetCluster(unclassified)
+	}
 	if in.WorkDir != "" {
 		m.SetBundleDir(in.WorkDir)
 	}

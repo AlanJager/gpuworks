@@ -18,8 +18,22 @@ import (
 )
 
 // Each callback follows an actual filesystem operation in the production
-// installer. The real pinned TLS client must survive the aggregate work while
-// retaining its short idle window and requiring the final bound receipt.
+// installer. The real pinned TLS client must get a progress frame for every
+// completed file and then the final bound receipt.
+//
+// The pace of every case is the disk's: copying a file and syncing its
+// directory is one step before a progress frame, and on a busy disk one sync
+// takes longer than the fixture's short idle window. Held to that window the
+// client gave up before the first file was complete, so the complete case
+// failed and the cases that inject a fault after the first file never
+// reached it: they passed for the wrong reason, or, where the fault leaves
+// something to check, failed. The cases therefore run with an idle window
+// and a deadline no disk exceeds in a test, each asserts that its fault was
+// reached, and none asserts how long the work took. That a request crosses
+// the short window on progress alone, and that stalled work is cut by it,
+// are proven where the test sets the pace itself
+// (TestMaterialManifestCompletedProgressOutlivesHeaderWindow,
+// TestMaterialManifestProgressStillFailsClosed).
 func TestMaterialInstallationCompletedFileProgress(t *testing.T) {
 	for _, mode := range []string{"complete", "corrupt-stage", "cancel", "owner-close", "write-failure", "data-root-replaced"} {
 		t.Run(mode, func(t *testing.T) {
@@ -31,7 +45,8 @@ func TestMaterialInstallationCompletedFileProgress(t *testing.T) {
 			done := make(chan struct{})
 			moved := dataDir + "-original"
 			t.Cleanup(func() { _ = os.RemoveAll(moved) })
-			client, origin := materialManifestProgressPeer(t, requests.wrap(func(w http.ResponseWriter, r *http.Request) {
+			const idle, deadline = 30 * time.Second, time.Minute
+			client, origin := materialManifestProgressPeerIdle(t, idle, requests.wrap(func(w http.ResponseWriter, r *http.Request) {
 				defer close(done)
 				ctx, cancel := context.WithCancel(r.Context())
 				defer cancel()
@@ -106,7 +121,7 @@ func TestMaterialInstallationCompletedFileProgress(t *testing.T) {
 					return checkInstalledMaterialManifestWithProgress(ctx, receiver, manifest, func() error { return writeMaterialManifestProgress(w, r, requests) })
 				}, "installed bytes changed")
 			}))
-			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), deadline)
 			defer cancel()
 			ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{Got1xxResponse: func(code int, h textproto.MIMEHeader) error {
 				if code != http.StatusProcessing || h.Get("X-Gpuworks-Material-Digest") != "" || h.Get("X-Gpuworks-Material-Source") != "" || h.Get("X-Gpuworks-Material-Member") != "" {
@@ -115,7 +130,6 @@ func TestMaterialInstallationCompletedFileProgress(t *testing.T) {
 				received.Add(1)
 				return nil
 			}})
-			started := time.Now()
 			err := materializeRemoteMaterialManifest(ctx, client, origin, digest, 1, 2)
 			select {
 			case <-done:
@@ -126,8 +140,8 @@ func TestMaterialInstallationCompletedFileProgress(t *testing.T) {
 				if err != nil || installErr != nil {
 					t.Fatalf("completed-file progress failed: client=%v install=%v", err, installErr)
 				}
-				if completed.Load() < int32(len(files)) || received.Load() < completed.Load() || time.Since(started) <= 200*time.Millisecond {
-					t.Fatalf("whole package did not cross idle window with completed units: completed=%d received=%d", completed.Load(), received.Load())
+				if completed.Load() < int32(len(files)) || received.Load() < completed.Load() {
+					t.Fatalf("the installation did not send a progress frame for every completed file: completed=%d received=%d", completed.Load(), received.Load())
 				}
 				for name, body := range files {
 					got, e := os.ReadFile(filepath.Join(dataDir, "catalog-packages", digest, name))
@@ -138,6 +152,9 @@ func TestMaterialInstallationCompletedFileProgress(t *testing.T) {
 			} else {
 				if err == nil || installErr == nil {
 					t.Fatalf("failed installation yielded a receipt: client=%v install=%v", err, installErr)
+				}
+				if completed.Load() == 0 {
+					t.Fatalf("the installation stopped before the first completed file, where the fault is injected: client=%v install=%v", err, installErr)
 				}
 				if mode == "data-root-replaced" {
 					got, e := os.ReadFile(filepath.Join(dataDir, "foreign-owner"))
