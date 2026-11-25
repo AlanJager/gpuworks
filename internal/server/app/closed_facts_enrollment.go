@@ -43,7 +43,7 @@ func newClosedFactsEnrollmentServer(bundle *enrollmentBundle, session joinedRaft
 
 // Material listeners can register the same fixed route with their existing
 // request owner. Every authentication/read/write remains inside that owner.
-func closedQuorumFactsHandler(bundle *enrollmentBundle, session joinedRaftSession, requests *materialRequestTracker) (http.HandlerFunc, error) {
+func closedQuorumFactsHandler(bundle *enrollmentBundle, session joinedRaftSession, requests *materialRequestTracker, log *slog.Logger) (http.HandlerFunc, error) {
 	if requests == nil || bundle == nil || bundle.trust == nil || bundle.tls == nil || len(bundle.tls.Certificates) != 1 {
 		return nil, errors.New("quorum facts require an authenticated enrollment identity")
 	}
@@ -95,11 +95,7 @@ func closedQuorumFactsHandler(bundle *enrollmentBundle, session joinedRaftSessio
 			panic(http.ErrAbortHandler)
 		}
 		if err != nil {
-			status := http.StatusServiceUnavailable
-			if errors.Is(err, store.ErrClusterAdmissionRejected) {
-				status = http.StatusForbidden
-			}
-			http.Error(w, "cluster quorum facts unavailable", status)
+			quorumFactsUnavailable(w, err, log)
 			return
 		}
 		facts, requesterAdmission, providerAddress, err := projectClosedQuorumFacts(expected, request.Nonce, legacy, phase, admissions, proof, requester, provider)
@@ -197,4 +193,22 @@ func projectClosedQuorumFacts(expected store.ClusterIdentity, nonce string, lega
 	}
 	sort.Slice(facts.Members, func(i, j int) bool { return facts.Members[i].ID < facts.Members[j].ID })
 	return facts, requesterAdmission, providerAddress, nil
+}
+
+// quorumFactsUnavailable answers a facts read that failed. A member that
+// does not lead says so, which sends the asker to the leader and is not
+// logged: every follower gives that answer to every asker. Any other
+// failure is logged here, because the answer does not carry it.
+func quorumFactsUnavailable(w http.ResponseWriter, err error, log *slog.Logger) {
+	switch {
+	case errors.Is(err, store.ErrClusterAdmissionRejected):
+		http.Error(w, "cluster quorum facts unavailable", http.StatusForbidden)
+	case errors.Is(err, cluster.ErrQuorumReadNotLeader):
+		http.Error(w, "cluster quorum facts unavailable: this member is not the database leader", http.StatusServiceUnavailable)
+	default:
+		if log != nil {
+			log.Warn("cluster quorum facts read failed", "error", err)
+		}
+		http.Error(w, "cluster quorum facts unavailable", http.StatusServiceUnavailable)
+	}
 }

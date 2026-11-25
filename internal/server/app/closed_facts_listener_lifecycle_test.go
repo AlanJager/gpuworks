@@ -51,7 +51,7 @@ func TestClosedFactsListenerReplacementRetainsTimedOutOwnerThenReusesAddress(t *
 	a := newWaitingClosedMemberApp(&memberRuntime{member: closedMember{cfg: Config{Addr: "127.0.0.1:0"}, log: nil}}, f.session)
 	a.enrollment = old
 	requests := newMaterialRequestTracker()
-	handler, err := closedQuorumFactsHandler(f.bundle, f.session, requests)
+	handler, err := closedQuorumFactsHandler(f.bundle, f.session, requests, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
