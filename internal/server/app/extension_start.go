@@ -28,10 +28,16 @@ type extensionSet struct {
 	dynamic  *featuregate.DynamicSet
 	source   featuregate.Source
 	sourceBy string
-	holders  int
-	holds    *holdpass.Runner
-	services []func(context.Context)
-	closed   bool
+	// answers are what each module tells the other cluster members that
+	// ask it, by module name.
+	answers map[string]MemberAnswerer
+	// platform limits the whole server, registered by platformBy.
+	platform   api.PlatformLimiter
+	platformBy string
+	holders    int
+	holds      *holdpass.Runner
+	services   []func(context.Context)
+	closed     bool
 	// plugins is the plugin administration of the built-in plugins module.
 	plugins api.PluginAdmin
 	// routes serves the installed plugin packages' routes.
@@ -80,7 +86,7 @@ func startExtensions(cfg Config, a *App, master string, deps *api.Deps) (err err
 		if !ok {
 			continue
 		}
-		h := &Host{name: name, log: a.log.With("module", name), bus: a.bus, dataDir: cfg.DataDir, cfg: cfg,
+		h := &Host{app: a, name: name, log: a.log.With("module", name), bus: a.bus, dataDir: cfg.DataDir, cfg: cfg,
 			install: a.settings.installID, master: master, section: section, st: a.store, reg: set}
 		if h.tables, err = a.store.ExtensionTables(name); err != nil && !errors.Is(err, store.ErrUnknownNamespace) {
 			return err
@@ -122,7 +128,8 @@ func (set *extensionSet) apiDeps() (api.ExtensionDeps, error) {
 	if err != nil {
 		return api.ExtensionDeps{}, err
 	}
-	return api.ExtensionDeps{Extensions: set.apis, Features: gate, Banners: set.banners, Edition: version.Edition, Plugins: set.plugins}, nil
+	return api.ExtensionDeps{Extensions: set.apis, Features: gate, Banners: set.banners, Edition: version.Edition, Plugins: set.plugins,
+		Platform: set.platform, PlatformOwner: set.platformBy}, nil
 }
 
 // moduleService runs a module's Service on Run's context and logs an error it

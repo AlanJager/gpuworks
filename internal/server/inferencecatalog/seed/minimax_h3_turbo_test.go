@@ -66,3 +66,31 @@ func TestMiniMaxH3SingleGPUProfilesGateOnMemoryAndArchitecture(t *testing.T) {
 		t.Fatalf("FastH3 NVFP4 cc = %q, want Blackwell (>=10.0)", fastH3.GPUs.CC)
 	}
 }
+
+// A multi-node instance resolves once per rank on that node's cards, so two
+// nodes with a card apiece show a single-GPU profile one card twice. The
+// instance would still run on two GPUs: the profile refuses it by the
+// instance's node count, on a card that it accepts alone.
+func TestMiniMaxH3SingleGPUProfilesRefuseACardOnEachOfTwoNodes(t *testing.T) {
+	for _, name := range []string{"bf16-vllm-nvidia-general", "bf16-vllm-nvidia-1x-turbo4", "nvfp4-vllm-nvidia-blackwell-fasth3-omni-1x"} {
+		_, spec := catalogSpec(t, "minimaxai/minimax-h3", name)
+		for _, tc := range []struct {
+			gpu    placement.GPU
+			reject bool
+		}{
+			{gpu: placement.GPU{Count: 1, NNodes: 1}},
+			{gpu: placement.GPU{Count: 1}}, // an unstated node count is one node
+			{gpu: placement.GPU{Count: 1, NNodes: 2}, reject: true},
+			{gpu: placement.GPU{Count: 2, NNodes: 1}, reject: true},
+		} {
+			tc.gpu.Vendor, tc.gpu.MinMemoryGiB = "nvidia", 141
+			result, err := placement.Resolve(context.Background(), spec.Placement.Resolver, tc.gpu)
+			if err != nil {
+				t.Fatalf("%s on %d card(s) of each of %d node(s): %v", name, tc.gpu.Count, tc.gpu.NNodes, err)
+			}
+			if (result.Reason != "") != tc.reject {
+				t.Errorf("%s on %d card(s) of each of %d node(s): rejected=%v (%s), want %v", name, tc.gpu.Count, tc.gpu.NNodes, result.Reason != "", result.Reason, tc.reject)
+			}
+		}
+	}
+}

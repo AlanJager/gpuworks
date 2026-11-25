@@ -143,6 +143,7 @@ func TestHostRefusesConflictingRegistrations(t *testing.T) {
 	for name, mods := range map[string][]app.Module{
 		"two feature sources": {&providerModule{name: "fake"}, &providerModule{name: "other"}},
 		"two holders":         {&holderModule{name: "fake"}, &holderModule{name: "other"}},
+		"two platform limits": {&limiterModule{name: "fake"}, &limiterModule{name: "other"}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()

@@ -269,3 +269,75 @@ test("the extension's menu entry is reached with the arrow keys and opened with 
   await user.keyboard("{Enter}");
   assert.ok(await screen.findByRole("heading", { name: "Audit events" }));
 });
+
+// The manifest of a server limited as a whole, with audit.log fully available.
+const limitedManifest = (platform: object) => () => Response.json({
+  edition: "test", nav: [], banners: [],
+  features: [{ key: "audit.log", access: "full", presentation: "promote", limits: [] }],
+  platform,
+});
+
+test("a locked server shows its pages under an alert, and every menu entry stays reachable", async () => {
+  registry.setConsoleExtensionsForTest([auditExtension]);
+  serve(limitedManifest({ access: "locked", link: "/audit", action: { code: "ACME_RENEW", message: "Renew now" }, message: { code: "PLATFORM_LOCKED", message: "locked" } }));
+  const user = userEvent.setup();
+  await mountApp("/settings");
+  const notice = await screen.findByText(common.apiError.PLATFORM_LOCKED);
+  const alert = notice.closest("[role='alert']") as HTMLElement;
+  assert.ok(alert, "a locked limit is an alert");
+  assert.equal(within(alert).getByRole("link", { name: "Renew now" }).getAttribute("href"), "/audit");
+  await waitFor(() => assert.ok(screen.getAllByRole("tab").length > 0, "the page itself shows: a locked server serves reads"));
+  assert.ok(within(menu()).getByRole("link", { name: common.navigation.nodes }), "every entry stays reachable");
+  // On the page that lifts the limit the notice is left out.
+  await user.click(within(menu()).getByRole("link", { name: "Audit log" }));
+  assert.ok(await screen.findByRole("heading", { name: "Audit events" }));
+  await waitFor(() => assert.equal(screen.queryByText(common.apiError.PLATFORM_LOCKED), null));
+});
+
+test("a locked server that names no page states the limit above the page, without a control", async () => {
+  registry.setConsoleExtensionsForTest([auditExtension]);
+  serve(limitedManifest({ access: "locked", message: { code: "PLATFORM_LOCKED", message: "locked" } }));
+  await mountApp("/audit");
+  assert.ok(await screen.findByRole("heading", { name: "Audit events" }));
+  const alerts = await screen.findAllByRole("alert");
+  assert.ok(alerts.some((alert) => alert.textContent?.includes(common.apiError.PLATFORM_LOCKED)));
+  assert.equal(screen.queryByRole("link", { name: common.consoleBanners.details }), null, "with no page to open there is no control");
+});
+
+test("an access this console does not know is shown as locked", async () => {
+  registry.setConsoleExtensionsForTest([auditExtension]);
+  serve(limitedManifest({ access: "frozen", link: "/audit", message: { code: "PLATFORM_LOCKED", message: "locked" } }));
+  await mountApp("/settings");
+  const notice = await screen.findByText(common.apiError.PLATFORM_LOCKED);
+  assert.ok(notice.closest("[role='alert']"), "the stricter of the two notices");
+});
+
+test("a read-only server shows its pages and says above them that changes are refused", async () => {
+  registry.setConsoleExtensionsForTest([auditExtension]);
+  serve(limitedManifest({ access: "read_only", link: "/audit", action: { code: "ACME_RENEW", message: "Renew now" }, message: { code: "PLATFORM_READ_ONLY", message: "read-only" } }));
+  const user = userEvent.setup();
+  await mountApp("/settings");
+  const notice = await screen.findByText(common.apiError.PLATFORM_READ_ONLY);
+  const status = notice.closest("[role='status']") as HTMLElement;
+  assert.ok(status, "a read-only limit is a status, not an alert");
+  // The control that opens the page says what the server says it does.
+  assert.equal(within(status).getByRole("link", { name: "Renew now" }).getAttribute("href"), "/audit");
+  await waitFor(() => assert.ok(screen.getAllByRole("tab").length > 0, "the page itself shows"));
+  assert.ok(within(menu()).getByRole("link", { name: common.navigation.nodes }), "every entry stays reachable");
+  // On the page that lifts the limit the notice is left out.
+  await user.click(within(menu()).getByRole("link", { name: "Audit log" }));
+  assert.ok(await screen.findByRole("heading", { name: "Audit events" }));
+  await waitFor(() => assert.equal(screen.queryByText(common.apiError.PLATFORM_READ_ONLY), null));
+});
+
+test("a console with extensions shows no page before the manifest answers", async () => {
+  registry.setConsoleExtensionsForTest([auditExtension]);
+  let answer!: (response: Response) => void;
+  serve(() => new Promise<Response>((resolve) => { answer = resolve; }));
+  await mountApp("/settings");
+  await waitFor(() => assert.equal(manifestReads, 1));
+  assert.deepEqual(screen.queryAllByRole("tab"), []);
+  answer(await limitedManifest({ access: "locked", link: "/audit", message: { code: "PLATFORM_LOCKED", message: "locked" } })());
+  assert.ok(await screen.findByText(common.apiError.PLATFORM_LOCKED), "the page shows together with its notice, never before it");
+  await waitFor(() => assert.ok(screen.getAllByRole("tab").length > 0));
+});

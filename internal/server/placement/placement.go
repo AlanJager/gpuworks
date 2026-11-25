@@ -33,6 +33,7 @@ const (
 	// time would have blown the step limit long before in CPU terms.
 	MaxWallTime          = 30 * time.Second
 	MaxGPUs              = 4096
+	MaxNodes             = 4096
 	MaxGPUNameBytes      = 512
 	MaxResultVariables   = 64
 	MaxResultStringBytes = 4096
@@ -48,6 +49,10 @@ const (
 
 var placementVariableName = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
 
+// GPU is what a resolver judges: the cards one node gives the instance. A
+// multi-node instance resolves once per rank, each seeing only its own node's
+// cards, so a contract about the whole instance ("runs on one GPU") has to read
+// NNodes too: Count alone is one for every rank of a group with a card apiece.
 type GPU struct {
 	Count        int
 	Vendor       string
@@ -56,6 +61,8 @@ type GPU struct {
 	MinMemoryGiB float64
 	Indexes      []int
 	Automatic    bool
+	// NNodes is how many nodes the instance spans. Below one reads as one.
+	NNodes int
 }
 
 type Result struct {
@@ -238,7 +245,7 @@ func boundedNumericExpression(expression syntax.Expr) bool {
 			return false
 		}
 		switch typed.Name.Name {
-		case "count", "min_memory_gib":
+		case "count", "nnodes", "min_memory_gib":
 			return true
 		}
 	case *syntax.IndexExpr:
@@ -265,6 +272,9 @@ func boundedNumericExpression(expression syntax.Expr) bool {
 }
 
 func validateGPUInput(gpu GPU) error {
+	if gpu.NNodes > MaxNodes {
+		return fmt.Errorf("placement GPU input exceeds %d nodes", MaxNodes)
+	}
 	if gpu.Count < 0 || gpu.Count > MaxGPUs || len(gpu.Indexes) > MaxGPUs || len(gpu.Names) > MaxGPUs || len(gpu.MemoriesGiB) > MaxGPUs {
 		return fmt.Errorf("placement GPU input exceeds %d devices", MaxGPUs)
 	}
@@ -332,7 +342,7 @@ func gpuValue(gpu GPU) starlark.Value {
 		"count": starlark.MakeInt(gpu.Count), "vendor": starlark.String(gpu.Vendor),
 		"names": starlark.NewList(names), "memories_gib": starlark.NewList(memories),
 		"min_memory_gib": starlark.Float(gpu.MinMemoryGiB), "indexes": starlark.NewList(indexes),
-		"automatic": starlark.Bool(gpu.Automatic),
+		"automatic": starlark.Bool(gpu.Automatic), "nnodes": starlark.MakeInt(max(gpu.NNodes, 1)),
 	})
 }
 

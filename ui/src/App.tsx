@@ -4,6 +4,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "./app/AppSidebar";
 import ConsoleBanners from "./app/ConsoleBanners";
+import ConsoleManifestWait from "./app/ConsoleManifestWait";
 import { ConsoleIcon } from "./ui-kit/consoleIcons";
 
 const AssistantIcon = ConsoleIcon.assistant;
@@ -119,6 +120,7 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
         <AppSidebar />
         <main className="app-content"><div className="app-page">
           <ConsoleBanners />
+          <ConsoleManifestWait>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/login" element={<Navigate to="/dashboard" replace />} />
@@ -161,6 +163,7 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
             ))}
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
+          </ConsoleManifestWait>
         </div></main>
       </div>
       </SidebarProvider>

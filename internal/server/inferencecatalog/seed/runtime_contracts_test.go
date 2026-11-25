@@ -2,10 +2,13 @@ package seed
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/engines"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
+	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
 )
 
 func TestErnieImageRuntimeConfiguration(t *testing.T) {
@@ -71,7 +74,14 @@ func TestLLaDAA100UsesTheCompatibleMoERouter(t *testing.T) {
 			}
 			if spec.Name == "bf16-sglang-nvidia-general" {
 				args := strings.Join(spec.Args, " ")
-				if !strings.Contains(args, "--disable-cuda-graph") {
+				// Both capture decode graphs with a capped batch (issue #35);
+				// mini also keeps prefill capture off.
+				want := map[string]string{
+					"inclusionai/llada2.1-flash": "--cuda-graph-max-bs-decode 16",
+					"inclusionai/llada2.1-mini":  "--cuda-graph-backend-prefill disabled --cuda-graph-max-bs-decode 8",
+				}[model.ModelID]
+				bounded := !strings.Contains(args, "--disable-cuda-graph") && strings.Contains(args, want)
+				if !bounded {
 					t.Errorf("%s A100 profile must avoid oversized CUDA graph capture", model.ModelID)
 				}
 			}
@@ -81,6 +91,37 @@ func TestLLaDAA100UsesTheCompatibleMoERouter(t *testing.T) {
 		if !seen {
 			t.Errorf("%s is missing from the catalog", modelID)
 		}
+	}
+}
+
+// LLaDA2.1-mini trades graph coverage for memory twice: prefill capture is
+// off and decode capture stops at batch 8 (issue #35). The engine registry
+// grades both as information, so nothing forces a reason; the profile states
+// one for each anyway, and a reason must not outlive its setting.
+func TestLLaDAMiniStatesWhyItNarrowsGraphCapture(t *testing.T) {
+	_, spec := catalogSpec(t, "inclusionai/llada2.1-mini", "bf16-sglang-nvidia-general")
+	graded := map[string]string{}
+	for _, finding := range inferencecatalog.SpecPerformanceFindings(spec) {
+		if finding.Cost != engines.CostGraphCaptureNarrow || finding.Level != engines.LevelInfo {
+			t.Errorf("%s %s is graded %s/%s, want %s/%s", finding.Param, finding.Value, finding.Cost, finding.Level, engines.CostGraphCaptureNarrow, engines.LevelInfo)
+		}
+		graded[finding.Param] = finding.Value
+	}
+	want := map[string]string{"--cuda-graph-backend-prefill": "disabled", "--cuda-graph-max-bs-decode": "8"}
+	if !reflect.DeepEqual(graded, want) {
+		t.Fatalf("graded settings = %v, want %v", graded, want)
+	}
+	stated := map[string]inferencecatalog.PerformanceTradeoffReason{}
+	for _, tradeoff := range spec.PerformanceTradeoffs {
+		stated[tradeoff.Param] = tradeoff.Reason
+	}
+	for param := range want {
+		if stated[param] != inferencecatalog.ReasonMemoryFit {
+			t.Errorf("%s states reason %q, want %s", param, stated[param], inferencecatalog.ReasonMemoryFit)
+		}
+	}
+	if len(stated) != len(want) {
+		t.Errorf("performance_tradeoffs states %v, want exactly %v", stated, want)
 	}
 }
 

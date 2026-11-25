@@ -35,6 +35,11 @@ type ExtensionDeps struct {
 	// Dynamic serves the installed plugin packages' routes under
 	// /api/v1/x/<id>/; nil serves none.
 	Dynamic *DynamicExtension
+	// Platform limits the whole server (platform_limit.go); nil never
+	// limits it. PlatformOwner is the extension that registered it: its
+	// own routes are served under any limit, so its page can lift it.
+	Platform      PlatformLimiter
+	PlatformOwner string
 }
 
 // Extension is a set of management routes a separately built server mounts.

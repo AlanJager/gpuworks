@@ -67,6 +67,8 @@ type Service interface{ Run(ctx context.Context) error }
 | `DeclareFeatures(...)` / `ProvideFeatures(src)` | 声明功能键；为编译模块声明的功能键提供功能来源（全部模块中至多一个；插件包声明的功能键由插件宿主作答，不经它） |
 | `AddBannerSource(b)` | 控制台每页顶部的横幅 |
 | `GuardNodeInsert(g)` | 新节点插入时的守卫 |
+| `LimitPlatform(src)` | 整台 server 的可用性来源（见“可用性”）；全部模块中至多一个 |
+| `AnswerMembers(fn)` / `AskMember(ctx, member, question)` | 控制面集群里，本模块回答其他成员的提问，以及向另一个成员上的本模块提问。走成员之间已有的通道（成员证书双向 TLS），所以答案确实来自被问的成员，别人也问不了；提问和回答各不超过 64 KiB。被问的成员不必是主节点。单机上 `AskMember` 返回 `ErrNotClusterMember`；集群成员在自己通往其他成员的通道建好之前返回 `ErrMemberRouteNotReady`（模块的 `Init` 先于通道，所以在 `Init` 里问一定得到它，表示“没问成”，不代表对方没回答）；成员不在线或其构建没有注册回答函数时返回 `ErrMemberUnreachable`。`AskMember` 在运行期间调用 |
 | `HoldScheduling(h)` | 调度保持者，按来源名区分，来源重复即拒绝 |
 | `ReapplySchedulingHolds()` | 保持者的答案变了：请求对全部节点重新应用一次保持，不等各节点的下次状态上报 |
 | `ReapplySchedulingHoldsFor(ids)` | 同上，但只对答案变了的那些节点（按节点 id）重新应用 |
@@ -180,6 +182,18 @@ type Service interface{ Run(ctx context.Context) error }
 - 没有模块提供功能来源时，所有声明过的功能都是锁定（`FEATURE_PROVIDER_ABSENT`）。
 - 社区路径从不查询功能门；正在运行的负载从不因可用性变化而中断。核心代码不以字面量点名功能键：交给功能门的键形字面量、`featuregate.Key("…")` 转换、赋给 `featuregate.Key` 常量的字面量、功能声明的 `Key: "…"`（`featuregate.Feature{Key: …}`）与路由的 `Feature: "…"`，在非测试代码里由架构预算 `feature_key_literals_in_core`（上限 0）守护。
 - 扩展 GET 路由默认不给 AI 助手与 MCP 读，除非标记 `AIReadable`。
+
+### 整台 server 的可用性
+
+一个模块可以用 `Host.LimitPlatform` 给整台 server 定可用性（`api.PlatformLimiter`）：完整、只读或锁定。没有模块这样做时，server 从不受限；社区版没有这个来源。
+
+- 只读：读请求和数据面（`/v1/*` 与控制台调试台的 `/api/v1/playground/v1/*`）照常，改动一律返回 403 `PLATFORM_READ_ONLY`。锁定：读请求和恢复面照常，改动和数据面返回 403 `PLATFORM_LOCKED`；数据面的拒绝用网关的错误形状（`{"error":{"message","type","code"}}`），码相同。来源给了自己的说明时，返回它的码。来源答“隐藏”按锁定处理。
+- 恢复面在任何限制下都放行：登录与会话、健康检查、控制台清单与品牌、已接入机器的连接与健康检查脚本、Kubernetes 与 Slurm 的接入接口（已接入集群里重建的节点凭它取回原来的身份；新节点是一次节点插入，由设限模块的插入守卫拒绝）、已安装插件包的管理（停用、重启、回滚、卸载；安装和升级插件包会带进新代码，按改动拒绝）、server 自身的升级、诊断包，以及注册该来源的模块自己的路由（这样它的页面才能解除限制）。
+- 限制在任何处理函数之前生效，按路由的模式分类而不是按路径猜。`/api/v1` 下的请求先鉴权再拒绝：未登录的调用方得到的是不受限时的 401，看不出有哪些路由、server 是否受限；数据面和发放接入材料的地址用的是守卫无法核对的凭据，对任何人都拒绝。已安装插件包里不需要登录的路由（`public`）和登录一样在任何限制下放行，提供登录的插件包因此照常工作。`/api/v1` 下的路由默认按方法分为读和改动；不存任何业务状态、也不改动节点的 POST（助手问答、模型与部署的预览、未保存的云凭据与助手模型的测试、压测目标探测、待接入机器的 SSH 预检查、通知已读，共十一条）是读，逐个点名；会让节点开监听或挂载的检查（部署前的网络预检、存储探测）按改动拒绝；发放接入材料或打开交互会话的 GET 归为改动，在任何限制下都被拒绝；不改动任何东西、但要到 server 之外取数的 GET（节点文件与镜像列表、实例日志流、存储与批处理文件下载、云账号的实例与集群列表、镜像仓库标签）是读，照常放行，并在 `platform_limit.go` 里逐个点名；`/api/v1` 之外的新路由必须在 `internal/server/api/platform_limit.go` 里点名，否则在任何限制下都被拒绝。受限时放行的每一条路由都列在 `platform_limit_routes_test.go` 里：`/api/v1` 下新增的 GET 默认是读，测试会因为它不在清单里而失败，加入清单之前要确认它不改动、不启动任何东西，也不发放接入材料。
+- 来源在每个请求上被调用，遵守纯函数规则：一次原子读，不做 I/O，不加锁，不分配。
+- 限制只作用于新的请求：不停止、不驱逐、不重启正在运行的负载，已接入的机器保持连接。
+
+控制台清单在受限时带 `platform`（`access`、`link`、`message`）。锁定和只读时页面都照常显示（两者都放行读请求），页面上方的提示说明什么被拒绝，并带一个打开 `link` 的按钮；`link` 指向的页面自己说明情况，不再显示提示。
 
 控制台按 `GET /api/v1/console/manifest` 渲染（字段见 [API 参考](../reference/api.md)），自己不推导可用性：完整照常显示；只读时组件收到 `readOnly`；锁定时菜单项带锁，页面显示锁定页和服务端给的链接；隐藏或清单里没有的功能键，什么都不显示。
 
