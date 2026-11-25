@@ -1049,6 +1049,7 @@ runveil（udocker）节点拉取镜像时，agent 日志（`<state>/agent.log`�
 | `ACQUISITION_CANDIDATE_STALE` | 400 / 409 | 请求指定的保存存储已不存在或不再存有模型，或所选权重来源已不在模板里；重新评估，服务端不会替换 |
 | `MODEL_SOURCE_UNAVAILABLE` | 409 | 本地模型在目标节点没有可用来源，或来源校验失败；查看错误详情，不将它等同于公网下载超时 |
 | `TEMPLATE_MODEL_MISMATCH` | 400 | 模板部署指定的模型（`params.model_id`）的仓库 ID 与模板任何一个权重来源都对不上（`params.repo_id`、`params.revision` 是模板解析出的来源）；平台不会改用别的模型。选该仓库的模型；本地模型可在模型详情里把来源 ID 改成模板的仓库 ID |
+| `TEMPLATE_IMAGE_PINNED_BY_RUNTIME_PATCH` | 警告 | 该模板的档位会在容器内修补引擎，补丁按它自己镜像（`params.image`）的源码编写；所选镜像（`params.requested`）可能被补丁拒绝而启动失败。平台只警告不阻止；除非确认补丁适用于该镜像，否则请用模板自带的镜像 |
 | `MANUAL_COMMAND_RANK_BLIND` | 400 | 多机或 PD 部署的手工命令由所有 rank 共用，却没有引用能区分 rank 的变量（`params.missing` 列出缺少的变量名）。多机要引用 `${GPUWORKS_NODE_RANK}` 或 `${GPUWORKS_HEADLESS}`，PD 要引用 `${GPUWORKS_PD_ROLE}`；从部署页「编辑命令文本」得到的脚本初稿已经引用。已存下的部署不受影响 |
 | `COMMAND_OVERRIDE_RANK_BLIND` | 400 | 多机或 PD 部署在 `engine` 或 `image-entry` 模式下覆盖了 Cmd：这段参数会原样交给每个 rank，没有变量能区分它们。清空 Cmd 覆盖，或改用手工命令。 |
 | `DISTRIBUTED_*`、`REPLICAS_*`、`MASTER_PORT_INVALID` | 400 | 多机 / 副本参数不合法 |

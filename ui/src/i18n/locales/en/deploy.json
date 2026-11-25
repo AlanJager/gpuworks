@@ -106,6 +106,7 @@
     "IMAGE_OVERRIDE_INCOMPATIBLE": "The selected image {{image}} is incompatible with the node vendor, framework, operating system, or host architecture. Choose a different image or node.",
     "IMAGE_ENGINE_DEFAULT_INCOMPATIBLE": "The default engine image {{image}} supports NVIDIA CUDA nodes only and is incompatible with the selected node. Choose a different image or node.",
     "IMAGE_OVERRIDE_UNVERIFIED": "The selected image {{image}} is not in the Image Catalog, so its compatibility with this node cannot be verified automatically.",
+    "TEMPLATE_IMAGE_PINNED_BY_RUNTIME_PATCH": "This template patches the engine inside its container, pinned to its own image {{image}}. {{requested}} may fail the start; use {{image}} unless you know the patch applies to the other image.",
     "MANUAL_DRAFT_UNAVAILABLE": "The ranks of this deployment differ in something no platform variable carries (for example the RDMA devices of two nodes), so no single script can start them all and the command cannot be edited. Each rank's resolved launch is shown separately below.",
     "COMPUTE_NETWORK_FALLBACK": "Some of the selected nodes are on a compute network, but not all of them are on the same one, so this deployment runs over the management network. To avoid it, put every node on one compute network, or turn off compute traffic on the management network for those nodes.",
     "IMAGE_DIGEST_UNVERIFIED": "The selected image {{image}} is pinned to a digest. The node's actual local digest will be used; verify it on the confirmation page.",
