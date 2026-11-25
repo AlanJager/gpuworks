@@ -257,10 +257,9 @@ func EveryBranch(err error, holds func(error) bool) (held, joined bool) {
 	return len(branches) > 0, true
 }
 
-// JoinRule is how a policy reads an error with several causes. The four
-// rules are the four readings the callers had; only EveryBranchAlone lets
-// no cause excuse another's verdict, and the others are to be folded into it
-// one policy at a time, each with the table's diff as its evidence.
+// JoinRule is how a policy reads an error with several causes. A join is
+// found along the error's single-wrapper chain, so a wrapper around a join
+// never changes the answer.
 type JoinRule uint8
 
 const (
@@ -270,12 +269,7 @@ const (
 	// EveryBranchAlone asks each branch of a join on its own, so one branch
 	// without an answer does not excuse another branch's verdict.
 	EveryBranchAlone
-	// EveryBranchUnderWrapper is EveryBranchAlone for an error that is
-	// itself a join. Under a wrapper, an accepted cause found anywhere
-	// answers before the join beneath it is looked at.
-	EveryBranchUnderWrapper
-	// NotJoined accepts a cause found anywhere only when the error itself
-	// is not a join; a join is left to its leaf, and has none.
+	// NotJoined never accepts a join; its caller asks about each branch.
 	NotJoined
 )
 
@@ -321,18 +315,8 @@ func (p AnswerPolicy) Unanswered(err error) bool {
 		if held, joined := EveryBranch(err, p.Unanswered); joined {
 			return held
 		}
-	case EveryBranchUnderWrapper:
-		if _, top := err.(interface{ Unwrap() []error }); top {
-			held, _ := EveryBranch(err, p.Unanswered)
-			return held
-		}
-		if p.accepted(err) {
-			return true
-		}
-		held, _ := EveryBranch(err, p.Unanswered)
-		return held
 	case NotJoined:
-		if _, top := err.(interface{ Unwrap() []error }); top {
+		if _, joined := JoinedBranches(err); joined {
 			return false
 		}
 	}
