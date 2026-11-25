@@ -122,11 +122,27 @@ func normalizeLiveClusterMembers(input []cluster.Member) ([]cluster.Member, erro
 	return members, nil
 }
 
+// bindLiveClusterAdmissions gives each member of the database its admission
+// and returns the members that hold one.
+//
+// A member of the database whose admission at its address is revoked, with
+// no other admission there, is left out: a revoked member is not a member,
+// and its presence in the database until it is removed says nothing about
+// the others. A member of the database with no admission at all is unknown,
+// and the whole binding fails.
+//
+// The list is therefore the admitted members, which can be fewer than the
+// database's voters. Everything that counts over it, a majority of material
+// copies included, counts admitted members.
 func bindLiveClusterAdmissions(live []cluster.Member, admissions []ClusterAdmission) ([]ClusterTransportMember, error) {
 	active := make(map[string]ClusterAdmission, len(admissions))
 	keys := make(map[string]bool, len(admissions))
+	revoked := make(map[string]bool)
 	for _, admission := range admissions {
 		if admission.RevokedAt != nil {
+			// Matched as stored: a live address is normalized, so a
+			// revoked row with any other spelling matches nothing.
+			revoked[admission.Address] = true
 			continue
 		}
 		address, err := normalizeClusterMemberAddress(admission.Address)
@@ -149,6 +165,9 @@ func bindLiveClusterAdmissions(live []cluster.Member, admissions []ClusterAdmiss
 	boundKeys := make(map[string]bool, len(live))
 	for _, member := range live {
 		admission, exists := active[member.Address]
+		if !exists && revoked[member.Address] {
+			continue
+		}
 		if !exists || boundKeys[admission.KeyFingerprint] {
 			return nil, errors.New("live cluster member has no unique active admission")
 		}

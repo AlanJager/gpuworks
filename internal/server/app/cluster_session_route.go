@@ -120,19 +120,7 @@ func (a *App) configureSecureSessionRoute(route store.ClusterSessionRoute, sessi
 			return err
 		}
 		pick := func(members []store.ClusterTransportMember) string {
-			local, peer := false, false
-			for _, member := range members {
-				if member.ID == route.ID && member.KeyFingerprint == localKey {
-					local = true
-				}
-				if member.KeyFingerprint == key {
-					peer = true
-				}
-			}
-			if !local || !peer {
-				return ""
-			}
-			return key
+			return memberRoutePeer(members, route.ID, localKey, key)
 		}
 		if admitted, err := memberRouteKey(ctx, confirmed, grant, pick); err != nil {
 			return err
@@ -191,6 +179,24 @@ func (a *App) configureSecureSessionRoute(route store.ClusterSessionRoute, sessi
 		return client, nil
 	}
 	return sessions.SetMemberSecureTransport(route.ID, server, peerTLS, authorize)
+}
+
+// memberRoutePeer returns peerKey when the member list names both this
+// member, by its ID and key, and the peer's key; otherwise nothing.
+func memberRoutePeer(members []store.ClusterTransportMember, localID uint64, localKey, peerKey string) string {
+	local, peer := false, false
+	for _, member := range members {
+		if member.ID == localID && member.KeyFingerprint == localKey {
+			local = true
+		}
+		if member.KeyFingerprint == peerKey {
+			peer = true
+		}
+	}
+	if !local || !peer {
+		return ""
+	}
+	return peerKey
 }
 
 // memberRouteMembershipAge is how old a confirmed member list may be and
