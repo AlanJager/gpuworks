@@ -62,6 +62,9 @@ func TestPreparedAgentsServeVerifiedFilesUntilRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !files.Available("", target, "fixture") {
+		t.Fatal("cold preparation left the delta agent unavailable")
+	}
 	// No request or warm restart should need to open either packed frame.
 	delete(tree, packDir+base+compressedSuffix)
 	delete(tree, packDir+target+compressedSuffix)
