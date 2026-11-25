@@ -277,7 +277,6 @@ const (
 	ReasonRuntimeUnavailable                 = "runtime_unavailable"
 	ReasonRuntimeUnsupported                 = "runtime_unsupported"
 	ReasonLaunchFeaturesUnknown              = "launch_features_unknown"
-	ReasonDGPUStartupMemory                  = "dgpu_startup_memory"
 	ReasonRuntimeUnreported                  = "runtime_unreported"
 	ReasonAcceleratorFeatureUnsupported      = "accelerator_feature_unsupported"
 	ReasonAcceleratorDeviceSelectionRequired = "accelerator_device_selection_required"

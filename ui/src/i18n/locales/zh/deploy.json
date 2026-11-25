@@ -91,6 +91,7 @@
     "cloneFailed": "克隆模板失败：{{detail}}"
   },
   "warning": {
+    "DGPU_STARTUP_MEMORY": "显存利用率为 {{utilization}} 时，{{quota_gib}} GiB 的 dGPU 配额可能不足以完成 Decode 计算图捕获。你可以继续部署，或将利用率降到 {{max_utilization}} 或更低以预留显存。",
     "EXTRA_ARGS_ENGINE_UNVERIFIED": "GPUWorks 暂无法确认 {{flag}} 在所选 {{engine}} 镜像中的兼容性（已知 {{documented_engine}} 参数）。请检查镜像支持情况，参数将原样传递。",
     "W1": "W1：单批 Token 数（{{max_num_batched_tokens}}）超过最大并发与上下文长度乘积（{{max_num_seqs}} × {{max_model_len}}），可能造成显存浪费。",
     "W2": "W2：KV 内存层（{{kv_offloading_size}} GiB）不大于预估的 GPU KV Cache（{{estimated_gpu_kv_gib}} GiB），命中率可能不会提升。",
@@ -211,8 +212,7 @@
     "runtime_unreported": "{{vendor}} 需要 {{required}}；此节点尚未上报完整的运行时信息。",
     "accelerator_feature_unsupported": "{{vendor}} 不支持{{feature}}。请调整启动选项或选择其他加速卡。",
     "accelerator_device_selection_required": "{{vendor}} 启动前必须明确分配 GPU。",
-    "launch_features_unknown": "无法检查 {{vendor}} 的启动命令功能，请提供可识别的引擎入口或结构化启动参数。",
-    "dgpu_startup_memory": "$t(common:apiError.DGPU_STARTUP_MEMORY)"
+    "launch_features_unknown": "无法检查 {{vendor}} 的启动命令功能，请提供可识别的引擎入口或结构化启动参数。"
   },
   "placementReason": {
     "node_cordoned": "该节点已停止调度。请恢复它的调度或选择其他节点。",

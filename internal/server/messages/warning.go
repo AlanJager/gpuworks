@@ -39,6 +39,9 @@ const (
 	// WarningPlanningKVBelowContext is an uncertain KV capacity prediction,
 	// not a startup/resource refusal. Params: kv_tokens, max_model_len.
 	WarningPlanningKVBelowContext = "PLANNING_KV_BELOW_CONTEXT"
+	// WarningDGPUStartupMemory flags a tested configuration that may fail
+	// Decode graph capture. Params: quota_gib, utilization, max_utilization.
+	WarningDGPUStartupMemory = "DGPU_STARTUP_MEMORY"
 	// WarningManualDraftUnavailable: a multi-node or PD draft has no manual
 	// command script that runs every rank's own engine command, because ranks
 	// of one kind differ in something no platform variable carries (the RDMA

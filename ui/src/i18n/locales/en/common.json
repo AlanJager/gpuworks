@@ -274,7 +274,6 @@
     "NODE_REQUIREMENTS_UNMET": "The node does not satisfy the deployment's node requirements: {{detail}}",
     "PLACEMENT_STRATEGY_INVALID": "Unsupported placement strategy: {{strategy}}",
     "DEPLOYMENT_NEVER_FITS": "No node this deployment may run on could fit a replica, even with nothing else running: {{pool}} candidate nodes, {{shapes}} hardware shapes; {{node}} refused ({{reason}}). Choose a smaller configuration or other nodes.",
-    "DGPU_STARTUP_MEMORY": "The {{quota_gib}} GiB dGPU slice needs memory for Decode graph capture. Lower GPU memory utilization from {{utilization}} to {{max_utilization}} or less.",
     "NODE_REQUIREMENTS_NOT_EDITABLE": "This deployment lists its nodes rank by rank ({{shape}}); it has no node requirements to edit.",
     "DGPU_QUOTA_INVALID": "Invalid dGPU quota: {{field}} = {{value}}",
     "DGPU_QUOTA_NOT_PARTITIONED": "This deployment runs on whole cards; it has no dGPU quota to change.",

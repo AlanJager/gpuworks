@@ -91,6 +91,7 @@
     "cloneFailed": "Failed to clone template: {{detail}}"
   },
   "warning": {
+    "DGPU_STARTUP_MEMORY": "At {{utilization}}, Decode graph capture may run out of memory in the {{quota_gib}} GiB dGPU slice. You can continue, or use {{max_utilization}} or lower to leave more room.",
     "EXTRA_ARGS_ENGINE_UNVERIFIED": "GPUWorks cannot confirm that {{flag}} is supported by this {{engine}} image; it is listed for {{documented_engine}}. Check the image's supported arguments. The argument will be passed through unchanged.",
     "W1": "W1: Max batched tokens ({{max_num_batched_tokens}}) exceeds max sequences × context length ({{max_num_seqs}} × {{max_model_len}}) and may waste VRAM.",
     "W2": "W2: The KV memory tier ({{kv_offloading_size}} GiB) is no larger than the estimated GPU KV cache ({{estimated_gpu_kv_gib}} GiB), so its hit rate may not improve.",
@@ -211,8 +212,7 @@
     "runtime_unreported": "{{vendor}} requires {{required}}; this node has not reported all required runtime facts.",
     "accelerator_feature_unsupported": "{{vendor}} does not support {{feature}}. Change the launch options or select another accelerator.",
     "accelerator_device_selection_required": "{{vendor}} requires an explicit GPU assignment before launch.",
-    "launch_features_unknown": "The launch command could not be inspected for {{vendor}}. Use a recognized engine entrypoint or structured launch parameters.",
-    "dgpu_startup_memory": "$t(common:apiError.DGPU_STARTUP_MEMORY)"
+    "launch_features_unknown": "The launch command could not be inspected for {{vendor}}. Use a recognized engine entrypoint or structured launch parameters."
   },
   "placementReason": {
     "node_cordoned": "The node is cordoned. Resume scheduling on it or choose another node.",
