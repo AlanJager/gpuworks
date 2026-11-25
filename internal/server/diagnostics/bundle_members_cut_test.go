@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -291,5 +292,137 @@ func TestAMemberCannotNameItemsThroughItsCutList(t *testing.T) {
 	}
 	if it := itemsByPath(b)["members/10.0.0.2_9001/role-events.log"]; it.Status != proto.CheckWarn {
 		t.Fatalf("role records item = %+v", it)
+	}
+}
+
+// A cluster member whose membership cannot be read: the collection is made
+// all the same, of this member's files, and says with a failed item that the
+// members are not in it. Without the item it would read as a single
+// server's. This is the collection a running member's console starts
+// (StartBundle), and what the list it serves then shows.
+func TestAMembershipThatCannotBeReadIsReportedAndTheCollectionStands(t *testing.T) {
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	// The text is the one the server produces for a missing identity file.
+	const unreadable = "this member's cluster membership could not be read: database identity is not in the data directory (/opt/gpuworks/data/gpuworks.db.dqlite/info.yaml)"
+	for _, tc := range []struct {
+		name     string
+		arrange  func(*fakeCluster)
+		evidence string
+	}{
+		{"an error", func(c *fakeCluster) { c.members, c.membersErr = nil, errors.New(unreadable) }, unreadable},
+		{"no member and no error", func(c *fakeCluster) { c.members = nil }, "the cluster lists no member"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, c := clusterFixture(t, now)
+			tc.arrange(c)
+			started, err := m.StartBundle(context.Background(), BundleRequest{RequestedBy: "admin"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			done := waitBundle(t, m, started.ID)
+			if done.State != "ready" {
+				t.Fatalf("state = %q (%s): an unreadable membership must not fail the collection", done.State, done.Error)
+			}
+			it := itemsByPath(done)["members"]
+			if it.Status != proto.CheckFail || it.Code != messages.CheckDiagnosticsItemReadFailed || it.ID() != BundleItemMembers ||
+				it.Evidence != tc.evidence || it.Message() != "members could not be read" {
+				t.Fatalf("item = %+v (%s, %q)", it, it.ID(), it.Message())
+			}
+			listed := m.Bundles()
+			if len(listed) != 1 || itemsByPath(listed[0])["members"].Status != proto.CheckFail {
+				t.Fatalf("the list does not show the failed item: %+v", listed)
+			}
+			files := readArchive(t, m.bundleArchive(started.ID))
+			for path := range files {
+				if strings.HasPrefix(path, "members/") {
+					t.Fatalf("the collection holds %s without a membership", path)
+				}
+			}
+			// This member's own records need its log alone: they are there,
+			// beside the log.
+			if !strings.Contains(files["server/gpuworks-server.log"], "event=step_down") || !strings.Contains(files["server/role-events.log"], "event=step_down") ||
+				!strings.Contains(files["server/leader-changes.log"], "leader changed") || !strings.Contains(files["server/member.json"], `"server_version": "v-test"`) {
+				t.Fatalf("this member's log, role records or member.json are missing: %v", itemsByPath(done))
+			}
+			if !strings.Contains(files["server/cluster-status.txt"], "Overall: ok") || !strings.Contains(files["manifest.json"], `"path": "members"`) {
+				t.Fatalf("the status report or the manifest's item is missing:\n%s", files["manifest.json"])
+			}
+			for path, id := range map[string]string{
+				"server/member.json": "server_member", "server/role-events.log": "server_role_events",
+				"server/leader-changes.log": "server_leader_changes", "server/cluster-status.txt": "server_cluster_status",
+			} {
+				if it := itemsByPath(done)[path]; it.Status != proto.CheckPass || it.ID() != id {
+					t.Fatalf("%s = %+v (%s), want a collected item with id %s", path, it, it.ID(), id)
+				}
+			}
+			if c.asked["10.0.0.2:9001"] != 0 {
+				t.Fatal("a member was asked without a membership")
+			}
+		})
+	}
+}
+
+// What is extracted beside the log when the membership cannot be read is
+// reported like any other part: cut records show as cut, and records that
+// could not be extracted leave a failed item, not only a log line.
+func TestRoleRecordsBesideTheLogAreReportedWhenCutOrUnreadable(t *testing.T) {
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	unreadable := errors.New("this member's cluster membership could not be read: database identity is not in the data directory (/opt/gpuworks/data/gpuworks.db.dqlite/info.yaml)")
+	t.Run("cut at their bound", func(t *testing.T) {
+		lowerBound(t, &memberBounds.small, int64(400))
+		m, c := clusterFixture(t, now)
+		c.members, c.membersErr = nil, unreadable
+		at := "time=" + now.Add(-time.Minute).Format(time.RFC3339Nano) + " "
+		if err := os.WriteFile(c.self.logFile, []byte(strings.Repeat(at+roleLoopLate+"\n", 20)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		b, files := collect(t, m)
+		it := itemsByPath(b)["server/role-events.log"]
+		if it.Status != proto.CheckWarn || it.Code != messages.CheckDiagnosticsItemTruncated || len(files["server/role-events.log"]) > 400 || len(files["server/role-events.log"]) == 0 {
+			t.Fatalf("item = %+v, %d bytes; want the cut records shown as cut", it, len(files["server/role-events.log"]))
+		}
+	})
+	t.Run("not extracted", func(t *testing.T) {
+		m, c := clusterFixture(t, now)
+		c.members, c.membersErr = nil, unreadable
+		// A directory where this member's log file is expected: it opens and
+		// cannot be read.
+		c.self.logFile = t.TempDir()
+		b, files := collect(t, m)
+		it := itemsByPath(b)["server/role-events.log"]
+		if it.Status != proto.CheckFail || it.Code != messages.CheckDiagnosticsItemReadFailed || !strings.Contains(it.Evidence, "is a directory") {
+			t.Fatalf("item = %+v, want a failed item with the read error", it)
+		}
+		if _, ok := files["server/role-events.log"]; ok || itemsByPath(b)["members"].Status != proto.CheckFail {
+			t.Fatalf("the archive holds records that were not extracted, or lost the members item")
+		}
+	})
+}
+
+// A part that fails to be staged says which of its files the failure is
+// about.
+func TestAStagingFailureNamesItsFile(t *testing.T) {
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	member := memberFixture(t, 2, "10.0.0.2:9001", now)
+	dir := t.TempDir()
+	// A directory where the second extract is to be written.
+	if err := os.Mkdir(filepath.Join(dir, MemberLeaderChangesFile), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	files, failed, err := stageMemberPart(context.Background(), dir, member, now.Add(-time.Hour), now, now)
+	if err == nil || failed != MemberLeaderChangesFile {
+		t.Fatalf("failed = %q, err = %v; want the file that could not be written", failed, err)
+	}
+	// What was written before it is still reported.
+	var names []string
+	for _, f := range files {
+		names = append(names, f.name)
+	}
+	if strings.Join(names, ",") != MemberFactsFile+","+MemberRoleEventsFile {
+		t.Fatalf("staged before the failure = %v", names)
+	}
+	member.logFile = t.TempDir() // a log that opens and cannot be read
+	if _, failed, err := stageMemberPart(context.Background(), t.TempDir(), member, now.Add(-time.Hour), now, now); err == nil || failed != MemberRoleEventsFile {
+		t.Fatalf("an unreadable log: failed = %q, err = %v", failed, err)
 	}
 }

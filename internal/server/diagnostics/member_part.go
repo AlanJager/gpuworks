@@ -62,6 +62,8 @@ const (
 
 // MemberFacts is a part's member.json: who the member is and what it runs.
 type MemberFacts struct {
+	// ID 0 with an empty Address means the member's identity could not be
+	// read (its part is then beside its log, under server/).
 	ID      uint64 `json:"id"`
 	Address string `json:"address"`
 	Version string `json:"server_version"`
@@ -372,26 +374,28 @@ func (p *memberPart) small() []partFile {
 // and stall reports are in the collection already (under server/): only the
 // small files are written here. The records are read from the log's whole
 // window, not from the staged log, which may have been cut at its bound.
-func stageMemberPart(ctx context.Context, dir string, src MemberSource, from, to, now time.Time) ([]memberFile, error) {
+// On an error, failed names the file it is about: the first extract when
+// the log could not be read (neither exists then), empty for dir itself.
+func stageMemberPart(ctx context.Context, dir string, src MemberSource, from, to, now time.Time) (files []memberFile, failed string, err error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	p := newMemberPart(ctx, src, from, to, now)
 	defer p.close()
 	sink := &recordSink{}
 	if _, _, err := filterFiles(ctx, p.logs, sink, from, to, math.MaxInt64); err != nil {
-		return nil, err
+		return nil, MemberRoleEventsFile, err
 	}
 	p.setRecords(sink, false)
 	p.status = src.Status(ctx)
-	var files []memberFile
 	for _, f := range p.small() {
 		local := filepath.Join(dir, f.name)
 		if err := os.WriteFile(local, f.data, 0o600); err != nil {
-			return nil, err
+			sort.Slice(files, func(i, j int) bool { return files[i].name < files[j].name })
+			return files, f.name, err
 		}
 		files = append(files, memberFile{name: f.name, path: local, bytes: int64(len(f.data))})
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].name < files[j].name })
-	return files, nil
+	return files, "", nil
 }

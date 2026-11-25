@@ -32,6 +32,45 @@ func runSupportBundle(t *testing.T, args ...string) (int, string) {
 	return code, stderr.String()
 }
 
+// operatorOutput runs the command and answers what it wrote to the
+// operator's terminal as well: the lines about missing members go to the
+// process' standard error, not through the logger.
+func operatorOutput(t *testing.T, args ...string) (code int, logged, printed string) {
+	t.Helper()
+	capture, err := os.Create(filepath.Join(t.TempDir(), "stderr"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	terminal := os.Stderr
+	os.Stderr = capture
+	t.Cleanup(func() { os.Stderr = terminal })
+	code, logged = runSupportBundle(t, args...)
+	os.Stderr = terminal
+	_ = capture.Close()
+	raw, err := os.ReadFile(capture.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return code, logged, string(raw)
+}
+
+// A data directory whose cluster markers cannot be read is not silently
+// taken for a single server's: the operator is told what follows and why.
+func TestSupportBundleSaysWhenItCannotTellWhatTheDirectoryIs(t *testing.T) {
+	data := t.TempDir()
+	// A file where the enrollment directory belongs: looking inside it
+	// fails with something other than "does not exist".
+	marker := filepath.Join(data, "cluster-enrollment")
+	if err := os.WriteFile(marker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, printed := operatorOutput(t, "--data", data, "--out", filepath.Join(t.TempDir(), "bundle.tar.gz"))
+	if !strings.HasPrefix(printed, "support-bundle: cannot tell whether "+data+" is a control-plane cluster member's (") ||
+		!strings.Contains(printed, marker) || !strings.Contains(printed, "collecting it as a single server's") {
+		t.Fatalf("printed:\n%s", printed)
+	}
+}
+
 // What the command does with a member's data directory depends on the
 // build: support_bundle_community_test.go and support_bundle_cluster_test.go
 // each assert their own. The cases below hold for both.
