@@ -2521,7 +2521,7 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: 4a41e54a2a7691fc464f2c3bff6c62ff401cee25b2e8ede1d1511164ab86791e ### Cloud Instance Installation and Restart Confirmation -->
 <!-- translation-source-sha256: dff84f5e2e143ca7701c66cd40683e1ca6428f5d803325e20c3a4e6b759a19ae ## Web Terminal -->
 <!-- translation-source-sha256: 7858bdfd14670c6316f95db08d7f9198accf3451a7e655c9513ff13cf428941c ## Networks -->
-<!-- translation-source-sha256: 996230365d7f304ba6d5b55ec19068b5aae5e436538dd5f988dba762660e75c0 ## Settings / Network Presets -->
+<!-- translation-source-sha256: 23278f685c8092e9eda5b2df89185ce71d0b220772a857e5a313072115e7fed2 ## Settings / Network Presets -->
 <!-- translation-source-sha256: 0d6096536d010c9fb3e99a7c9823f000f224ee23f15072817338937928739331 ### Update Check Results -->
 <!-- translation-source-sha256: 0e96eaf91ec4ceaa489e42f4bc76c90f1ae38793c3dc6f511af1e5a915929772 ### Server Upgrade Restrictions -->
 <!-- translation-source-sha256: 407e22173bef80c6affe537b15efce4491e1e75938bc45fc92a2c73d4679d528 ### Trace Export Settings and Status -->
