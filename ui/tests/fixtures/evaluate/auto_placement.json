@@ -144,7 +144,7 @@
       "node_rank": 0,
       "role": "standalone",
       "headless": false,
-      "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4",
+      "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.34.0-r1",
       "entrypoint": [
         "vllm",
         "serve",
@@ -212,7 +212,7 @@
       }
     }
   ],
-  "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4",
+  "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.34.0-r1",
   "warnings": [
     {
       "code": "IMAGE_DRIVER_COMPATIBILITY",
@@ -416,11 +416,11 @@
       }
     ],
     "image": {
-      "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4",
+      "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.34.0-r1",
       "cache_reason": "query_failed",
       "options": [
         {
-          "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4",
+          "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.34.0-r1",
           "reason": "catalog_match",
           "compatible": true
         },
@@ -438,6 +438,21 @@
           "image": "gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2",
           "reason": "catalog_match",
           "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cuda13.0-sglang0.5.23-r2",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4",
+          "reason": "catalog_match",
+          "compatible": true
+        },
+        {
+          "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.33.0-r1",
+          "reason": "catalog_match",
+          "compatible": true
         }
       ]
     },
@@ -448,9 +463,9 @@
         "image_cache_reason": "query_failed",
         "image_plan": "pull",
         "image_pull_refs": [
-          "quay.io/gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4",
-          "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4",
-          "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4"
+          "quay.io/gpuworks/gpuworks-runner:cuda13.0-vllm0.34.0-r1",
+          "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cuda13.0-vllm0.34.0-r1",
+          "gpuworks/gpuworks-runner:cuda13.0-vllm0.34.0-r1"
         ],
         "image_pull_ranked": true,
         "weights_present": false,
