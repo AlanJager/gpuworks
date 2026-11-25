@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/cluster"
+	"gpuworks.ai/gpuworks/internal/server/enrollment"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -296,7 +298,20 @@ func (f *candidateGrantFixture) quorumFacts(t *testing.T, ctx context.Context, l
 		t.Fatal(err)
 	}
 	facts, _, _, err := projectClosedQuorumFacts(f.expected(), strings.Repeat("a", 64), false, phase, admissions, proof, f.keys[requester], f.keys[leader])
-	return len(facts.Members), err
+	if err != nil {
+		return 0, err
+	}
+	// As a client reads it: the answer must decode, which among other
+	// things requires the leader to be in the member list.
+	wire, err := json.Marshal(facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := enrollment.DecodeClusterQuorumFacts(wire)
+	if err != nil {
+		t.Fatalf("a client rejects the projected facts: %v\n%s", err, wire)
+	}
+	return len(decoded.Members), nil
 }
 
 func (f *candidateGrantFixture) leaderIndex(t *testing.T, ctx context.Context) int {
@@ -378,8 +393,8 @@ func TestNativeRevokedDatabaseLeaderDoesNotCloseTheOthers(t *testing.T) {
 	if got := f.stores[rest[1]].GetSetting(setting); got != "committed" {
 		t.Fatalf("the other member that remains reads %q", got)
 	}
-	if n, err := f.quorumFacts(t, ctx, lead, rest[0]); err == nil {
-		t.Fatalf("the revoked leader provided facts listing %d members", n)
+	if n, err := f.quorumFacts(t, ctx, lead, rest[0]); !errors.Is(err, store.ErrClusterIdentityConflict) {
+		t.Fatalf("facts from the revoked leader: %d members, %v, want %v", n, err, store.ErrClusterIdentityConflict)
 	}
 }
 
