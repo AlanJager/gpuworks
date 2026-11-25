@@ -9,7 +9,7 @@ For step-by-step instructions for managed public cloud clusters (Alibaba Cloud A
 - The server is running, and the cluster nodes can reach the server address (entered as “Management node address” when connecting; the agent connects outbound; no inbound node port is needed).
 - The cluster uses containerd (kubeadm, k3s, RKE2, microk8s, and GPU Operator environments all do). CRI-O (OpenShift) and Docker nodes are not supported; the agent refuses to start and states the reason.
 - The vendor driver is installed on the node. Kubernetes supports NVIDIA, Ascend, Hygon (DCU), PPU, AMD, and Kunlunxin, and one cluster entry can cover nodes of all of these vendors; you do not need one entry per vendor (see the next section). On NVIDIA nodes, the NVIDIA container runtime must be available: either as containerd's default runtime (as on managed Kubernetes such as DOKS, Nebius, and ACK), or through a RuntimeClass named `nvidia` (k3s creates it automatically). Other vendors only require the vendor driver on the node; they need neither the vendor container runtime nor the vendor device plugin.
-- Nodes that mount NFS storage have `mount.nfs` installed (nfs-utils / nfs-common): the agent uses it in the node's mount namespace.
+- Nodes that mount NFS storage have `mount.nfs` installed (nfs-utils / nfs-common): the agent uses it in the node's mount namespace. The mount point must be under the default mount directory `/mnt/gpuworks` or the agent's state directory: the agent's Pod shares only these two directories with its node, and a mount point it creates anywhere else does not exist on the node. With a mount point elsewhere the node reports that the agent does not share the directory with its node, and nothing is mounted; mount the export on the node yourself and select **Use an existing NFS mount** for those nodes. After upgrading from a version that did not share `/mnt/gpuworks`, apply the manifest once more (`kubectl apply` or “Apply to cluster”) before NFS storage can be mounted on these nodes.
 - You can run `kubectl apply` in the cluster, and a `privileged` namespace is allowed (the manifest labels the namespace with the Pod Security Admission `privileged` label; policies such as Kyverno or Gatekeeper must be relaxed separately).
 
 ## How It Works
@@ -189,7 +189,7 @@ Deleting the DaemonSet deletes the instance Pods and placeholder Pods with it, a
 - Only NVIDIA, Ascend, Hygon, PPU, AMD, and Kunlunxin nodes are supported; nodes of other vendors stay in stand-by and do not become platform nodes. Hygon and Kunlunxin are deployed as whole cards only: Hygon dGPU memory slicing is not available on Kubernetes, and Kunlunxin has no dGPU; AMD and PPU dGPU slicing is available on Kubernetes.
 - The agent runs privileged with hostNetwork and hostPID (required for probing and for running nerdctl and mount through the node's mount namespace).
 
-<!-- translation-source-sha256: 2c25159695a3cbd5475f14aaf25d673fff267dfae898d65c16915dcba83bd106 # Connect a Kubernetes Cluster -->
+<!-- translation-source-sha256: c107c9747310435f7034ddb2b3d00d1996c7517337d7cddcaca80a26d1fc7cd1 # Connect a Kubernetes Cluster -->
 <!-- translation-source-sha256: 11e9890c7d7304cdf9f689086fd1be86f5a1001add2d4d1821c457ee33afd050 ## How It Works -->
 <!-- translation-source-sha256: c3dac868c063bf015effc769d973ca3fbe8a0315b8bdb143f4f466dbc88891c2 ## Coexisting with Other Workloads in the Cluster -->
 <!-- translation-source-sha256: d1c772d60d54cab145763c6464f7e7666a10676b3be6d75c241e5244c9f5f255 ## Accelerator Vendor: Detected Automatically -->
