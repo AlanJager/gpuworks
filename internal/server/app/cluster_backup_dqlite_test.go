@@ -5,7 +5,6 @@ package app
 import (
 	"context"
 	"errors"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/enrollment"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/testenv/testport"
 )
 
 // A member that serves is backed up without stopping it, and the archive
@@ -30,14 +30,7 @@ func TestClusterBackupAndRestoreOfARunningMember(t *testing.T) {
 	if _, err := InitializeEnrollment(ctx, cfg, enrollmentAddress, "https://"+enrollmentAddress); err != nil {
 		t.Fatal(err)
 	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	address := listener.Addr().String()
-	if err := listener.Close(); err != nil {
-		t.Fatal(err)
-	}
+	address := testport.Address(t)
 	if _, err := ActivateDatabaseAddress(ctx, cfg, address); err != nil {
 		t.Fatal(err)
 	}
