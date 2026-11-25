@@ -920,8 +920,14 @@ message 为 `insufficient disk space at <path>: available=… required=…`。
 
 **登记后缺少元数据**
 
-响应带 `metadata_notice`（`MODEL_METADATA_UNREACHABLE` / `MODEL_METADATA_FORBIDDEN`）时，检查管理节点的出站访问。
-给可用站点规则勾选 **用于管理节点获取模型元数据**，必要时给代理勾选 **用于管理节点出站访问**。
+先看 `metadata_notice` 或「获取元数据」报错里的码，它区分站点的回答与管理节点自己的问题：
+
+| 码 | 含义 | 处理 |
+|---|---|---|
+| `MODEL_REPO_NOT_FOUND` | 站点已应答，没有这个仓库 | 核对仓库 ID 与来源；同一模型在 Hugging Face 与 ModelScope 上的仓库 ID 常常不同 |
+| `MODEL_REVISION_NOT_FOUND` | 仓库存在，该版本下没有文件 | 改用该来源的分支或提交；提交 ID 不能跨站点使用 |
+| `MODEL_REPO_ACCESS_DENIED` | 站点返回 401 / 403 | 私有或受限仓库需要[凭据](configure-pull-settings.md#凭据)；未带令牌时 Hugging Face 对不存在的仓库也返回 401，先核对仓库 ID |
+| `MODEL_METADATA_UNREACHABLE` / `MODEL_METADATA_FORBIDDEN` | 管理节点没有从任何地址得到关于仓库的回答，或规则禁止了全部地址 | 检查管理节点的出站访问：给可用站点规则勾选 **用于管理节点获取模型元数据**，必要时给代理勾选 **用于管理节点出站访问** |
 
 **源节点离线，或节点间同步失败**
 

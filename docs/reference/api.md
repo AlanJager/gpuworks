@@ -513,7 +513,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/models` | 模型列表；支持 `page`/`page_size`、`q`、`source`（`huggingface/modelscope/url/local`）、`operation`、`source_id`；后三项可用逗号分隔，`source_id` 整体匹配、不区分大小写。`sort` 为 `name/source/source_id/published_at/created_at/weight/presence`。分页返回 `presence{ready_nodes,cached_nodes,ready_storages,in_flight,in_flight_percent,failed}` 就位汇总及全量 `summary`；逐位置明细查模型详情。见[列表筛选与就位汇总](#列表筛选与就位汇总) | JWT |
 | GET | `/api/v1/models/presence?ids=1,2` | 只读取指定模型的就位摘要，用于下载进度更新。`ids` 必填，逗号分隔的正整数，最多 200 项，重复编号去重；返回以模型编号为键的对象，每项形状同列表的 `presence`。已知但无副本的模型各项为 0；不存在或已删除的编号省略。非法、空或超量参数返回 400，存储读取失败返回 500。普通进度事件只刷新当前页摘要，状态或模型变更继续刷新完整列表 | JWT |
 | GET | `/api/v1/models/catalog` | 在线模型目录。通过 `source`（`modelscope` 或 `huggingface`）和 `path` 请求公开模型列表、README 或 ModelScope 默认分支提交。管理节点按来源规则访问，返回源站正文；Hugging Face 续页信息在 `X-Catalog-Link`。 | JWT |
-| POST | `/api/v1/models` | 注册公共仓库模型（HF/ModelScope） | JWT |
+| POST | `/api/v1/models` | 注册公共仓库模型（HF/ModelScope）。来源站点明确回答没有该仓库或该版本时返回 422 `MODEL_REPO_NOT_FOUND` / `MODEL_REVISION_NOT_FOUND`，不登记；请求体带 `force: true` 时仍登记。站点不可达、拒绝访问（401/403）或只有镜像站回答 404 时照常登记（201），原因写在 `metadata_notice` | JWT |
 | POST | `/api/v1/models/preview-url` | 预览 HTTP 模型目录（`url`）；必须为带主机名的 http/https URL，不允许内嵌凭据。非法地址返回 400 `MODEL_SOURCE_URL_INVALID`，合法但不可读取的目录返回 502 `HTTP_DIRECTORY_UNREACHABLE` | JWT |
 | POST | `/api/v1/models/register-url` | 注册 HTTP 模型目录（`source_url`，可选 `source_id`、`name`）；地址校验与 preview-url 相同，注册成功返回 201 | JWT |
 | POST | `/api/v1/models/local/preview` | 预览节点本地目录是否可注册为模型 | JWT |
@@ -522,7 +522,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/models/{id}` | 模型详情 | JWT |
 | PATCH | `/api/v1/models/{id}` | 修改本地 / HTTP 目录模型的来源 ID（`{"source_id"}`，详情的 `source_id_editable` 表示可改）；公共仓库模型 400 `MODEL_SOURCE_ID_FIXED`，与已有模型重名 409 `MODEL_SOURCE_ID_TAKEN`，有进行中的复制、下载或删除 409 `MODEL_TRANSFER_ACTIVE`；已有副本路径不变 | JWT |
 | DELETE | `/api/v1/models/{id}` | 删除模型 | JWT(admin) |
-| POST | `/api/v1/models/{id}/metadata/refresh` | 重新拉取模型元数据（config/README/logo） | JWT |
+| POST | `/api/v1/models/{id}/metadata/refresh` | 重新拉取模型元数据（config/README/logo）。什么都没读到时按来源站点的回答报错：404 `MODEL_REPO_NOT_FOUND` / `MODEL_REVISION_NOT_FOUND`、403 `MODEL_REPO_ACCESS_DENIED`（`params.host`、`params.repo`、`params.status` 为站点与它的 HTTP 状态码）；站点没有给出关于仓库的回答时 502 `MODEL_METADATA_UNREACHABLE` 或 `MODEL_METADATA_FORBIDDEN` | JWT |
 | POST | `/api/v1/models/{id}/download` | 发起公共仓库下载：`storage_id` 选存储（省略为默认存储），本地存储再给 `node_uuid` 或 `node_uuids`，共享存储由一台写入节点下载一次 | JWT |
 | POST | `/api/v1/models/{id}/download/cancel` | 取消指定存储的模型下载（`storage_id`，本地存储另带 `node_uuid`）；保留已下载数据以供重试 | JWT |
 | POST | `/api/v1/models/{id}/copy` | 在两个位置之间复制模型文件：`source`/`target` 各为 `{storage_id, node_uuid?}`；同一节点能读源写目标时本机复制，否则节点间直传；源与目标为同一位置返回 400，共享存储按存储 ID 判定（忽略节点）；离线或不可写等状态冲突仍返回 409 | JWT |
@@ -700,6 +700,7 @@ const importBody = {
 | GET | `/api/v1/inference-templates/my-chips` | 当前集群实际探测到的加速卡列表，含 `vendor`、`name`、可选 `cc` 和已报告的 `arch_id`；未报告架构时省略 `arch_id` | JWT |
 | GET | `/api/v1/inference-templates/summary` | 模板统计摘要 | JWT |
 | GET | `/api/v1/inference-templates/weight-models` | 某个 spec 声明的权重来源对应的已登记模型（`template_id`、`spec_source`、`spec_name` 必填，缺一 400 `TEMPLATE_WEIGHT_MODELS_QUERY_INVALID`，spec 不存在 404）：`models` 为服务任一来源的模型（按 repo id 不区分大小写匹配，完整仓库可服务子目录请求，新的在前，各一次，行格式同分页列表；按 rank 拆分的来源只列 rank 0 的制品，且 revision 已知时须与来源写的一致）；`sources` 按声明顺序列出各来源，`reuse_model_id` 是选择该来源时复用的同 provider 最新模型 | JWT |
+| GET | `/api/v1/inference-templates/weight-source-probe` | 部署表单在登记前测试某个 spec 声明的一个权重来源（`template_id`、`spec_source`、`spec_name`、`provider`、`repo_id` 必填，缺一 400 `WEIGHT_SOURCE_PROBE_QUERY_INVALID`；`revision`、`subfolder` 按声明原样带上，spec 没有声明这个来源时 400 `WEIGHT_SOURCE_NOT_DECLARED`，spec 不存在 404）。由管理节点按登记时的规则读取来源，返回 `{proceed, present?, host?, reason?}`：读到仓库时 `proceed: true`、`host` 为应答的地址；否则 `proceed: false`，`reason` 的码与登记的 `metadata_notice` 相同（`MODEL_REPO_NOT_FOUND`、`MODEL_REVISION_NOT_FOUND`、`MODEL_REPO_ACCESS_DENIED`、`MODEL_METADATA_UNREACHABLE`、`MODEL_METADATA_FORBIDDEN`）。选择该来源会复用的已登记模型在节点或共享存储上已有就位文件时不访问站点，直接返回 `proceed: true, present: true` | JWT |
 | GET | `/api/v1/inference-templates/export/{digest}` | 按内容摘要导出可执行模板包 | JWT(admin) |
 | GET | `/api/v1/inference-templates/model/*` | 按模型路径获取模板详情。`can_delete` 表示当前调用方有权请求删除整个模板，引用检查在删除时执行。 | JWT |
 | GET | `/api/v1/inference-templates/yaml?model_id=…` | 模板编辑器里的平铺 YAML：server 用导入同一套目录类型写出，可加 `spec_source=user`（或 `upstream`）只留该来源的 spec，`readme_*` 字段只在 spec 全部列出或模板本身归用户时写出；原样保存（`import?overwrite=true`）不丢字段 | JWT |

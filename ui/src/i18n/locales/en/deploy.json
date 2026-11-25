@@ -290,6 +290,13 @@
     "saveInferenceTemplate": "Save as Inference Template",
     "deploy": "Deploy"
   },
+  "sourceTest": {
+    "testing": "Testing the source…",
+    "served": "{{host}} serves this model.",
+    "present": "The model's files are already in place; nothing is downloaded.",
+    "failed": "The source could not be tested: {{detail}}",
+    "again": "Test again"
+  },
   "weightSourceModal": {
     "localDescription": "This template references registered local weights and does not include the model files. Choose the registered model to deploy.",
     "localMissing": "This template references registered local weights; it does not include the model files. Register the existing model directory in Models, then select the template again.",
