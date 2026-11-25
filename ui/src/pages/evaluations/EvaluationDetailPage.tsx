@@ -24,7 +24,7 @@ import BenchmarkRequestTimeline from "./BenchmarkRequestTimeline";
 import useBenchmarkRequestTimeline from "./useBenchmarkRequestTimeline";
 import { useWizardTargets } from "./useWizardTargets";
 import { downloadChartReport } from "./downloadChartReport";
-import { benchmarkCurveSeries, type CurveMetric, type CurveField } from "./benchmarkCurveSeries";
+import { benchmarkCurveSeries, type CurveMetric } from "./benchmarkCurveSeries";
 import { paretoData } from "./paretoUtils";
 import { benchmarkReportURL } from "./BenchmarkReportMenu";
 import { renderBenchmarkReport, downloadBenchmarkReport, type BenchmarkVisualFormat } from "./benchmarkReportExport";
