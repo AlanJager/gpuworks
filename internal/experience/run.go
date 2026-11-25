@@ -70,7 +70,7 @@ func Run(ctx context.Context, cfg Config, log *slog.Logger) error {
 	if err := os.MkdirAll(serverDir, 0o700); err != nil {
 		return err
 	}
-	agents, err := agentbin.Prepare(serverDir)
+	agents, err := agentbin.PrepareForServer(serverDir, log)
 	if err != nil {
 		return err
 	}

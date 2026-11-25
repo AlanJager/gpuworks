@@ -16,8 +16,8 @@ import (
 const ManifestName = "agent-manifest.json"
 
 // Manifest records which release produced each exact, uncompressed binary.
-// Override binaries must carry their own manifest rather than borrowing the
-// embedded release's identity.
+// A custom override carries its own manifest; an exact recovery copy can be
+// verified directly against the embedded release digest.
 type Manifest struct {
 	Version  string                    `json:"version"`
 	Binaries map[string]ManifestBinary `json:"binaries"`
@@ -69,6 +69,7 @@ func (f Files) manifestEntry(overrideDir, name, targetVersion string) (string, M
 	var manifestRaw []byte
 	var err error
 	source := ""
+	overrideDir = f.overrideDir(overrideDir, name)
 	if overrideDir != "" {
 		st, statErr := os.Stat(filepath.Join(overrideDir, name))
 		switch {
@@ -78,9 +79,12 @@ func (f Files) manifestEntry(overrideDir, name, targetVersion string) (string, M
 			return "", ManifestBinary{}, fmt.Errorf("read agent override: %w", statErr)
 		}
 	}
+	standalone := false
 	if source != "" {
 		manifestRaw, err = os.ReadFile(filepath.Join(source, ManifestName))
-	} else {
+		standalone = errors.Is(err, fs.ErrNotExist)
+	}
+	if source == "" || standalone {
 		manifestRaw, err = fs.ReadFile(f.tree, "dl/"+ManifestName)
 	}
 	if err != nil {
@@ -94,6 +98,9 @@ func (f Files) manifestEntry(overrideDir, name, targetVersion string) (string, M
 		return "", ManifestBinary{}, fmt.Errorf("agent build manifest version %q does not match target %q", manifest.Version, targetVersion)
 	}
 	entry, err := manifest.entry(name)
+	if err == nil && standalone && !matchesFile(filepath.Join(source, name), entry) {
+		return "", ManifestBinary{}, fmt.Errorf("standalone recovery file for %s does not match the release manifest", name)
+	}
 	return source, entry, err
 }
 

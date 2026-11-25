@@ -5,6 +5,7 @@ package agentbin
 import (
 	"bytes"
 	"embed"
+	"errors"
 	"io"
 	"io/fs"
 	"net/http"
@@ -38,8 +39,8 @@ func (f Files) Handler(overrideDir string) http.Handler {
 			return
 		}
 		// Override dir wins (lets ops swap in a patched agent without rebuilding).
-		if overrideDir != "" {
-			if f, err := os.Open(filepath.Join(overrideDir, name)); err == nil {
+		if dir := f.overrideDir(overrideDir, name); dir != "" {
+			if f, err := os.Open(filepath.Join(dir, name)); err == nil {
 				defer f.Close()
 				if st, err := f.Stat(); err == nil && !st.IsDir() {
 					w.Header().Set("Content-Type", "application/octet-stream")
@@ -57,6 +58,9 @@ func (f Files) Handler(overrideDir string) http.Handler {
 			} else {
 				http.NotFound(w, r)
 			}
+			return
+		} else if errors.Is(err, errAgentUnavailable) {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
 			return
 		}
 		compressed, err := fs.ReadFile(f.tree, "dl/"+name+compressedSuffix)
@@ -82,14 +86,16 @@ func (f Files) Read(overrideDir, name string) ([]byte, error) {
 	if !validName(name) {
 		return nil, fs.ErrNotExist
 	}
-	if overrideDir != "" {
-		path := filepath.Join(overrideDir, name)
+	if dir := f.overrideDir(overrideDir, name); dir != "" {
+		path := filepath.Join(dir, name)
 		if st, err := os.Stat(path); err == nil && !st.IsDir() {
 			return os.ReadFile(path)
 		}
 	}
 	if raw, err := fs.ReadFile(f.tree, "dl/"+name); err == nil {
 		return raw, nil
+	} else if errors.Is(err, errAgentUnavailable) {
+		return nil, err
 	}
 	compressed, err := fs.ReadFile(f.tree, "dl/"+name+compressedSuffix)
 	if err != nil {

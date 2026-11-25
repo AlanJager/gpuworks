@@ -113,7 +113,7 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	}
 	// Validate release artifacts before opening stores: a failed upgrade must
 	// leave even ancillary databases readable by the previous server.
-	agents, err := agentbin.Prepare(cfg.DataDir)
+	agents, err := agentbin.PrepareForServer(cfg.DataDir, log)
 	if err != nil {
 		return nil, fmt.Errorf("prepare embedded agents: %w", err)
 	}
