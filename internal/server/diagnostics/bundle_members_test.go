@@ -78,6 +78,8 @@ type fakeCluster struct {
 	fail    map[string]error
 	// cut ends a member's part after this many bytes.
 	cut map[string]int
+	// membersErr is a membership that cannot be read.
+	membersErr error
 	// rewriteFacts changes the member.json of every part on its way.
 	rewriteFacts func(*MemberFacts)
 	// hang makes a member never answer within the caller's deadline.
@@ -88,8 +90,10 @@ type fakeCluster struct {
 	mu    sync.Mutex
 }
 
-func (c *fakeCluster) Members(context.Context) []ClusterMember { return c.members }
-func (c *fakeCluster) Self() MemberSource                      { return c.self }
+func (c *fakeCluster) Members(context.Context) ([]ClusterMember, error) {
+	return c.members, c.membersErr
+}
+func (c *fakeCluster) Self() MemberSource { return c.self }
 
 func (c *fakeCluster) OpenMemberPart(ctx context.Context, member ClusterMember, from, to time.Time) (MemberAnswer, error) {
 	c.mu.Lock()
@@ -320,8 +324,8 @@ func TestAMemberThatNeverAnswersIsGivenUpOnAtItsDeadline(t *testing.T) {
 
 func TestASingleServersCollectionHasNoMembers(t *testing.T) {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
-	m, c := clusterFixture(t, now)
-	c.members = nil // a data directory that is not a cluster member's
+	m, _ := clusterFixture(t, now)
+	m.SetCluster(nil) // a data directory that is not a cluster member's
 	b, files := collect(t, m)
 	for path := range files {
 		if strings.HasPrefix(path, "members/") {

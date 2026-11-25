@@ -46,6 +46,9 @@ const clusterDiagnosticsObservationAge = 30 * time.Second
 // enrollment listener or a database port answers within the probe timeout.
 type clusterDiagnostics struct {
 	cfg Config
+	// undecided is why the data directory's cluster markers could not be
+	// read; Members answers it. The rest still reads what it can.
+	undecided error
 
 	mu       sync.Mutex
 	observed clusterStatus
@@ -53,12 +56,24 @@ type clusterDiagnostics struct {
 }
 
 // newClusterDiagnostics is the cluster a collection covers; nil for a data
-// directory that is not a cluster member's.
+// directory that is not a cluster member's. A directory that cannot be told
+// apart is not taken for a single server's: its collection says what could
+// not be read.
 func newClusterDiagnostics(cfg Config) diagnostics.Cluster {
-	if member, err := selfinstall.ClusterMember(cfg.DataDir); err != nil || !member {
+	member, err := selfinstall.ClusterMember(cfg.DataDir)
+	if err != nil {
+		return unclassifiedMember(cfg, err)
+	}
+	if !member {
 		return nil
 	}
 	return &clusterDiagnostics{cfg: cfg}
+}
+
+// unclassifiedMember is the cluster of a data directory whose cluster
+// markers could not be read, for the reason err.
+func unclassifiedMember(cfg Config, err error) diagnostics.Cluster {
+	return &clusterDiagnostics{cfg: cfg, undecided: unclassifiedDirectory(err)}
 }
 
 func (c *clusterDiagnostics) Self() diagnostics.MemberSource { return c }
@@ -83,17 +98,22 @@ func (c *clusterDiagnostics) observe(ctx context.Context) (clusterStatus, error)
 }
 
 // Members lists the members from the persisted membership, and from the
-// leader's when one answers.
-func (c *clusterDiagnostics) Members(ctx context.Context) []diagnostics.ClusterMember {
+// leader's when one answers. This installation is a cluster member: a
+// membership that cannot be read is an error, never an empty list (the
+// persisted membership is never read as empty).
+func (c *clusterDiagnostics) Members(ctx context.Context) ([]diagnostics.ClusterMember, error) {
+	if c.undecided != nil {
+		return nil, c.undecided
+	}
 	report, err := c.observe(ctx)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("this member's cluster membership could not be read: %w", err)
 	}
 	out := make([]diagnostics.ClusterMember, 0, len(report.members))
 	for _, member := range report.members {
 		out = append(out, diagnostics.ClusterMember{ID: member.id, Address: member.address, Role: member.role, Self: member.id == report.id})
 	}
-	return out
+	return out, nil
 }
 
 // OpenMemberPart asks the member's enrollment listener. Its origin is the

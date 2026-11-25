@@ -257,6 +257,12 @@ func TestDiagnosticsBundleItemWire(t *testing.T) {
 		// A control-plane cluster: one member's records, the member index, a member that did not answer.
 		`{"path":"members/10.0.0.2_9001/role-events.log","status":"pass","bytes":212},` +
 		`{"path":"members/index.json","status":"pass","bytes":640},` +
+		// A cluster member whose membership could not be read: its own role records are beside its log.
+		`{"path":"server/role-events.log","status":"pass","bytes":212},` +
+		`{"path":"server/leader-changes.log","status":"pass","bytes":180},` +
+		`{"path":"server/member.json","status":"pass","bytes":310},` +
+		`{"path":"server/cluster-status.txt","status":"pass","bytes":900},` +
+		`{"path":"members","status":"fail","code":"DIAGNOSTICS_ITEM_READ_FAILED","evidence":"this member's cluster membership could not be read: database identity is not in the data directory (/opt/gpuworks/data/gpuworks.db.dqlite/info.yaml)","bytes":0},` +
 		`{"path":"members/10.0.0.3_9001","status":"fail","code":"DIAGNOSTICS_MEMBER_UNAVAILABLE","evidence":"unreachable: dial tcp 10.0.0.3:9443: connect: connection refused","bytes":0},` +
 		// An item from a manifest written before items were checks.
 		`{"name":"nodes/n1/agent.log","state":"collected","bytes":9,"truncated":true}]}`
@@ -275,6 +281,12 @@ func TestDiagnosticsBundleItemWire(t *testing.T) {
 		`"message":"db could not be read","evidence":"database is locked","bytes":0},` +
 		`{"id":"member_file","path":"members/10.0.0.2_9001/role-events.log","status":"pass","bytes":212},` +
 		`{"id":"member_index","path":"members/index.json","status":"pass","bytes":640},` +
+		`{"id":"server_role_events","path":"server/role-events.log","status":"pass","bytes":212},` +
+		`{"id":"server_leader_changes","path":"server/leader-changes.log","status":"pass","bytes":180},` +
+		`{"id":"server_member","path":"server/member.json","status":"pass","bytes":310},` +
+		`{"id":"server_cluster_status","path":"server/cluster-status.txt","status":"pass","bytes":900},` +
+		`{"id":"members","path":"members","status":"fail","code":"DIAGNOSTICS_ITEM_READ_FAILED","params":{"path":"members"},` +
+		`"message":"members could not be read","evidence":"this member's cluster membership could not be read: database identity is not in the data directory (/opt/gpuworks/data/gpuworks.db.dqlite/info.yaml)","bytes":0},` +
 		`{"id":"member","path":"members/10.0.0.3_9001","status":"fail","code":"DIAGNOSTICS_MEMBER_UNAVAILABLE","params":{"path":"members/10.0.0.3_9001"},` +
 		`"message":"the control-plane member did not give its part; members/10.0.0.3_9001 is missing, so the collection does not show what that member saw",` +
 		`"evidence":"unreachable: dial tcp 10.0.0.3:9443: connect: connection refused","bytes":0},` +
