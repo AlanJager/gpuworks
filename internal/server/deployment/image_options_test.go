@@ -11,7 +11,9 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-func TestDeploymentImageOptionsOnlyConstrainEngineForTemplate(t *testing.T) {
+// A template holds the options to its engine. Without one the other engines'
+// images follow the target engine's and say which engine they select.
+func TestDeploymentImageOptionsMarkAnotherEnginesImages(t *testing.T) {
 	st, err := store.Open("file:deployment_image_options_engine_test?mode=memory&cache=shared", bus.New())
 	if err != nil {
 		t.Fatal(err)
@@ -27,6 +29,23 @@ func TestDeploymentImageOptionsOnlyConstrainEngineForTemplate(t *testing.T) {
 	}
 
 	withoutTemplate := h.deploymentImageOptions(target, templateSelection{}, "", nil)
+	seenOther := false
+	for _, option := range withoutTemplate {
+		if option.Engine == "vllm-omni" {
+			t.Fatalf("option %q is an image family no draft can switch to", option.Image)
+		}
+		own := option.Engine == "vllm"
+		if own != (option.SelectsEngine == "") {
+			t.Fatalf("option %q of engine %q selects %q", option.Image, option.Engine, option.SelectsEngine)
+		}
+		if !own && option.SelectsEngine != option.Engine {
+			t.Fatalf("option %q of engine %q selects %q", option.Image, option.Engine, option.SelectsEngine)
+		}
+		if own && seenOther {
+			t.Fatalf("option %q of the target engine follows another engine's: %+v", option.Image, withoutTemplate)
+		}
+		seenOther = seenOther || !own
+	}
 	if !hasImageOptionContaining(withoutTemplate, "vllm") || !hasImageOptionContaining(withoutTemplate, "sglang") {
 		t.Fatalf("options without template did not include both engines: %+v", withoutTemplate)
 	}
@@ -35,8 +54,10 @@ func TestDeploymentImageOptionsOnlyConstrainEngineForTemplate(t *testing.T) {
 	if !hasImageOptionContaining(withTemplate, "vllm") {
 		t.Fatalf("template options omitted its engine: %+v", withTemplate)
 	}
-	if hasImageOptionContaining(withTemplate, "sglang") {
-		t.Fatalf("template options crossed the template engine: %+v", withTemplate)
+	for _, option := range withTemplate {
+		if strings.Contains(strings.ToLower(option.Image), "sglang") || option.SelectsEngine != "" {
+			t.Fatalf("template options crossed the template engine: %+v", option)
+		}
 	}
 }
 

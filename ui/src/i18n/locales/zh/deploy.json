@@ -845,6 +845,7 @@
       "imageUnavailable": "无可用镜像",
       "imageUnavailableDescription": "当前模型、引擎和芯片组合没有可用运行镜像。",
       "imageOptions": "可选运行镜像",
+      "imageOtherEngines": "其他引擎的镜像，选择后切换引擎",
       "imageOptionTitle": {
         "node_cached": "本节点已缓存",
         "template_image": "模板镜像",
