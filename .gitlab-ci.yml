@@ -532,7 +532,8 @@ core-lint:
     - export GPUWORKS_CI_SOCKET_DIR="$CI_PROJECT_DIR/.tmp/gpuworks-e2e-$CI_JOB_ID"
     - mkdir -p "$GPUWORKS_CI_SOCKET_DIR"
     # A cancelled or killed job may skip after_script and leave its DinD
-    # running; each DinD also owns a ~1.6 GB anonymous /var/lib/docker volume.
+    # running; each DinD also owns a ~1.6 GB anonymous /var/lib/docker volume
+    # (or that much memory when it runs on tmpfs, below).
     # Reap labelled containers (and their volumes) older than 2h, well past
     # this template's 45m timeout, so a concurrent job is never touched.
     - |
@@ -544,12 +545,29 @@ core-lint:
           docker rm -f -v "$c" >/dev/null 2>&1 || true
         fi
       done
+    # Keep the DinD's /var/lib/docker in memory where the runner has plenty.
+    # Removing a container unmounts its overlay, and on the runners' 4.19
+    # kernel that unmount syncs the whole filesystem under the upper dir. On a
+    # disk the host shares with other tenants that sync waits for their dirty
+    # data and journal commits too: ppu1 stalled the inner dockerd for 45-110s
+    # at a time, every queued `docker run` with it, and L3/L2 waits timed out
+    # (dockerd stack: cleanup_mnt -> ovl_sync_fs -> sync_filesystem). On tmpfs
+    # that sync has nothing to write. A DinD holds ~2.5 GB, so only runners
+    # with 64 GiB available take this; GPUWORKS_CI_DIND_TMPFS=0 opts out.
+    - |
+      GPUWORKS_CI_DIND_STORAGE=""
+      avail_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null)
+      if [ "${GPUWORKS_CI_DIND_TMPFS:-1}" != 0 ] && [ "${avail_kb:-0}" -ge 67108864 ]; then
+        GPUWORKS_CI_DIND_STORAGE="--tmpfs /var/lib/docker:rw,exec,suid,dev,size=24g"
+      fi
+      echo "DinD storage: ${GPUWORKS_CI_DIND_STORAGE:-anonymous volume on the host docker root}"
     # The host agent reclaims gpuworks-* names as managed workloads.
     # CI infrastructure must live outside that container namespace.
     - >
       docker run -d --privileged
       --name "ci-gpuworks-docker-core-dind-$CI_JOB_ID"
       --label gpuworks-ci-docker-core
+      $GPUWORKS_CI_DIND_STORAGE
       -e DOCKER_TLS_CERTDIR=
       -v "$CI_PROJECT_DIR:$CI_PROJECT_DIR"
       -v "$GPUWORKS_CI_SOCKET_DIR:/run/gpuworks-e2e"
