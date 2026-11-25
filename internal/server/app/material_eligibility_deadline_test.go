@@ -42,7 +42,7 @@ func TestMaterialEligibilityDeadlineCancelsProofAndDrainsBeforeRecovery(t *testi
 	// The last confirmation is older than the unconfirmed limit, so a proof
 	// that outlives its window has nothing recent to stand on and closes.
 	clock.Advance(materialUnconfirmedLimit)
-	eligibility.setOnInvalidated(func() {
+	eligibility.setOnInvalidated(func(admissionCloseCause) {
 		callbackStartOnce.Do(func() { close(callbackStarted) })
 		<-callbackRelease
 	})
@@ -143,7 +143,7 @@ func TestMaterialEligibilityProofOutlivingItsWindowKeepsRecentlyConfirmedMemberO
 		}
 		return true, nil
 	}, time.Hour)
-	eligibility.setOnInvalidated(func() { invalidated.Add(1) })
+	eligibility.setOnInvalidated(func(admissionCloseCause) { invalidated.Add(1) })
 	if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready {
 		t.Fatalf("initial proof: ready=%t err=%v", ready, err)
 	}
@@ -210,7 +210,7 @@ func TestMaterialEligibilityAnswerInsideWindowIsLatched(t *testing.T) {
 			return false, errors.Join(context.DeadlineExceeded, store.ErrClusterIdentityConflict)
 		}},
 		{"invalidation during the proof", true, func(e *materialEligibility) (bool, error) {
-			e.Invalidate()
+			e.Invalidate(closeMaterialPass)
 			return false, context.DeadlineExceeded
 		}},
 		{"not ready", false, func(*materialEligibility) (bool, error) { return false, nil }},
@@ -275,7 +275,7 @@ func TestMaterialEligibilityAnswerInsideWindowIsLatched(t *testing.T) {
 func TestMaterialEligibilityExpiresAtItsDeadlineWithoutARequest(t *testing.T) {
 	var invalidated atomic.Int32
 	eligibility := newMaterialEligibility(nil, func(context.Context) (bool, error) { return true, nil }, time.Hour)
-	eligibility.setOnInvalidated(func() { invalidated.Add(1) })
+	eligibility.setOnInvalidated(func(admissionCloseCause) { invalidated.Add(1) })
 	if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready {
 		t.Fatalf("initial proof: ready=%t err=%v", ready, err)
 	}
@@ -336,7 +336,7 @@ func TestMaterialEligibilityProofReturningPastItsWindowBeforeItsContextEndsKeeps
 				}
 				return lateReady.Load(), *lateErr.Load()
 			}, time.Hour)
-			eligibility.setOnInvalidated(func() { invalidated.Add(1) })
+			eligibility.setOnInvalidated(func(admissionCloseCause) { invalidated.Add(1) })
 			if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready {
 				t.Fatalf("initial proof: ready=%t err=%v", ready, err)
 			}

@@ -56,7 +56,7 @@ func (a *App) stopClosedBusiness(ctx context.Context) error {
 // closeBusinessAdmission is safe in the material invalidation callback. It
 // closes Store admission first and starts route withdrawal without waiting for
 // old work, which the owner drains separately.
-func (a *App) closeBusinessAdmission() {
+func (a *App) closeBusinessAdmission(cause admissionCloseCause) {
 	if a.store != nil {
 		a.store.SuspendBusinessWrites()
 		// A member connection must not be admitted from a list confirmed
@@ -67,10 +67,9 @@ func (a *App) closeBusinessAdmission() {
 	if owner := a.currentClosedBusiness(); owner != nil {
 		owner.BeginStop()
 	}
-	caller := admissionCloser()
-	a.admissionJournal.closed(a.log, caller, admissionClosedByProof())
+	a.admissionJournal.closed(a.log, cause)
 	if a.log != nil {
 		// Every close, including those the journal leaves out.
-		a.log.Debug("closed business admission invalidated", "caller", caller)
+		a.log.Debug("closed business admission invalidated", "caller", string(cause))
 	}
 }

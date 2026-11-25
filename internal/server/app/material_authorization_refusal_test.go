@@ -43,7 +43,7 @@ func TestMaterialAuthorizationUnavailableIsAnUnavailablePeer(t *testing.T) {
 				newMaterialReceiverStatus(tc.response, fmt.Sprintf("manifest receiver rejected current bytes or identity: HTTP %d", tc.response.StatusCode)),
 			} {
 				err := fmt.Errorf("probe material member 2: %w", refusal)
-				if got := unavailableMaterialPeer(err); got != tc.unavailable {
+				if got := peerUnreachable(err); got != tc.unavailable {
 					t.Fatalf("unavailable=%v want %v: %v", got, tc.unavailable, err)
 				}
 				if got := materialReplicationFailureInvalidates(err); got == tc.unavailable {
@@ -74,7 +74,7 @@ func TestJoinedMaterialFailureInvalidatesThroughAnyBranch(t *testing.T) {
 			}
 			// The per-member replication loop skips an unavailable peer; one
 			// unavailable branch must not let it skip another branch's verdict.
-			if got := unavailableMaterialPeer(tc.err); got == tc.want {
+			if got := peerUnreachable(tc.err); got == tc.want {
 				t.Fatalf("unavailable=%v for invalidating=%v: %v", got, tc.want, tc.err)
 			}
 		})

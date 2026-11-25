@@ -31,10 +31,23 @@
   | `forward_peer_unidentified`、`forward_not_ready`、`forward_peer_undecided`、`forward_peer_not_admitted` | leader 一侧：转发方没有成员证书；成员通道未就绪；对转发方的资格得不到答复；转发方未被接纳（403） |
   | `proof_headroom`、`proof_epoch_changed`、`proof_owner_changed`、`renewal_unavailable`、`request_canceled`、`request_deadline` | 只出现在 `/api/v1/readyz`：资格确认即将到期或在探测途中变化，探测被取消或超时 |
   | `other` | 表中没有的原因 |
+- **成员为什么关闭了业务**：成员关闭业务接纳时，在日志里留一行 `closed business admission`，其中 `caller` 是下表中的一个原因，`first_of_period` 说明它是不是这一段关闭期的第一次。同一段关闭期里每个原因只记一行；成员已经关闭之后，资格确认自己的失败不再记这一行，而是记在 `candidate material proof failed while business admission is closed` 里。恢复时记一行 `candidate material proof succeeded after business admission closed`，其中 `close_callers` 是这段时间里出现过的原因个数。`caller` 的值只会是表里的词，不含函数名和行号；按旧形式（例如 `caller=app.(*materialEligibility).Reprove:422`）匹配日志的采集脚本需要改成匹配这些词。与拒绝代码一样，它们是诊断信息，可能随版本变化。
+
+  | `caller` | 含义 |
+  |---|---|
+  | `proof_failed` | 一次资格确认得到了否定结论，或者太久得不到答复 |
+  | `proof_expired` | 上一次资格确认的有效期用完了 |
+  | `proof_canceled`、`proof_context_ended`、`proof_run_canceled` | 进行中的资格确认被取消；它的上下文因有效期以外的原因结束；确认还没开始，后台任务就结束了 |
+  | `proof_stopped`、`member_stopping` | 资格确认的后台任务被停止；成员正在停止自己的业务 |
+  | `transport_refresh_refused`、`writer_refused` | 成员间连接的资格刷新得到了否定结论；数据库拒绝了一次写入，成员已不被接纳 |
+  | `member_absent`、`own_origin_changed`、`origin_registered` | 成员不在观察到的成员名单里；成员的登记地址与已登记的不一致；有成员登记了变化后的地址 |
+  | `material_probe_rejected`、`material_startup_rejected`、`material_check_rejected`、`material_pass_rejected` | 关键文件的检查得到了否定结论：对已发布清单的探测、启动后的第一轮同步、对已安装文件的定期检查、一轮同步 |
+  | `material_received`、`material_installed` | 接收到其他成员送来的关键文件变化；同步改动了本成员已安装的关键文件 |
+  | `other` | 表中没有的原因 |
 - **存储短暂卡顿**：成员凭自己最近一次确认过的成员资格接纳请求。确认由后台每隔几秒续期，单个请求不等待它，所以几秒的存储卡顿不会因为授权拒绝或拖慢请求。续期得不到答复（存储卡顿、超时、找不到数据库 leader）时成员继续接纳请求，距上一次成功确认开始满 60 秒仍未续上才关闭业务。向其他成员同步关键文件的一轮如果超时、找不到数据库 leader，或者一时得不到多数成员的应答（例如一个成员停机、另一个暂时拒绝），同样不关闭成员；文件与已校验的内容不一致、缺失或读不出才关闭。
 - **成员被撤销或失联之后**：
   - 写入：已被撤销的成员即使仍能连到数据库 leader，写入也在提交前被拒绝，随后它关闭自己的业务；与多数失联的成员本来就提交不了。检查本身失败（写入权被占用、找不到 leader、连接中断、超时）不算拒绝，原样返回给调用方。决定成员资格本身的写入、向空数据库载入备份或导入数据、以及 server 启动时自己的工作不经过这项检查。
-  - 读请求和推理请求：数据库答复该成员已被撤销时，成员立即关闭，通常在撤销后的下一次续期，即几秒之内。续期一直得不到答复时，最长到上一次成功确认开始后的 60 秒；这段时间里它按最后看到的数据应答。
+  - 读请求和推理请求：成员从三处得知自己已被撤销，关闭的快慢不同。成员间连接资格的刷新得到数据库的拒绝时，成员立即关闭；写入被拒绝时也立即关闭（见上一条）。后台的资格确认得到拒绝时，成员不是立即关闭，而是在当前这次确认的有效期用完时关闭，最长为这次确认开始后的 15 秒。拒绝如果在一次确认自己的时限之后才返回，按“得不到答复”处理：成员再沿用一个 15 秒的有效期，但不超过上一次成功确认开始后的 60 秒。续期一直得不到答复时同样最长到 60 秒；这段时间里它按最后看到的数据应答。
   - 成员之间的连接：凭 15 秒内确认过的成员名单接纳；确认不了时最长沿用到 60 秒，与成员自己接纳请求的上限相同；因此存储卡顿期间被撤销的成员，最长 60 秒内仍会被其他成员接受。提交撤销的那个成员立即丢弃名单。已经建立的连接只在建立时核对一次。
 
 ## 边界

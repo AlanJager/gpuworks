@@ -82,7 +82,7 @@ func TestBusinessReadinessRenewalReservesPublicationHeadroom(t *testing.T) {
 			gate := newBusinessHandlerGate()
 			gate.requireMaterialEligibility()
 			gate.setMaterialEligibility(eligibility)
-			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}))
+			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}, nil))
 			requestCtx, cancelRequest := context.WithCancel(t.Context())
 			defer cancelRequest()
 			rec := httptest.NewRecorder()

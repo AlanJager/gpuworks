@@ -92,7 +92,7 @@ func TestLostLeaderSignalKeepsOrdinaryAdmission(t *testing.T) {
 	gate.setBusinessHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
-	eligibility.setOnInvalidated(func() {
+	eligibility.setOnInvalidated(func(admissionCloseCause) {
 		invalidated.Add(1)
 		gate.setBusinessHandler(nil)
 	})

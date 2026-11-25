@@ -114,7 +114,7 @@ func TestMaterialReplicationPassClosesMemberOnlyOnVerdict(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			closed := 0
 			gate := newMaterialEligibility(time.Now, func(context.Context) (bool, error) { return true, nil }, materialReproofInterval)
-			gate.setOnInvalidated(func() { closed++ })
+			gate.setOnInvalidated(func(admissionCloseCause) { closed++ })
 			if ready, err := gate.Reprove(t.Context()); !ready || err != nil {
 				t.Fatal(ready, err)
 			}

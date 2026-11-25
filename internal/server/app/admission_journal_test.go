@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -34,8 +33,7 @@ const (
 )
 
 // Through the proof worker as the member wires it: an open member's proofs
-// leave nothing; one invalidation leaves one line that names where it came
-// from; the proofs that fail while closed leave their stage and duration at
+// leave nothing; one invalidation leaves one line that names its cause; the proofs that fail while closed leave their stage and duration at
 // the first, second and fourth; an accepted proof ends the period once.
 func TestAdmissionJournalThroughTheProofWorker(t *testing.T) {
 	ready, stage, fail := true, "", error(nil)
@@ -49,12 +47,12 @@ func TestAdmissionJournalThroughTheProofWorker(t *testing.T) {
 		t.Fatalf("an open member's proofs logged (ready=%t err=%v):\n%s", ok, err, out.String())
 	}
 	// One invalidation reaches the close twice (the worker's callback, then
-	// directly); the same place closing again says nothing new either.
+	// directly); the same cause closing again says nothing new either.
 	for range 4 {
-		a.invalidateCandidateMaterialEligibility()
+		a.invalidateCandidateMaterialEligibility(closeMaterialPass)
 	}
 	text := out.String()
-	if count(text, journalClosed) != 1 || !strings.Contains(text, "caller=app.TestAdmissionJournalThroughTheProofWorker:") || !strings.Contains(text, "first_of_period=true") {
+	if count(text, journalClosed) != 1 || !strings.Contains(text, "caller=material_pass_rejected ") || !strings.Contains(text, "first_of_period=true") {
 		t.Fatalf("four invalidations from one place logged:\n%s", text)
 	}
 	out.Reset()
@@ -107,7 +105,7 @@ func TestAdmissionJournalHasTheProofThatClosedTheMember(t *testing.T) {
 		t.Fatal("the member stayed open")
 	}
 	text := out.String()
-	if count(text, journalClosed) != 1 || !strings.Contains(text, "caller=app.(*materialEligibility).") {
+	if count(text, journalClosed) != 1 || !strings.Contains(text, "caller=proof_failed ") {
 		t.Fatalf("the close logged:\n%s", text)
 	}
 	if count(text, journalFailed) != 1 || !strings.Contains(text, "failed_proofs=1 err_class=other failure_stage=local_hash") {
@@ -137,7 +135,7 @@ func TestAdmissionJournalDoesNotCallAnUnacceptedProofARecovery(t *testing.T) {
 			disturb := false
 			measure := func(context.Context) (bool, CandidateProofMetrics, error) {
 				if disturb && mode == "invalidated during the proof" {
-					a.invalidateCandidateMaterialEligibility()
+					a.invalidateCandidateMaterialEligibility(closeMaterialPass)
 				}
 				if disturb && mode == "returned after its window" {
 					clock.Advance(materialEligibilityWindow + time.Second)
@@ -150,7 +148,7 @@ func TestAdmissionJournalDoesNotCallAnUnacceptedProofARecovery(t *testing.T) {
 			if ok, err := eligibility.Reprove(t.Context()); !ok || err != nil {
 				t.Fatalf("initial proof: %t %v", ok, err)
 			}
-			a.invalidateCandidateMaterialEligibility()
+			a.invalidateCandidateMaterialEligibility(closeMaterialPass)
 			out.Reset()
 			disturb = true
 			if ok, _ := eligibility.Reprove(t.Context()); ok || eligibility.Eligible() {
@@ -169,50 +167,67 @@ func TestAdmissionJournalDoesNotCallAnUnacceptedProofARecovery(t *testing.T) {
 	}
 }
 
-// Closes from different places in one period each leave a line; the caller
-// is where the close came from, never a closing helper.
-func TestAdmissionJournalNamesEachPlaceAClosureCameFrom(t *testing.T) {
+// Closes for different causes in one period each leave a line, and the
+// caller is the cause as the list has it: no function name, no line number.
+func TestAdmissionJournalNamesEachCauseOfAClosure(t *testing.T) {
 	a, eligibility, _, out := journalledApp(t, func(context.Context) (bool, CandidateProofMetrics, error) {
 		return true, CandidateProofMetrics{}, nil
 	})
 	if ok, err := eligibility.Reprove(t.Context()); !ok || err != nil {
 		t.Fatalf("initial proof: %t %v", ok, err)
 	}
-	a.invalidateCandidateMaterialEligibility()
-	func() { a.closeBusinessAdmission() }()
+	a.invalidateCandidateMaterialEligibility(closeMaterialPass)
+	a.closeBusinessAdmission(closeMemberStopping)
+	a.closeBusinessAdmission(closeMemberStopping)
 	text := out.String()
-	if count(text, journalClosed) != 2 || !strings.Contains(text, "first_of_period=true") || !strings.Contains(text, "first_of_period=false") {
-		t.Fatalf("two places logged:\n%s", text)
-	}
-	if strings.Contains(text, "invalidateCandidateMaterialEligibility") || strings.Contains(text, "closeBusinessAdmission:") || strings.Contains(text, "Invalidate:") {
-		t.Fatalf("a closing helper was named as the caller:\n%s", text)
+	if count(text, journalClosed) != 2 ||
+		!strings.Contains(text, "caller=material_pass_rejected first_of_period=true") ||
+		!strings.Contains(text, "caller=member_stopping first_of_period=false") {
+		t.Fatalf("two causes logged:\n%s", text)
 	}
 }
 
-// A closed period lists a bounded number of places: past the cap a further
-// place leaves no line, however often it closes, and the next period lists
-// from the start again.
-func TestAdmissionJournalBoundsThePlacesOfOnePeriod(t *testing.T) {
+// The journal's caller is one of the listed causes and nothing else: each is
+// a plain word, a cause nobody listed is logged as "other", and the proof
+// worker's own closes of a member that is already closed leave no line.
+func TestAdmissionJournalCarriesOnlyListedCauses(t *testing.T) {
+	want := map[admissionCloseCause]bool{
+		"proof_canceled": true, "proof_expired": true, "proof_run_canceled": true, "proof_context_ended": true, "proof_failed": true,
+		"proof_stopped": false, "member_stopping": false, "transport_refresh_refused": false, "own_origin_changed": false,
+		"member_absent": false, "material_probe_rejected": false, "material_startup_rejected": false, "material_check_rejected": false,
+		"material_pass_rejected": false, "material_received": false, "material_installed": false, "origin_registered": false,
+		"writer_refused": false, "other": false,
+	}
+	if len(want) != len(admissionCloseCauses) {
+		t.Fatalf("this test names %d causes, the list has %d", len(want), len(admissionCloseCauses))
+	}
+	for cause, byProof := range want {
+		listed, ok := admissionCloseCauses[cause]
+		if !ok || listed != byProof || strings.ContainsAny(string(cause), " :/.()") {
+			t.Fatalf("cause %q: listed=%t by the proof worker=%t, want %t", cause, ok, listed, byProof)
+		}
+		var out bytes.Buffer
+		log := slog.New(slog.NewTextHandler(&out, nil))
+		var j admissionJournal
+		j.closed(log, closeMemberStopping)
+		out.Reset()
+		j.closed(log, cause)
+		logged := count(out.String(), journalClosed) == 1 && strings.Contains(out.String(), "caller="+string(cause)+" first_of_period=false")
+		if cause != closeMemberStopping && logged == byProof {
+			t.Fatalf("cause %q in a closed period logged:\n%s", cause, out.String())
+		}
+	}
 	var out bytes.Buffer
-	log := slog.New(slog.NewTextHandler(&out, nil))
 	var j admissionJournal
-	for i := range admissionCallerCap + 8 {
-		j.closed(log, fmt.Sprintf("app.place:%d", i), false)
+	j.closed(slog.New(slog.NewTextHandler(&out, nil)), "app.(*materialEligibility).Reprove:422")
+	if text := out.String(); !strings.Contains(text, "caller=other first_of_period=true") {
+		t.Fatalf("an unlisted cause reached the journal as:\n%s", text)
 	}
-	if got := count(out.String(), journalClosed); got != admissionCallerCap {
-		t.Fatalf("%d places logged, want %d", got, admissionCallerCap)
-	}
-	out.Reset()
-	for range 50 {
-		j.closed(log, "app.onePlacePastTheCap:1", false)
-	}
-	if out.Len() != 0 {
-		t.Fatalf("a place past the cap logged:\n%s", out.String())
-	}
+	// The next period lists from the start again.
 	j.attempted(true, "none", "", "", time.Second)
-	j.outcome(log, true)
+	j.outcome(slog.New(slog.NewTextHandler(&out, nil)), true)
 	out.Reset()
-	j.closed(log, "app.onePlacePastTheCap:1", false)
+	j.closed(slog.New(slog.NewTextHandler(&out, nil)), closeOther)
 	if text := out.String(); count(text, journalClosed) != 1 || !strings.Contains(text, "first_of_period=true") {
 		t.Fatalf("the next period began with:\n%s", text)
 	}

@@ -226,7 +226,7 @@ func memberRouteKey(ctx context.Context, confirmed func(time.Duration) ([]store.
 	}
 	members, err := grant(ctx)
 	if err != nil {
-		if store.ClusterGrantUndecided(err) {
+		if store.GrantUndecided.Unanswered(err) {
 			if members, ok := confirmed(memberRouteUnansweredAge); ok {
 				if key := pick(members); key != "" {
 					return key, nil

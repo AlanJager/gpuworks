@@ -40,6 +40,15 @@ type forwardCluster struct {
 	members map[uint64]*forwardMember
 }
 
+// refused is how often the cluster's members refused business for reason.
+func (c *forwardCluster) refused(reason string) uint64 {
+	var n uint64
+	for _, m := range c.members {
+		n += m.forward.refusals.snapshot()[reason]
+	}
+	return n
+}
+
 type forwardMember struct {
 	id         uint64
 	forward    *memberForward
@@ -114,7 +123,7 @@ func (c *forwardCluster) newMember(id uint64) *forwardMember {
 	c.t.Helper()
 	m := &forwardMember{id: id, cert: c.certificate(fmt.Sprintf("member-%d", id), int64(id)+10), seen: make(chan *http.Request, 16)}
 	m.admit.Store(true)
-	m.forward = newMemberForward(nil,
+	m.forward = newMemberForward(nil, newBusinessRefusals(),
 		func(ctx context.Context) (uint64, error) {
 			if leader := m.leader.Load(); leader != 0 {
 				return leader, nil
@@ -319,7 +328,7 @@ func TestMemberForwardRefusesInsteadOfGuessing(t *testing.T) {
 	c := newForwardCluster(t, 1, 2, 3)
 	refused := func(name, url, reason string) {
 		t.Helper()
-		before := memberBusinessRefusals.snapshot()[reason]
+		before := c.refused(reason)
 		status, body, header := forwardGet(t, url)
 		if status != http.StatusServiceUnavailable || !strings.Contains(body, "member business service is not ready") {
 			t.Fatalf("%s: %d %q", name, status, body)
@@ -327,7 +336,7 @@ func TestMemberForwardRefusesInsteadOfGuessing(t *testing.T) {
 		if got := header.Get(businessRefusalHeader); got != reason {
 			t.Fatalf("%s: refusal header %q, want %q", name, got, reason)
 		}
-		if got := memberBusinessRefusals.snapshot()[reason]; got != before+1 {
+		if got := c.refused(reason); got != before+1 {
 			t.Fatalf("%s: %s counted %d -> %d, want one more", name, reason, before, got)
 		}
 	}
@@ -357,7 +366,7 @@ func TestMemberForwardRefusesInsteadOfGuessing(t *testing.T) {
 	// A member the leader does not admit is refused before business runs.
 	c.lead(3)
 	c.members[3].admit.Store(false)
-	notAdmitted := memberBusinessRefusals.snapshot()[refusalPeerNotAdmitted]
+	notAdmitted := c.refused(refusalPeerNotAdmitted)
 	status, body, header := forwardGet(t, c.members[1].public.URL+"/api/v1/nodes")
 	if status != http.StatusForbidden || !strings.Contains(body, "member is not admitted") {
 		t.Fatalf("unadmitted member was answered %d %q", status, body)
@@ -365,7 +374,7 @@ func TestMemberForwardRefusesInsteadOfGuessing(t *testing.T) {
 	if got := header.Get(businessRefusalHeader); got != refusalPeerNotAdmitted {
 		t.Fatalf("refusal header %q, want %q", got, refusalPeerNotAdmitted)
 	}
-	if got := memberBusinessRefusals.snapshot()[refusalPeerNotAdmitted]; got != notAdmitted+1 {
+	if got := c.refused(refusalPeerNotAdmitted); got != notAdmitted+1 {
 		t.Fatalf("%s counted %d -> %d, want one more", refusalPeerNotAdmitted, notAdmitted, got)
 	}
 	if len(c.members[3].seen) != 0 {
@@ -378,16 +387,16 @@ func TestMemberForwardSurvivesTheLeaderDyingMidRequest(t *testing.T) {
 	c.lead(2)
 	// The leader drops the connection while answering: the client gets a
 	// refusal it may retry, not a hang and not another member's answer.
-	unreachable := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]
+	unreachable := c.refused(refusalLeaderUnreachable)
 	if status, _, header := forwardGet(t, c.members[1].public.URL+"/die"); status != http.StatusServiceUnavailable || header.Get(businessRefusalHeader) != refusalLeaderUnreachable {
 		t.Fatalf("a request the leader dropped was answered %d, refusal %q", status, header.Get(businessRefusalHeader))
 	}
-	if got := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]; got != unreachable+1 {
+	if got := c.refused(refusalLeaderUnreachable); got != unreachable+1 {
 		t.Fatalf("%s counted %d -> %d, want one more", refusalLeaderUnreachable, unreachable, got)
 	}
 	// A client that goes away while the leader is answering says nothing
 	// about the leader: it is not counted and opens no run of refusals.
-	before := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]
+	before := c.refused(refusalLeaderUnreachable)
 	gone, cancel := context.WithCancel(context.Background())
 	req, err := http.NewRequestWithContext(gone, http.MethodGet, c.members[1].public.URL+"/slow", nil)
 	if err != nil {
@@ -399,7 +408,7 @@ func TestMemberForwardSurvivesTheLeaderDyingMidRequest(t *testing.T) {
 		t.Fatal("the cancelled request was answered")
 	}
 	time.Sleep(200 * time.Millisecond)
-	if got := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]; got != before {
+	if got := c.refused(refusalLeaderUnreachable); got != before {
 		t.Fatalf("a client abort was counted as %s: %d -> %d", refusalLeaderUnreachable, before, got)
 	}
 	// The leader's route goes away entirely; requests are refused until the
@@ -465,7 +474,7 @@ func TestMemberForwardIsInertWithoutARoute(t *testing.T) {
 		"never configured": func(*memberForward) {},
 		"identity only":    func(f *memberForward) { f.SetMemberIdentity(7, []byte("key")) },
 	} {
-		forward := newMemberForward(nil, func(context.Context) (uint64, error) { return 9, nil }, nil, nil)
+		forward := newMemberForward(nil, nil, func(context.Context) (uint64, error) { return 9, nil }, nil, nil)
 		configure(forward)
 		public := httptest.NewServer(forward.wrap(served))
 		if status, body, _ := forwardGet(t, public.URL+"/api/v1/nodes"); status != 200 || body != "local" {
@@ -476,7 +485,7 @@ func TestMemberForwardIsInertWithoutARoute(t *testing.T) {
 			t.Fatalf("%s: close: %v", name, err)
 		}
 	}
-	forward := newMemberForward(nil, nil, nil, nil)
+	forward := newMemberForward(nil, nil, nil, nil, nil)
 	if err := forward.SetMemberSecureTransport(0, nil, nil, nil); err == nil {
 		t.Fatal("an incomplete secure transport was accepted")
 	}
@@ -570,7 +579,7 @@ func TestAskingBeforeTheMemberRouteIsUp(t *testing.T) {
 		t.Fatalf("before the route exists = %v, want %v", err, ErrMemberRouteNotReady)
 	}
 	// The route exists but has no certificate-bound transport yet.
-	runtime.forward = newMemberForward(nil, func(context.Context) (uint64, error) { return 0, errors.New("none") }, func() int { return 0 }, func() {})
+	runtime.forward = newMemberForward(nil, nil, func(context.Context) (uint64, error) { return 0, errors.New("none") }, func() int { return 0 }, func() {})
 	if _, err := member.askMember(ctx, 2, "fake", nil); !errors.Is(err, ErrMemberRouteNotReady) {
 		t.Fatalf("before the transport is set = %v, want %v", err, ErrMemberRouteNotReady)
 	}
@@ -690,7 +699,7 @@ func TestALeaderChangeLeavesOneBusinessLine(t *testing.T) {
 	}}))
 	var leader atomic.Uint64
 	held, dropped := 3, 0
-	forward := newMemberForward(log, func(context.Context) (uint64, error) { return leader.Load(), nil },
+	forward := newMemberForward(log, nil, func(context.Context) (uint64, error) { return leader.Load(), nil },
 		func() int { return held }, func() { dropped++; held = 0 })
 	forward.SetMemberIdentity(7, []byte("key"))
 	ctx := context.Background()

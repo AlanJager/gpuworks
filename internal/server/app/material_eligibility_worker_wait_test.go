@@ -319,7 +319,7 @@ func TestWorkerProofWaitRetainsExpiredRenewalRejectionFences(t *testing.T) {
 			case "false-nil":
 				release()
 			case "invalidate":
-				e.Invalidate()
+				e.Invalidate(closeMaterialPass)
 			case "cancel":
 				e.mu.Lock()
 				cancel := e.cancel

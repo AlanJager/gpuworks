@@ -297,7 +297,7 @@ func TestEnrollmentMaterialsRequireRealTLSAndCommittedAdmission(t *testing.T) {
 		t.Fatalf("initial material proof: ready=%v err=%v", ready, err)
 	}
 	originRouter := chi.NewRouter()
-	registerEnrollmentOriginWithChange(originRouter, bundle, st, closed.invalidateCandidateMaterialEligibility)
+	registerEnrollmentOriginWithChange(originRouter, bundle, st, func() { closed.invalidateCandidateMaterialEligibility(closeOriginRegistered) })
 	originServer := httptest.NewUnstartedServer(originRouter)
 	originServer.TLS = config
 	originServer.StartTLS()
