@@ -67,4 +67,23 @@ func TestEvaluateImageOptionsStateTheirEngine(t *testing.T) {
 	if got, want := options(""), options(`,"engine":"vllm"`); got != want {
 		t.Fatalf("options without an engine = %s, want the default engine's %s", got, want)
 	}
+	// A template holds the list to its engine: its own image, nothing that
+	// would switch the engine.
+	if err := st.ReconcileInferenceCatalog([]store.InferenceModel{{
+		ModelID: "org/qwen", DisplayTitle: "Qwen", Source: "upstream", Architecture: "qwen3", ContextLength: 32768,
+		Specs: []store.InferenceSpecRow{{
+			Name: "ascend-sglang", Scenario: "balanced", Engine: "sglang", Image: "catalog/sglang:v1", Quantization: "bf16", WeightBytes: 1 << 30,
+			WeightSources: `[{"provider":"modelscope","repo_id":"org/qwen"}]`, GPUs: `{"vendor":"ascend"}`,
+		}},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	template, err := st.InferenceModelByModelID("org/qwen")
+	if err != nil {
+		t.Fatal(err)
+	}
+	withTemplate := options(fmt.Sprintf(`,"template_id":%d,"template_spec_source":"upstream","template_spec_name":"ascend-sglang"`, template.ID))
+	if want := `[{"image":"catalog/sglang:v1","reason":"template_image","compatible":true,"engine":"sglang","engine_version":"0.5.21"}]`; withTemplate != want {
+		t.Fatalf("options with a template = %s, want %s", withTemplate, want)
+	}
 }
