@@ -327,3 +327,121 @@ func TestUnavailableCacheCanUseACompleteManualAgent(t *testing.T) {
 		t.Fatalf("verified recovery with unavailable cache: %v", err)
 	}
 }
+
+func TestManifestWithoutPackRequiresVerifiedLegacyFiles(t *testing.T) {
+	const base, other = "gpuworks-agent-one", "gpuworks-agent-two"
+	tree, raw := packedTree(t, base, other)
+	// The reference's standalone frame is also the old .zst format.
+	tree["dl/"+base+compressedSuffix] = tree[packDir+base+compressedSuffix]
+	tree["dl/"+base] = &fstest.MapFile{Data: []byte("obsolete loose fixture")}
+	for name := range tree {
+		if strings.HasPrefix(name, packDir) {
+			delete(tree, name)
+		}
+	}
+	input := Files{tree}
+	dir := t.TempDir()
+	if _, err := input.prepare(dir); err == nil {
+		t.Fatal("startup accepted a missing manifest member")
+	}
+	files, err := input.preparePack(dir, true, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if files.Available("", other, "fixture") || !files.Available("", base, "fixture") {
+		t.Fatal("incorrect legacy platform availability")
+	}
+	tree["dl/"+other] = &fstest.MapFile{Data: raw[base]}
+	if _, err := input.prepare(dir); err == nil {
+		t.Fatal("startup accepted a legacy file with the wrong hash")
+	}
+	tree["dl/"+other].Data = raw[other]
+	files, err = input.prepare(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, want := range raw {
+		got, err := files.ReadVerified("", name, "fixture")
+		if err != nil || !bytes.Equal(got, want) {
+			t.Fatalf("legacy %s: %v", name, err)
+		}
+	}
+}
+
+func TestManifestMembersAlwaysUseThePreparedSource(t *testing.T) {
+	const name = "gpuworks-agent-one"
+	tree, raw := packedTree(t, name)
+	tree["dl/"+name] = &fstest.MapFile{Data: []byte("stale build output")}
+	input := Files{tree}
+	dir := t.TempDir()
+	files, err := input.prepare(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	get := func(overrides string) *httptest.ResponseRecorder {
+		r := httptest.NewRecorder()
+		files.Handler(overrides).ServeHTTP(r, httptest.NewRequest("GET", "/dl/"+name, nil))
+		return r
+	}
+	if r := get(""); r.Code != 200 || !bytes.Equal(r.Body.Bytes(), raw[name]) {
+		t.Fatal("download bypassed verified source")
+	}
+	if _, err := files.ReadVerified("", name, "fixture"); err != nil {
+		t.Fatal(err)
+	}
+	override := filepath.Join(dir, "dl")
+	if err := os.Mkdir(override, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(override, name), []byte("operator"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if r := get(override); r.Code != 200 || r.Body.String() != "operator" {
+		t.Fatal("lost explicit override")
+	}
+	// A stale loose file must not make a failed platform look available, either.
+	delete(tree, packDir+name+compressedSuffix)
+	files, err = input.preparePack(t.TempDir(), true, slog.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := get(""); r.Code != 503 || files.Has(name) {
+		t.Fatal("failed platform used a stale fixture")
+	}
+}
+
+func TestRecoveryLogContainsBothFailures(t *testing.T) {
+	const name = "gpuworks-agent-one"
+	for _, tc := range []struct{ label, version, reason string }{
+		{"wrong standalone bytes", "", "SHA256"},
+		{"wrong manifest version", "other", "does not match target"},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			tree, raw := packedTree(t, name)
+			tree[packDir+name+compressedSuffix].Data = []byte("broken")
+			dir := t.TempDir()
+			dl := filepath.Join(dir, "dl")
+			if err := os.Mkdir(dl, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dl, name), bytes.Repeat([]byte("!"), len(raw[name])), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if tc.version != "" {
+				if err := os.WriteFile(filepath.Join(dl, ManifestName), manifestBytes(t, tc.version, name, raw[name]), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var buf bytes.Buffer
+			_, err := (Files{tree}).preparePack(dir, false, slog.New(slog.NewTextHandler(&buf, nil)))
+			if err == nil {
+				t.Fatal("accepted invalid recovery")
+			}
+			for _, s := range []string{name, "recovery_error", tc.reason, "magic"} {
+				if !strings.Contains(buf.String(), s) {
+					t.Fatalf("missing %q in %s", s, buf.String())
+				}
+			}
+		})
+	}
+}

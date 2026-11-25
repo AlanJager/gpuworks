@@ -61,14 +61,15 @@ func (f Files) prepare(dataDir string) (Files, error) {
 }
 
 func (f Files) preparePack(dataDir string, allowDegraded bool, log *slog.Logger) (Files, error) {
-	baseFile, err := fs.ReadFile(f.tree, packDir+"base")
-	if errors.Is(err, fs.ErrNotExist) {
-		if _, dirErr := fs.Stat(f.tree, strings.TrimSuffix(packDir, "/")); errors.Is(dirErr, fs.ErrNotExist) {
-			return f, nil
-		}
+	_, layoutErr := fs.Stat(f.tree, strings.TrimSuffix(packDir, "/"))
+	legacy := errors.Is(layoutErr, fs.ErrNotExist)
+	if layoutErr != nil && !legacy {
+		return Files{}, layoutErr
 	}
-	baseErr := err
 	manifest, err := fs.ReadFile(f.tree, "dl/"+ManifestName)
+	if legacy && errors.Is(err, fs.ErrNotExist) {
+		return f, nil
+	} // source-only build
 	if err != nil {
 		return Files{}, err
 	}
@@ -76,13 +77,18 @@ func (f Files) preparePack(dataDir string, allowDegraded bool, log *slog.Logger)
 	if err = json.Unmarshal(manifest, &m); err != nil {
 		return Files{}, err
 	}
-	base := strings.TrimSpace(string(baseFile))
-	_, hasBase := m.Binaries[base]
-	if !hasBase && baseErr == nil {
-		baseErr = fmt.Errorf("base agent %q missing from manifest", base)
-	}
-	if baseErr != nil && !allowDegraded {
-		return Files{}, baseErr
+	var base string
+	var baseErr error
+	if !legacy {
+		var baseFile []byte
+		baseFile, baseErr = fs.ReadFile(f.tree, packDir+"base")
+		base = strings.TrimSpace(string(baseFile))
+		if _, ok := m.Binaries[base]; !ok && baseErr == nil {
+			baseErr = fmt.Errorf("base agent %q missing from manifest", base)
+		}
+		if baseErr != nil && !allowDegraded {
+			return Files{}, baseErr
+		}
 	}
 	if len(m.Binaries) == 0 {
 		return Files{}, errors.New("empty agent build manifest")
@@ -91,6 +97,7 @@ func (f Files) preparePack(dataDir string, allowDegraded bool, log *slog.Logger)
 	cacheErr := os.MkdirAll(dir, 0700)
 	recoveryDir := filepath.Join(dataDir, "dl")
 	missing := make(map[string]bool)
+	prepared := preparedTree{loose: f.tree, cache: os.DirFS(dir), entries: m.Binaries, version: m.Version, missing: missing, recoveryDir: recoveryDir}
 	var dict []byte
 	// Prepare the base first. Read it as a dictionary only on a cache miss.
 	ensure := func(name string, entry ManifestBinary) error {
@@ -107,20 +114,26 @@ func (f Files) preparePack(dataDir string, allowDegraded bool, log *slog.Logger)
 		if name != base && missing[base] && dict == nil {
 			return fmt.Errorf("reference agent %s unavailable", base)
 		}
-		if name != base && dict == nil {
+		if !legacy && name != base && dict == nil {
 			dict, err = os.ReadFile(filepath.Join(dir, base))
 			if err != nil {
 				return err
 			}
 		}
-		raw, err := f.expand(name, dict, entry)
+		var raw []byte
+		var err error
+		if legacy {
+			raw, err = f.legacyAgent(name, entry)
+		} else {
+			raw, err = f.expand(packDir+name+compressedSuffix, dict, entry)
+		}
 		if err != nil {
 			return err
 		}
 		return writeAtomic(path, raw)
 	}
 	names := make([]string, 0, len(m.Binaries))
-	if hasBase {
+	if _, ok := m.Binaries[base]; ok {
 		names = append(names, base)
 	}
 	for name := range m.Binaries {
@@ -138,51 +151,59 @@ func (f Files) preparePack(dataDir string, allowDegraded bool, log *slog.Logger)
 			continue
 		}
 		path := filepath.Join(recoveryDir, name)
-		if matchesFile(path, entry) {
-			// A manually restored executable is already complete. Use it
-			// directly if cache storage is unavailable, including as a base.
-			raw, err := os.ReadFile(path)
-			if err == nil && matchesBytes(raw, entry) {
-				if writeErr := writeAtomic(filepath.Join(dir, name), raw); writeErr != nil {
-					missing[name] = true
-					if name == base {
-						dict = raw
-					}
+		raw, recoveryErr := prepared.readRecovery(name)
+		if raw != nil && recoveryErr == nil {
+			if writeErr := writeAtomic(filepath.Join(dir, name), raw); writeErr != nil {
+				missing[name] = true
+				if name == base {
+					dict = raw
 				}
-				log.Warn("agent restoration used verified recovery file", "agent", name, "version", m.Version, "path", path, "error", cause)
-				continue
 			}
+			log.Warn("agent restoration used verified recovery file", "agent", name, "version", m.Version, "path", path, "error", cause)
+			continue
 		}
-		log.Error("agent restoration failed", "agent", name, "version", m.Version, "allow_degraded_startup", allowDegraded, "error", cause, "recovery_file", path, "expected_sha256", entry.SHA256)
+		diagnostic := log.With("agent", name, "version", m.Version, "allow_degraded_startup", allowDegraded, "recovery_file", path, "expected_sha256", entry.SHA256)
+		if recoveryErr != nil {
+			diagnostic = diagnostic.With("recovery_error", recoveryErr)
+		}
+		diagnostic.Error("agent restoration failed", "error", cause)
 		if !allowDegraded {
-			return Files{}, fmt.Errorf("prepare %s: %w", name, cause)
+			return Files{}, fmt.Errorf("prepare %s: %w", name, errors.Join(cause, recoveryErr))
 		}
 		missing[name] = true
 	}
-	return Files{preparedTree{loose: f.tree, cache: os.DirFS(dir), entries: m.Binaries, missing: missing, recoveryDir: recoveryDir}}, nil
+	return Files{prepared}, nil
 }
 
-// Keep loose embedded files (including the public manifest and developer
-// fixtures) ahead of the generated files. Only manifest members are exposed.
+// Listed binaries come exclusively from the verified generation or its live
+// recovery path. Keep loose metadata and unlisted developer fixtures available.
 type preparedTree struct {
 	loose       fs.FS
 	cache       fs.FS
 	entries     map[string]ManifestBinary
 	missing     map[string]bool
 	recoveryDir string
+	version     string
 }
 
 func (p preparedTree) Open(path string) (fs.File, error) {
-	file, err := p.loose.Open(path)
-	if !errors.Is(err, fs.ErrNotExist) {
-		return file, err
-	}
 	name, ok := strings.CutPrefix(path, "dl/")
 	if _, listed := p.entries[name]; !ok || !listed {
-		return nil, err
+		// Read and Has also probe the legacy compressed suffix. Keep that
+		// fallback from re-exposing an unverified frame for a listed name.
+		if plain, compressed := strings.CutSuffix(name, compressedSuffix); compressed {
+			if _, listed := p.entries[plain]; listed {
+				return nil, fs.ErrNotExist
+			}
+		}
+		return p.loose.Open(path)
 	}
 	if p.missing[name] {
-		return p.openRecovery(name)
+		file, err := p.openRecovery(name)
+		if err != nil {
+			return nil, fmt.Errorf("%w: %s", errAgentUnavailable, name)
+		}
+		return file, nil
 	}
 	return p.cache.Open(name)
 }
@@ -190,21 +211,57 @@ func (p preparedTree) Open(path string) (fs.File, error) {
 // The override of an unavailable agent must be the exact release executable.
 var errAgentUnavailable = errors.New("agent unavailable")
 
-func (p preparedTree) openRecovery(name string) (fs.File, error) {
-	f, err := os.Open(filepath.Join(p.recoveryDir, name))
+func (p preparedTree) openRecovery(name string) (*os.File, error) {
+	path := filepath.Join(p.recoveryDir, name)
+	st, err := os.Lstat(path)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", errAgentUnavailable, name)
-	}
-	entry := p.entries[name]
-	if !matchesOpenFile(f, entry) {
-		f.Close()
-		return nil, fmt.Errorf("%w: recovery file for %s differs from release manifest", errAgentUnavailable, name)
-	}
-	if _, err = f.Seek(0, io.SeekStart); err != nil {
-		f.Close()
 		return nil, err
 	}
-	return f, nil
+	entry := p.entries[name]
+	if !st.Mode().IsRegular() || st.Size() != entry.Size {
+		return nil, fmt.Errorf("recovery file must be regular and %d bytes (found %s, %d bytes)", entry.Size, st.Mode().Type(), st.Size())
+	}
+	// A byte-identical single file needs no sidecar. When an operator also
+	// supplies one, apply the same version and artifact checks as an upgrade.
+	if _, err := os.Stat(filepath.Join(p.recoveryDir, ManifestName)); !errors.Is(err, fs.ErrNotExist) {
+		_, declared, err := (Files{p.loose}).manifestEntry(p.recoveryDir, name, p.version)
+		if err != nil {
+			return nil, err
+		}
+		if declared.Size != entry.Size || !strings.EqualFold(declared.SHA256, entry.SHA256) {
+			return nil, errors.New("override manifest size or SHA256 differs from release manifest")
+		}
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	if !matchesOpenFile(file, entry) {
+		file.Close()
+		return nil, errors.New("recovery file SHA256 differs from release manifest")
+	}
+	if _, err = file.Seek(0, io.SeekStart); err != nil {
+		file.Close()
+		return nil, err
+	}
+	return file, nil
+}
+
+func (p preparedTree) readRecovery(name string) ([]byte, error) {
+	file, err := p.openRecovery(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	entry := p.entries[name]
+	raw, err := io.ReadAll(io.LimitReader(file, entry.Size+1))
+	if err == nil && !matchesBytes(raw, entry) {
+		return nil, errors.New("recovery file changed during verification")
+	}
+	return raw, err
 }
 
 // Route degraded reads through openRecovery for downloads, upgrades and the
@@ -216,8 +273,23 @@ func (f Files) overrideDir(dir, name string) string {
 	return dir
 }
 
-func (f Files) expand(name string, dict []byte, entry ManifestBinary) ([]byte, error) {
-	frame, err := fs.ReadFile(f.tree, packDir+name+compressedSuffix)
+// Old release trees may contain both an uncompressed fixture and an
+// independent frame. Either may supply the bytes, but the manifest decides.
+func (f Files) legacyAgent(name string, entry ManifestBinary) ([]byte, error) {
+	path := "dl/" + name
+	raw, err := fs.ReadFile(f.tree, path)
+	if err == nil && matchesBytes(raw, entry) {
+		return raw, nil
+	}
+	frame, frameErr := f.expand(path+compressedSuffix, nil, entry)
+	if frameErr != nil && err == nil {
+		return nil, fmt.Errorf("loose %s differs from the release manifest; compressed copy: %w", name, frameErr)
+	}
+	return frame, frameErr
+}
+
+func (f Files) expand(path string, dict []byte, entry ManifestBinary) ([]byte, error) {
+	frame, err := fs.ReadFile(f.tree, path)
 	if err != nil {
 		return nil, err
 	}
@@ -235,7 +307,7 @@ func (f Files) expand(name string, dict []byte, entry ManifestBinary) ([]byte, e
 		return nil, err
 	}
 	if !matchesBytes(raw, entry) {
-		return nil, fmt.Errorf("expanded %s does not match its manifest", name)
+		return nil, fmt.Errorf("expanded %s does not match its manifest", path)
 	}
 	return raw, nil
 }
