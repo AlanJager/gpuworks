@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -168,21 +167,11 @@ func renderGatewayMessage(template string, params map[string]any) string {
 	})
 }
 
-// apiErrorObject is the OpenAI error object, with the params the message was
-// filled from for a client that renders the code in its own language.
-type apiErrorObject struct {
-	Message string         `json:"message"`
-	Type    string         `json:"type"`
-	Code    string         `json:"code"`
-	Param   *string        `json:"param"`
-	Params  map[string]any `json:"params,omitempty"`
-}
-
 // apiErrorBody is the {"error": {...}} body of code; status types an
 // UPSTREAM_REJECTED error, whose status is the upstream's.
 func apiErrorBody(code string, params map[string]any, status int) []byte {
 	row := gatewayErrors[code]
-	object := apiErrorObject{Message: renderGatewayMessage(row.template, params), Type: row.typ, Code: code, Params: params}
+	object := messages.GatewayError{Message: renderGatewayMessage(row.template, params), Type: row.typ, Code: code, Params: params}
 	if object.Type == "" {
 		object.Type = typeInvalidRequest
 		if status >= 500 {
@@ -193,8 +182,7 @@ func apiErrorBody(code string, params map[string]any, status int) []byte {
 		param := row.param
 		object.Param = &param
 	}
-	encoded, _ := json.Marshal(map[string]apiErrorObject{"error": object})
-	return encoded
+	return object.Body()
 }
 
 // writeAPIError answers r with the gateway error code and its params, and

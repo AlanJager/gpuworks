@@ -32,6 +32,64 @@ type Host struct {
 	tables  *store.ExtensionTables
 	st      *store.Store
 	reg     *extensionSet
+	app     *App
+}
+
+// MemberAnswerer answers a question another member of the control-plane
+// cluster asked this module (Host.AnswerMembers). It is called on the
+// member route, for an admitted member's certificate only.
+type MemberAnswerer func(ctx context.Context, question []byte) ([]byte, error)
+
+// MemberQuestionLimit bounds a question to a member and its answer.
+const MemberQuestionLimit = 64 << 10
+
+var (
+	// ErrNotClusterMember: this server is not a member of a control-plane
+	// cluster, so it has nobody to ask.
+	ErrNotClusterMember = errors.New("this server is not a member of a control-plane cluster")
+	// ErrMemberRouteNotReady: this server is a cluster member whose route
+	// to the other members is not up yet. A module's Init runs before the
+	// route exists, so a question asked there always gets this; it says
+	// nothing about the member asked.
+	ErrMemberRouteNotReady = errors.New("this member's route to the other members is not up yet")
+	// ErrMemberUnreachable: the member has no route, did not answer, or
+	// nothing on it answers for the module.
+	ErrMemberUnreachable = errors.New("the member gave no answer")
+)
+
+// AnswerMembers makes answer what this module tells the other members of
+// the cluster that ask it (AskMember). A module registers one answerer; on
+// a single server it is never called.
+func (h *Host) AnswerMembers(answer MemberAnswerer) {
+	h.mustBeOpen("AnswerMembers")
+	if answer == nil {
+		panic(fmt.Sprintf("extension %s: AnswerMembers(nil)", h.name))
+	}
+	if h.reg.answers == nil {
+		h.reg.answers = map[string]MemberAnswerer{}
+	}
+	if _, dup := h.reg.answers[h.name]; dup {
+		panic(fmt.Sprintf("extension %s: AnswerMembers called twice", h.name))
+	}
+	h.reg.answers[h.name] = answer
+}
+
+// AskMember asks this module on another member of the control-plane cluster
+// a question and returns what its AnswerMembers function answered. member is
+// a ClusterObservedMember's ID. The question travels over the members' own
+// route: mutual TLS with the members' certificates, so the answer comes from
+// the member asked and nobody else can ask. Question and answer are at most
+// MemberQuestionLimit bytes. Unlike the registrations it is called while
+// serving. A single server answers ErrNotClusterMember. A cluster member
+// answers ErrMemberRouteNotReady until its route to the others is up, which
+// is after every module's Init returned: the question was not asked. A
+// member that is down, or runs a build whose module registered no answerer,
+// answers ErrMemberUnreachable.
+func (h *Host) AskMember(ctx context.Context, member uint64, question []byte) ([]byte, error) {
+	if h.app == nil {
+		return nil, ErrNotClusterMember
+	}
+	return h.app.askMember(ctx, member, h.name, question)
 }
 
 // ErrHostClosed is returned (or, for registrations without an error result,
@@ -127,6 +185,26 @@ func (h *Host) ProvideFeatures(src featuregate.Source) error {
 		return fmt.Errorf("extension %s: features are already provided by %s", h.name, h.reg.sourceBy)
 	}
 	h.reg.source, h.reg.sourceBy = src, h.name
+	return nil
+}
+
+// LimitPlatform makes src the answer for how far the whole server is
+// available (api.PlatformLimiter): read-only refuses every change and keeps
+// serving reads and the data plane; locked serves reads as well and refuses
+// the data plane too. This module's own routes are served under either. At most one module limits the server;
+// without one it is never limited. src runs on every request and must
+// answer from a snapshot: one atomic load, no I/O, no lock, no allocation.
+func (h *Host) LimitPlatform(src api.PlatformLimiter) error {
+	if h.reg.closed {
+		return ErrHostClosed
+	}
+	if src == nil {
+		return fmt.Errorf("extension %s: LimitPlatform(nil)", h.name)
+	}
+	if h.reg.platformBy != "" {
+		return fmt.Errorf("extension %s: the server is already limited by %s", h.name, h.reg.platformBy)
+	}
+	h.reg.platform, h.reg.platformBy = src, h.name
 	return nil
 }
 

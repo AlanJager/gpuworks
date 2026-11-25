@@ -32,11 +32,26 @@ export interface ConsoleBanner {
   link?: string;
 }
 
+/**
+ * ConsolePlatform is a limit on the whole server. Both show every page:
+ * read_only refuses changes, locked refuses changes and inference. link is
+ * the page that lifts it, present for an administrator only.
+ */
+export interface ConsolePlatform {
+  access: "read_only" | "locked";
+  link?: string;
+  // What the control that opens link says; absent leaves the console's own wording.
+  action?: ProductMessage;
+  message: ProductMessage;
+}
+
 export interface ConsoleManifest {
   edition: string;
   features: ConsoleFeature[];
   nav: NavContribution[];
   banners: ConsoleBanner[];
+  // Absent while nothing is limited.
+  platform?: ConsolePlatform;
 }
 
 // An object rather than bare functions, so tests can replace the request.

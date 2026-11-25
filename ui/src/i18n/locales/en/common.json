@@ -392,6 +392,8 @@
     "FEATURE_READ_ONLY": "{{feature}} is read-only on this server: you can view its data but not change it.",
     "FEATURE_PROVIDER_ABSENT": "{{feature}} cannot be used: nothing on this server reports whether it is available.",
     "FEATURE_LIMIT_REACHED": "{{feature}} allows at most {{max}} {{dim}}; {{used}} are already in use.",
+    "PLATFORM_LOCKED": "This server is locked: it can be viewed; changes and inference are refused.",
+    "PLATFORM_READ_ONLY": "This server is read-only: what runs keeps running and can be viewed, but nothing can be changed.",
     "ACCELERATOR_FEATURE_UNSUPPORTED": "{{vendor}} does not support {{feature}}. Choose a supported feature or select another accelerator.",
     "PRIORITY_SCHEDULING_LAUNCH_UNSUPPORTED": "Priority scheduling has not been verified for this {{engine}} entrypoint or pipeline. Turn it off or select a supported LLM entrypoint.",
     "PRIORITY_SCHEDULING_ENGINE_UNSUPPORTED": "The {{engine}} engine has no request priority scheduling; this deployment does not distinguish priorities.",

@@ -96,6 +96,7 @@ type fakeModule struct {
 	source  *fakeSource
 	holder  *fakeHolder
 	guard   store.NodeEnrollmentGuard
+	limiter api.PlatformLimiter
 	initErr error
 
 	mu        sync.Mutex
@@ -182,6 +183,11 @@ func (m *fakeModule) Init(_ context.Context, h *app.Host) error {
 	}
 	if m.holder != nil {
 		if err := h.HoldScheduling(m.holder); err != nil {
+			return err
+		}
+	}
+	if m.limiter != nil {
+		if err := h.LimitPlatform(m.limiter); err != nil {
 			return err
 		}
 	}

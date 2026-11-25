@@ -40,7 +40,8 @@ const (
 	CostKVMemoryReduced PerformanceCost = "kv_memory_reduced"
 	// CostGraphCaptureNarrow: graphs cover only part of the work. vLLM
 	// cudagraph_mode FULL_DECODE_ONLY or capture sizes below 16; SGLang
-	// --cuda-graph-max-bs below 16.
+	// --cuda-graph-max-bs or --cuda-graph-max-bs-decode below 16, and
+	// --cuda-graph-backend-prefill disabled (decode graphs only).
 	CostGraphCaptureNarrow PerformanceCost = "graph_capture_narrow"
 	// CostKernelFallback: a fast kernel path is switched off (vLLM
 	// VLLM_USE_DEEP_GEMM=0 and similar, the Triton attention backend).
@@ -230,6 +231,16 @@ var sglangFlagRules = map[string]flagRule{
 	"--max-running-requests":     concurrencyRule(),
 	"--mem-fraction-static":      belowRule(CostKVMemoryReduced, lowStaticMemFraction),
 	"--cuda-graph-max-bs":        belowRule(CostGraphCaptureNarrow, narrowCaptureSize),
+	// SGLang 0.5.21 states graph capture per phase. A decode cap below 16
+	// narrows capture as --cuda-graph-max-bs does; a prefill backend of
+	// "disabled" leaves decode graphs only, as vLLM's FULL_DECODE_ONLY does.
+	"--cuda-graph-max-bs-decode": belowRule(CostGraphCaptureNarrow, narrowCaptureSize),
+	"--cuda-graph-backend-prefill": {takesValue: true, scan: func(name, value string) []PerformanceFinding {
+		if strings.EqualFold(value, "disabled") {
+			return []PerformanceFinding{{Cost: CostGraphCaptureNarrow, Level: LevelInfo, Param: name, Value: value}}
+		}
+		return nil
+	}},
 	"--chunked-prefill-size": {takesValue: true, scan: func(name, value string) []PerformanceFinding {
 		if n, err := strconv.Atoi(value); err == nil && n < 0 {
 			return []PerformanceFinding{{Cost: CostChunkedPrefillDisabled, Level: LevelGuarded, Param: name, Value: value}}

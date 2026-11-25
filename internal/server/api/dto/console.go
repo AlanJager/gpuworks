@@ -10,6 +10,24 @@ type ConsoleManifest struct {
 	Features []ConsoleFeature  `json:"features"`
 	Nav      []NavContribution `json:"nav"`
 	Banners  []ConsoleBanner   `json:"banners"`
+	// Platform is the limit on the whole server; absent while nothing is
+	// limited.
+	Platform *ConsolePlatform `json:"platform,omitempty"`
+}
+
+// ConsolePlatform is a limit on the whole server.
+type ConsolePlatform struct {
+	// Access is read_only (pages show, changes are refused) or locked
+	// (pages show, changes and inference are refused).
+	Access string `json:"access"`
+	// Link is the console page where an administrator lifts the limit
+	// (absent for anyone else), and
+	// Action what the control that opens it says, rendered from its code;
+	// absent leaves the console's own wording.
+	Link   string          `json:"link,omitempty"`
+	Action *ProductMessage `json:"action,omitempty"`
+	// Message explains the limit, rendered from its code.
+	Message ProductMessage `json:"message"`
 }
 
 // ConsoleFeature is one optional feature's availability, sorted by key.

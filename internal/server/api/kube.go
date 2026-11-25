@@ -361,7 +361,7 @@ func (a *apiHandlers) kubeEnroll(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, store.ErrNodeEnrollmentRefused):
 		// Final for the agent (any reason but unknown_token is): the node
 		// stays out until an operator makes room and restarts its pod.
-		writeProductError(w, http.StatusForbidden, ErrorKubeEnrollRefused, err.Error(), kubeEnrollRefusalParams(err))
+		writeProductError(w, http.StatusForbidden, ErrorKubeEnrollRefused, err.Error(), enrollRefusalParams(err))
 		return
 	case err != nil:
 		writeErr(w, http.StatusBadRequest, err)
