@@ -85,6 +85,9 @@ func Port(t testing.TB, ip string) int {
 		given[port] = struct{}{}
 		return port
 	}
+	if lastErr == nil {
+		t.Fatalf("testport: every pair of ports in %d-%d was already handed out by this process", poolStart, poolStart+2*pairs-1)
+	}
 	t.Fatalf("testport: no free pair of ports on %s in %d-%d; the last one tried: %v", ip, poolStart, poolStart+2*pairs-1, lastErr)
 	return 0
 }

@@ -107,9 +107,9 @@ func TestARunStartsAtARandomPlace(t *testing.T) {
 		lowest, highest = min(lowest, start), max(highest, start)
 	}
 	// A fixed start would put the eight runs side by side, a few ports
-	// apart. Eight random starts in a pool of thousands of ports all fall
-	// within a thousand of each other far less than once in a million runs.
-	if highest-lowest < 1000 {
+	// apart. Eight random starts all fall within a twentieth of the pool
+	// less than once in a hundred million runs, whatever the pool's size.
+	if spread := (poolEnd() - poolStart) / 20; highest-lowest < spread {
 		t.Fatalf("8 runs started between %d and %d: the start is not random", lowest, highest)
 	}
 }
