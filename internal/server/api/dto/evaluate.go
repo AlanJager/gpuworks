@@ -444,6 +444,13 @@ type ImageOption struct {
 	Image      string `json:"image"`
 	Reason     string `json:"reason"`
 	Compatible bool   `json:"compatible"`
+	// Engine and EngineVersion are the image catalog's record of what the
+	// image runs; both are absent for an image the catalog does not hold.
+	Engine        string `json:"engine,omitempty"`
+	EngineVersion string `json:"engine_version,omitempty"`
+	// SelectsEngine is the deploy engine choosing this image selects, stated
+	// only when it is not the engine the request was evaluated with.
+	SelectsEngine string `json:"selects_engine,omitempty"`
 }
 
 type EnvLayers struct {
