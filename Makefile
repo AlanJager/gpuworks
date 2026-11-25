@@ -592,12 +592,13 @@ runtime-assets-verify:
 	./build/runtime-assets/verify.sh
 
 IMAGE_MATRIX ?= build/runner-images/matrix.yaml
+IMAGE_TAG_GRAMMAR := build/runner-images/tag-grammar.txt
 IMAGE_MANIFEST_SEED := internal/server/imagecatalog/catalog-seed.json
 
 .PHONY: image-manifest
 ## image-manifest: regenerate the system image catalog seed from the gpuworks-runner matrix
 image-manifest:
-	$(GO) run ./cmd/gpuworks-image-manifest -in $(IMAGE_MATRIX) -out $(IMAGE_MANIFEST_SEED) $(if $(IMAGE_MANIFEST_DATE),-date $(IMAGE_MANIFEST_DATE))
+	$(GO) run ./cmd/gpuworks-image-manifest -in $(IMAGE_MATRIX) -out $(IMAGE_MANIFEST_SEED) -grammar-out $(IMAGE_TAG_GRAMMAR) $(if $(IMAGE_MANIFEST_DATE),-date $(IMAGE_MANIFEST_DATE))
 
 .PHONY: image-manifest-verify
 ## image-manifest-verify: check every reference in the seed pulls whole from every registry it lists
