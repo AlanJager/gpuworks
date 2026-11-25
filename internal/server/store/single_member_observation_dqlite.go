@@ -106,9 +106,9 @@ func bindSingleMemberDatabase(st *Store, db *cluster.Database, raftDir string) {
 const ClusterUpgradeRefusedSingleMember = "single_member"
 
 // clusterUpgradeRefusal is a refusal a caller acts on, not only reports: it
-// carries a stable code beside its reason. The enterprise upgrade command
-// reads the code (GWKS-487): it restarts a member that answers
-// "single_member" before the upgrade's first step.
+// carries a stable code beside its reason, for a caller to tell this refusal
+// apart. The enterprise upgrade command is to restart a member that answers
+// "single_member" before the upgrade's first step (GWKS-487).
 type clusterUpgradeRefusal struct{ code, reason string }
 
 func (r clusterUpgradeRefusal) Error() string {

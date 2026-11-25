@@ -74,8 +74,9 @@ type ClusterUpgradeResponse struct {
 	Refused          string `json:"refused,omitempty"`
 	// RefusedCode is the stable code of a refusal a caller acts on, beside
 	// its text in Refused; absent from a refusal that is only reported. It
-	// is read by the enterprise upgrade command (GWKS-487), which restarts
-	// a member that answers "single_member".
+	// is for a caller to tell this refusal apart; the enterprise upgrade
+	// command is to restart a member that answers "single_member"
+	// (GWKS-487).
 	RefusedCode string `json:"refused_code,omitempty"`
 	Error       string `json:"error,omitempty"`
 }
