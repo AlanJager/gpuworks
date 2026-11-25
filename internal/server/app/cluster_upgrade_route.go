@@ -26,9 +26,7 @@ func clusterUpgradeHandler(bundle *enrollmentBundle, session joinedRaftSession, 
 	if requests == nil || bundle == nil || bundle.trust == nil {
 		return nil, errors.New("cluster upgrade requires an authenticated enrollment identity")
 	}
-	stepper, ok := session.(interface {
-		ClusterUpgrade(context.Context, store.ClusterIdentity, string, string) (store.ClusterUpgradeStatus, bool, bool, error)
-	})
+	stepper, ok := session.(clusterUpgradeStepper)
 	if !ok {
 		return nil, errors.New("native session does not support the cluster upgrade")
 	}
@@ -61,9 +59,6 @@ func clusterUpgradeHandler(bundle *enrollmentBundle, session joinedRaftSession, 
 			AppliedExtensions: status.AppliedExtensions, KnownExtensions: status.KnownExtensions,
 			AppliedByExtension: status.AppliedExtensionMarkers(),
 		}
-		if founding, ok := session.(interface{ FoundingProcess() bool }); ok {
-			response.FoundingProcess = founding.FoundingProcess()
-		}
 		if agents != nil {
 			if held, known := agents(); known {
 				response.AgentConnections = &held
@@ -76,7 +71,7 @@ func clusterUpgradeHandler(bundle *enrollmentBundle, session joinedRaftSession, 
 		}
 		switch {
 		case errors.Is(err, store.ErrClusterUpgradeRefused):
-			response.Refused = err.Error()
+			response.Refused, response.RefusedCode = err.Error(), store.ClusterUpgradeRefusalCode(err)
 		case err != nil:
 			response.Error = err.Error()
 		}

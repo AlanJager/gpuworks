@@ -54,7 +54,7 @@ func (s *LegacyJoinedRaftSession) ReadLocalQuorumFacts(ctx context.Context, requ
 // readLocalQuorumFacts is the observation itself, over one database handle:
 // the member's own qualification and the cluster's facts in one local read
 // snapshot, bracketed by the quorum proof. It is what an established
-// member's session reads and what the process that created the cluster
+// member's session reads and what a member running as a single member
 // reads through its open store.
 func readLocalQuorumFacts(ctx context.Context, db *cluster.Database, address, raftDir, requesterKey string) (bool, MaintenancePhaseState, []ClusterAdmission, cluster.QuorumProof, error) {
 	clusterID, pin := db.TransportIdentity()
@@ -77,4 +77,15 @@ func readLocalQuorumFacts(ctx context.Context, db *cluster.Database, address, ra
 		return err
 	})
 	return legacy, phase, admissions, proof, err
+}
+
+// observedClusterIdentity checks that an observation request names the
+// cluster this database belongs to, in this protocol.
+func observedClusterIdentity(db *cluster.Database, expected ClusterIdentity) error {
+	clusterID, pin := db.TransportIdentity()
+	if !validClusterDigest(expected.ClusterID, 16) || !validClusterDigest(expected.CAFingerprint, 32) || expected.Protocol != ClusterProtocolVersion ||
+		expected.ClusterID != clusterID || expected.CAFingerprint != pin {
+		return ErrClusterIdentityConflict
+	}
+	return nil
 }

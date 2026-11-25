@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"gpuworks.ai/gpuworks/internal/server/enrollment"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -175,21 +174,12 @@ func (a *App) assembleClosedMemberMaterials(ctx context.Context, bundle *enrollm
 	})
 	requests := newMaterialRequestTracker()
 	if a.joinedRaft != nil {
-		facts, err := closedQuorumFactsHandler(bundle, a.joinedRaft, requests)
-		if err != nil {
+		if err := registerMemberObservation(router, bundle, a.joinedRaft, requests, a.heldAgentConnections, a.cfg, log); err != nil {
 			return err
 		}
-		router.Post(enrollment.ClusterQuorumFactsPath, facts)
-		discovery, err := closedQuorumDiscoveryHandler(bundle, a.joinedRaft, requests)
-		if err != nil {
-			return err
-		}
-		router.Post(enrollment.ClusterQuorumDiscoveryPath, discovery)
-		if upgrade, err := clusterUpgradeHandler(bundle, a.joinedRaft, requests, a.heldAgentConnections); err == nil {
-			router.Post(enrollment.ClusterUpgradePath, upgrade)
-		}
+	} else {
+		registerClusterDiagnostics(router, bundle, requests, a.cfg, log)
 	}
-	registerClusterDiagnostics(router, bundle, requests, a.cfg, log)
 	registerEnrollmentMaterialReceiver(router, bundle, st, receiver, requests)
 	registerEnrollmentOriginWithChange(router, bundle, st, a.invalidateCandidateMaterialEligibility)
 	enrollment, err := newEnrollmentServer(bundle.info.ListenAddress, router, bundle.tls, log)

@@ -20,7 +20,7 @@ func (s *LegacyJoinedRaftSession) ReadQuorumDiscoveryForCluster(parent context.C
 	if err := parent.Err(); err != nil {
 		return ClusterAdmission{}, nil, err
 	}
-	if s == nil || !validClusterDigest(expected.ClusterID, 16) || !validClusterDigest(expected.CAFingerprint, 32) || expected.Protocol != ClusterProtocolVersion {
+	if s == nil {
 		return ClusterAdmission{}, nil, ErrClusterIdentityConflict
 	}
 	if !s.mu.TryLock() {
@@ -37,7 +37,7 @@ func (s *LegacyJoinedRaftSession) ReadQuorumDiscoveryForCluster(parent context.C
 // readQuorumDiscovery is the discovery read over one database handle: the
 // live membership and, in one read-only snapshot, the admission of the
 // requester and the members' transport records. An established member's
-// session and the process that created the cluster both answer from it.
+// session and a member running as a single member both answer from it.
 func readQuorumDiscovery(parent context.Context, db *cluster.Database, expected ClusterIdentity, requesterKey string) (requester ClusterAdmission, members []ClusterTransportMember, result error) {
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
@@ -47,9 +47,8 @@ func readQuorumDiscovery(parent context.Context, db *cluster.Database, expected 
 			requester, members = ClusterAdmission{}, nil
 		}
 	}()
-	clusterID, pin := db.TransportIdentity()
-	if clusterID != expected.ClusterID || pin != expected.CAFingerprint {
-		return ClusterAdmission{}, nil, ErrClusterIdentityConflict
+	if err := observedClusterIdentity(db, expected); err != nil {
+		return ClusterAdmission{}, nil, err
 	}
 	native, err := db.Members(ctx)
 	if err != nil {

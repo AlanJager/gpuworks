@@ -90,7 +90,7 @@ func (r *memberRuntime) assemble(a *App, signer *auth.TokenSigner, catalog *pack
 			return err
 		}
 	}
-	enrollment, err := prepareEnrollmentServerWithOwner(r.bundle, a.store, signer, a.log, catalog, r.owner, a.foundingObservation(r))
+	enrollment, err := prepareEnrollmentServerWithOwner(r.bundle, a.store, signer, a.log, catalog, r.owner, a.singleMemberObservation(r))
 	if err != nil {
 		return err
 	}

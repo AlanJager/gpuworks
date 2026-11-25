@@ -43,7 +43,7 @@ func prepareEnrollmentServer(bundle *enrollmentBundle, st *store.Store, signer *
 
 // enrollmentObservation puts the member observation routes of a listener
 // that has no closed listener behind it in front of its prepared routes.
-type enrollmentObservation func(prepared http.Handler, requests *materialRequestTracker) (http.Handler, error)
+type enrollmentObservation func(prepared http.Handler, requests *materialRequestTracker) http.Handler
 
 // prepareEnrollmentServerWithOwner borrows the running closed listener's
 // material owner when preparing routes for a later live handler transfer.
@@ -94,9 +94,7 @@ func prepareEnrollmentServerWithOwner(bundle *enrollmentBundle, st *store.Store,
 	}
 	handler = enrollmentMaterialHandlerWithTrackedReceiver(bundle, st, handler, catalog, receiver, requests)
 	if observation != nil {
-		if handler, err = observation(handler, requests); err != nil {
-			return nil, err
-		}
+		handler = observation(handler, requests)
 	}
 	server, err := newEnrollmentServer(bundle.info.ListenAddress, accessLogHandler(log, handler), bundle.tls, log)
 	if err != nil {

@@ -70,14 +70,12 @@ type ClusterUpgradeResponse struct {
 	// AgentConnections is how many agent control connections the answering
 	// member holds itself; absent when it cannot say. Stopping that member
 	// makes those agents connect again.
-	AgentConnections *int `json:"agent_connections,omitempty"`
-	// FoundingProcess is true when the answering member still runs the
-	// process that created the cluster. That process answers status and
-	// refuses every step that changes the cluster until the member has
-	// been restarted once; a caller that needs such a step restarts it.
-	FoundingProcess bool   `json:"founding_process,omitempty"`
-	Refused         string `json:"refused,omitempty"`
-	Error           string `json:"error,omitempty"`
+	AgentConnections *int   `json:"agent_connections,omitempty"`
+	Refused          string `json:"refused,omitempty"`
+	// RefusedCode is the stable code of a refusal a caller acts on, beside
+	// its text in Refused; absent from a refusal that is only reported.
+	RefusedCode string `json:"refused_code,omitempty"`
+	Error       string `json:"error,omitempty"`
 }
 
 // ValidClusterUpgradeAction reports a step this protocol knows.

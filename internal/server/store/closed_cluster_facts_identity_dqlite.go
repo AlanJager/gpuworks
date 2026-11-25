@@ -19,7 +19,7 @@ func (s *LegacyJoinedRaftSession) ReadLocalQuorumFactsForCluster(ctx context.Con
 	if err := ctx.Err(); err != nil {
 		return fail(err)
 	}
-	if s == nil || !validClusterDigest(expected.ClusterID, 16) || !validClusterDigest(expected.CAFingerprint, 32) || expected.Protocol != ClusterProtocolVersion {
+	if s == nil {
 		return fail(ErrClusterIdentityConflict)
 	}
 	if !s.mu.TryLock() {
@@ -30,9 +30,8 @@ func (s *LegacyJoinedRaftSession) ReadLocalQuorumFactsForCluster(ctx context.Con
 	if db == nil {
 		return fail(errors.New("native session is unavailable"))
 	}
-	clusterID, pin := db.TransportIdentity()
-	if expected.ClusterID != clusterID || expected.CAFingerprint != pin {
-		return fail(ErrClusterIdentityConflict)
+	if err := observedClusterIdentity(db, expected); err != nil {
+		return fail(err)
 	}
 	legacy, phase, admissions, proof, err := s.ReadLocalQuorumFacts(ctx, requesterKey)
 	if err != nil {
