@@ -139,7 +139,7 @@ state once that cache is warm. The cache lives inside the container, so a rebuil
 
 ## Ascend 910B (A2) · 8 cards · TP8
 
-`w4a8-vllm-910b-tp8-mtp`: one node with eight 910B cards of at least 64 GiB each, TP8 with expert
+`w4a8-vllm-910b-tp8-mtp`: one node with eight 910B cards of at least 32 GiB each, TP8 with expert
 parallelism, the W4A8 weights (`Eco-Tech/Qwen3.8-Flash-Next-w4a8` `d75537fd…`) with the checkpoint's own MTP
 layer, on the same image as the four-card profiles. The `--additional-config` switches (CPU binding,
 shared-expert DP, FlashComm1, shared-expert multistream overlap, NPUGraph EX), async scheduling, KV sized by
@@ -165,9 +165,9 @@ At concurrency 16 this profile's output throughput is 14%–22% higher, with med
 4.3–6.9 s) and P95 TTFT 1.8–2.8 s (baseline 16.3–42.6 s). A single stream decodes about 31 tokens/s against
 the baseline's 36: this profile is about a tenth slower at concurrency 1–2 and 2%–6% slower at 4–8 (single
 runs; that margin is too small to conclude from). With the recipe's own ceiling of 8 the profile stayed at
-164 / 198 tokens/s at concurrency 16, the extra requests queueing. The run used a 32 GiB floor per card;
-this profile keeps the four-card profiles' 64 GiB floor and **has not been run on 64 GiB cards**. On the
-32 GiB cards each card held 11.2 GiB of weights and the KV cache about 880K tokens (about 3.4 concurrent
+164 / 198 tokens/s at concurrency 16, the extra requests queueing. The floor per card is the
+32 GiB this run used (this profile has no fixed 20 GiB KV pool as the four-card profiles do, so it does not
+need 64 GiB cards). On the 32 GiB cards each card held 11.2 GiB of weights and the KV cache about 880K tokens (about 3.4 concurrent
 256K requests).
 
 Three things do not follow the recipe: the image is pinned by digest (the recipe names the mutable tag
@@ -177,5 +177,5 @@ path) are left out.
 
 **Runtime**: under udocker (proot) the system calls of eight ranks all pass through the single-threaded
 proot, and the engine had not finished starting after 14 minutes; use Docker or nerdctl.
-**Host memory**: each rank maps its own copy of the embedding table, about 190 GiB of free memory at the
-four-card profiles' 23.8 GiB per copy, plus the page cache for the checkpoint.
+**Host memory**: each rank maps its own copy of the embedding table, measured at 11.9 GiB per rank, about
+95 GiB of free memory for eight ranks, plus the page cache for the checkpoint.

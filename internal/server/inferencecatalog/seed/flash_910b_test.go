@@ -126,7 +126,7 @@ func TestFlash910BProfilesPlaceAndLaunchTheirOwnShape(t *testing.T) {
 	}
 }
 
-// The eight-card W4A8 profile takes exactly eight 64 GiB A2 cards, launches
+// The eight-card W4A8 profile takes exactly eight A2 cards of 32 GiB or more, launches
 // them as TP8 with a published recipe's switches, and carries the four values
 // the 2026-11-23 measurement changed: 16 sequences, 8192 batched tokens,
 // decode graphs up to 64, and thinking off by default.
@@ -146,7 +146,7 @@ func TestQwen38EightCard910BProfileLaunchesThePublishedRecipe(t *testing.T) {
 		count    int
 		memory   float64
 		accepted bool
-	}{{8, 64, true}, {8, 32, false}, {4, 64, false}, {16, 64, false}} {
+	}{{8, 32, true}, {8, 64, true}, {8, 24, false}, {4, 64, false}, {16, 64, false}} {
 		resolved, err := placement.Resolve(context.Background(), spec.Placement.Resolver, placement.GPU{Count: shape.count, Vendor: "ascend", MinMemoryGiB: shape.memory})
 		if err != nil {
 			t.Fatal(err)
@@ -155,7 +155,7 @@ func TestQwen38EightCard910BProfileLaunchesThePublishedRecipe(t *testing.T) {
 			t.Fatalf("%d cards of %v GiB: reason=%q, accepted want %t", shape.count, shape.memory, resolved.Reason, shape.accepted)
 		}
 	}
-	resolved, err := placement.Resolve(context.Background(), spec.Placement.Resolver, placement.GPU{Count: 8, Vendor: "ascend", MinMemoryGiB: 64})
+	resolved, err := placement.Resolve(context.Background(), spec.Placement.Resolver, placement.GPU{Count: 8, Vendor: "ascend", MinMemoryGiB: 32})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestQwen38EightCard910BProfileLaunchesThePublishedRecipe(t *testing.T) {
 		Engine: engine, Image: spec.Image, Entrypoint: spec.Entrypoint, APIContract: spec.API, PlacementVariables: resolved.Variables,
 		Params: deploy.Params{
 			ModelPath: "/model", ServedName: "flash-910b", APIPort: 31417, NNodes: 1,
-			RuntimeDriver: "udocker", AssignedGPUs: 8, TensorParallel: 8,
+			RuntimeDriver: "docker", AssignedGPUs: 8, TensorParallel: 8,
 			TemplateArgs: spec.Args, TemplateEnv: spec.Env,
 		},
 	})
