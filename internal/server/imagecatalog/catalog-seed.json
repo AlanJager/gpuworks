@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
-  "catalog_version": "2026-11-25.f5248bd2",
-  "sha256": "bca296abdd970890d328837728bd16f4e70edd83e4f81ee1ea3c8775b5bee7f9",
+  "catalog_version": "2026-11-25.9eec0318",
+  "sha256": "d70468e28d691fedbcd201cd6ea32a5b35539ba2114b653c5fa2db4ef3854d4d",
   "series": [
     {
       "name": "MLX Audio · Metal",
@@ -565,6 +565,18 @@
       "purpose": "inference",
       "framework": "rocm",
       "versions": [
+        {
+          "name": "rocm7.2.3-vllm0.29.0-r1",
+          "image_ref": "gpuworks/gpuworks-runner:rocm7.2.3-vllm0.29.0-r1",
+          "engine_version": "0.29.0",
+          "framework_version": "7.2.3",
+          "arch": "amd64",
+          "registry_sources": [
+            "quay.io/gpuworks/gpuworks-runner:rocm7.2.3-vllm0.29.0-r1",
+            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:rocm7.2.3-vllm0.29.0-r1"
+          ],
+          "notes": "AMD ROCm 7.2.3 with vLLM 0.29.0 for gfx1151 (Radeon MI300-series). Registered from the existing published artifact; hardware validation pending."
+        },
         {
           "name": "rocm7.2.3-vllm0.30.0-r1",
           "image_ref": "gpuworks/gpuworks-runner:rocm7.2.3-vllm0.30.0-r1",

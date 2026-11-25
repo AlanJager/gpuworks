@@ -154,6 +154,18 @@ items:
   #   3) 推理目录里 nvidia 的 vllm spec 是 517 普通 : 27 omni，收益面很小。
   # 分档几乎没有代价：omni 相关包约 280 MB，两档同一 base，同仓库内大层完全去重。
 
+  - id: rocm7.2.3-vllm0.29.0
+    revision: r1
+    backend: rocm
+    builder: prebuilt
+    engine: vllm
+    platforms: [linux/amd64]
+    artifact: quay.io/gpuworks/gpuworks-runner@sha256:accf78363c735a6c8c53657c88d4fccc26ede0f0def41080e811721134eb77ae
+    args: {ENGINE_VERSION: "0.29.0", FRAMEWORK_VERSION: "7.2.3"}
+    note: >-
+      AMD ROCm 7.2.3 with vLLM 0.29.0 for gfx1151 (Radeon MI300-series). Registered from
+      the existing published artifact; hardware validation pending.
+
   - id: cuda13.0-vllm0.30.0
     revision: r4
     backend: cuda
