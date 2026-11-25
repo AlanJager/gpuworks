@@ -1061,8 +1061,6 @@ legacy_tags:
     legacy_reason: Per-architecture tag, with the architecture after the revision.
   - tag: cuda13.0-sglang0.5.23-r2-arm64
     legacy_reason: Per-architecture tag, with the architecture after the revision.
-  - tag: cuda13.0-strata0.1.38-amd64-slot31-r5
-    legacy_reason: Carries a variant, architecture or slot segment the grammar has no place for.
   - tag: cuda13.0-strata0.1.59-deepseek41-amd64-r4
     legacy_reason: Carries a variant, architecture or slot segment the grammar has no place for.
   - tag: cuda13.0-strata0.1.59-deepseek41-amd64-r5
