@@ -17,6 +17,8 @@ import (
 
 	"gorm.io/gorm"
 
+	agentconn "gpuworks.ai/gpuworks/internal/agent/conn"
+	"gpuworks.ai/gpuworks/internal/agent/gpu"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/cluster/identity"
 	"gpuworks.ai/gpuworks/internal/server/cluster/storagetier"
@@ -96,6 +98,16 @@ func TestASingleMemberAnswersTheMemberQuestions(t *testing.T) {
 		// counted, not a member's closed business that holds none.
 		if status.AgentConnections == nil || *status.AgentConnections != a.hub.SessionCount() {
 			t.Fatalf("%s: upgrade status reports agent connections %v, the hub holds %d", start, status.AgentConnections, a.hub.SessionCount())
+		}
+		// With an agent connected the status counts it, and stops
+		// counting it when the agent leaves: the number orders an upgrade.
+		disconnect := connectObservedAgent(t, ctx, a, start)
+		if counted, err := client.ClusterUpgrade(ctx, cert, key, enrollment.ClusterUpgradeStatus); err != nil || counted.AgentConnections == nil || *counted.AgentConnections != 1 {
+			t.Fatalf("%s: upgrade status with one agent connected: %+v, %v; want agent_connections 1", start, counted, err)
+		}
+		disconnect()
+		if counted, err := client.ClusterUpgrade(ctx, cert, key, enrollment.ClusterUpgradeStatus); err != nil || counted.AgentConnections == nil || *counted.AgentConnections != 0 {
+			t.Fatalf("%s: upgrade status after the agent left: %+v, %v; want agent_connections 0", start, counted, err)
 		}
 		refusedWithoutAnAdmittedKey(t, a.EnrollmentAddr(), cfg, files)
 		// The prepared routes still answer behind the observation routes.
@@ -214,5 +226,48 @@ func refusedWithoutAnAdmittedKey(t *testing.T, listen string, cfg Config, files 
 			}
 		}
 		transport.CloseIdleConnections()
+	}
+}
+
+// connectObservedAgent connects a real agent connection to the server's own
+// hub and returns once the hub holds its session; the returned function
+// ends the connection and returns once the hub has let the session go.
+func connectObservedAgent(t *testing.T, ctx context.Context, a *App, start string) func() {
+	t.Helper()
+	_, token, err := a.store.CreateNodePending("observed " + start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agentCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() {
+		done <- agentconn.New(agentconn.Credentials{ServerURL: "http://" + a.Addr(), NodeToken: token}, nil, nil, gpu.NoAccelerator{}, enrollmentNativeLog()).Run(agentCtx)
+	}()
+	ended := false
+	sessions := func(want int) {
+		t.Helper()
+		deadline := time.Now().Add(20 * time.Second)
+		for a.hub.SessionCount() != want {
+			select {
+			case err := <-done:
+				if ended {
+					continue
+				}
+				t.Fatalf("%s: the agent connection ended while the hub held %d sessions, want %d: %v", start, a.hub.SessionCount(), want, err)
+			default:
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("%s: the hub holds %d agent sessions, want %d", start, a.hub.SessionCount(), want)
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	sessions(1)
+	return func() {
+		t.Helper()
+		cancel()
+		<-done
+		ended = true
+		sessions(0)
 	}
 }

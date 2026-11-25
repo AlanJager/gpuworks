@@ -213,29 +213,6 @@ func refuseClusterUpgrade(format string, args ...any) error {
 	return fmt.Errorf("%w: %s", ErrClusterUpgradeRefused, fmt.Sprintf(format, args...))
 }
 
-// ClusterUpgradeRefusedSingleMember is the code of the refusal a member that
-// runs as a single member gives to a step that changes the cluster.
-const ClusterUpgradeRefusedSingleMember = "single_member"
-
-// clusterUpgradeRefusal is a refusal a caller acts on, not only reports: it
-// carries a stable code beside its reason.
-type clusterUpgradeRefusal struct{ code, reason string }
-
-func (r clusterUpgradeRefusal) Error() string {
-	return ErrClusterUpgradeRefused.Error() + ": " + r.reason
-}
-func (r clusterUpgradeRefusal) Unwrap() error { return ErrClusterUpgradeRefused }
-
-// ClusterUpgradeRefusalCode is the stable code of a refusal that carries
-// one, and empty for every other error.
-func ClusterUpgradeRefusalCode(err error) string {
-	var refusal clusterUpgradeRefusal
-	if errors.As(err, &refusal) {
-		return refusal.code
-	}
-	return ""
-}
-
 // BeginClusterUpgrade closes business on every member by taking the phase
 // from serving to upgrading. It requires migrations to apply and every member
 // reporting this executable. It continues a begin that stopped part way, and
