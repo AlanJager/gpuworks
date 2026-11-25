@@ -196,9 +196,11 @@ func projectClosedQuorumFacts(expected store.ClusterIdentity, nonce string, lega
 }
 
 // quorumFactsUnavailable answers a facts read that failed. A member that
-// does not lead says so, which sends the asker to the leader and is not
-// logged: every follower gives that answer to every asker. Any other
-// failure is logged here, because the answer does not carry it.
+// does not lead says so in the answer's text, for a person reading the
+// response: the member client reports a refused request by its status only
+// and never repeats a member's answer in an error. That answer is not
+// logged, since every follower gives it to every asker. Any other failure
+// is logged here, because the answer does not carry it.
 func quorumFactsUnavailable(w http.ResponseWriter, err error, log *slog.Logger) {
 	switch {
 	case errors.Is(err, store.ErrClusterAdmissionRejected):

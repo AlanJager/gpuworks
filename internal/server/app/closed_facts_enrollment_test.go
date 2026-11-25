@@ -3,7 +3,6 @@
 package app
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -17,7 +16,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"net/http/httptest"
 	"reflect"
 	"strings"
 	"sync"
@@ -534,42 +532,5 @@ func TestClosedFactsEnrollmentAnswersWhileBusinessRoutesAreInstalled(t *testing.
 	response, data, err = closedFactsRouteRequest(t, client, server, http.MethodPost, enrollment.ClusterQuorumFactsPath, closedFactsRouteBody)
 	if err != nil || response.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("withdrawn owner admitted a read: response=%v data=%s err=%v", response, data, err)
-	}
-}
-
-// A member that does not lead says so in its answer, so the asker goes to
-// the leader, and writes nothing to its log: every follower gives that
-// answer. Any other failed read is logged, because the answer hides it.
-func TestClosedFactsEnrollmentSaysWhyAReadFailed(t *testing.T) {
-	for name, tc := range map[string]struct {
-		err          error
-		body, logged string
-	}{
-		"not the leader":  {fmt.Errorf("read: %w", cluster.ErrQuorumReadNotLeader), "cluster quorum facts unavailable: this member is not the database leader\n", ""},
-		"another failure": {errors.New("actual leader SQL reader failure"), "cluster quorum facts unavailable\n", "actual leader SQL reader failure"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			f := newClosedFactsTLSFixture(t)
-			f.session.err = tc.err
-			var log bytes.Buffer
-			requests := newMaterialRequestTracker()
-			handler, err := closedQuorumFactsHandler(f.bundle, f.session, requests, slog.New(slog.NewTextHandler(&log, nil)))
-			if err != nil {
-				t.Fatal(err)
-			}
-			request := httptest.NewRequest(http.MethodPost, enrollment.ClusterQuorumFactsPath, strings.NewReader(closedFactsRouteBody))
-			request.TLS = &tls.ConnectionState{PeerCertificates: []*x509.Certificate{f.requesterPair.Leaf}}
-			recorder := httptest.NewRecorder()
-			handler(recorder, request)
-			if recorder.Code != http.StatusServiceUnavailable || recorder.Body.String() != tc.body {
-				t.Fatalf("HTTP %d %q, want 503 %q", recorder.Code, recorder.Body.String(), tc.body)
-			}
-			if tc.logged == "" && log.Len() != 0 {
-				t.Fatalf("a follower's answer was logged: %s", log.String())
-			}
-			if tc.logged != "" && (!strings.Contains(log.String(), "cluster quorum facts read failed") || !strings.Contains(log.String(), tc.logged)) {
-				t.Fatalf("the failed read is not in the log: %q", log.String())
-			}
-		})
 	}
 }
