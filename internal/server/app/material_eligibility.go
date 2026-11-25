@@ -379,6 +379,9 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	//     outlived its window one more window, bounds admission, never beyond
 	//     the unconfirmed limit. Otherwise one blip closes every member.
 	//   - a refusal by the database: closes at once, also inside a live window.
+	//     The proof this member runs reports a refusal as "not ready", so it
+	//     arrives as the next kind; only a prove function that returns the
+	//     refusal itself reaches this one.
 	//   - any other answer ("not ready", an error nothing classifies): a read
 	//     cut by a leadership change looks the same, so the earlier result
 	//     keeps its own window, but the answer is latched:

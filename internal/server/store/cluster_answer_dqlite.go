@@ -75,8 +75,6 @@ const (
 	// CauseFile is a file that could not be opened, read or written: a
 	// finding about this member's disk.
 	CauseFile
-
-	answerCauses = iota
 )
 
 // CauseLostConnection is the ways a peer's connection goes away under a
