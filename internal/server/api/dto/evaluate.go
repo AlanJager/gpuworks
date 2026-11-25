@@ -369,7 +369,9 @@ type AcquisitionResult struct {
 // and the target nodes read that copy; FollowsPrimary says the request named
 // no storage and Storage is the one the primary sits on) or "node_download"
 // (each target node without it downloads it into its own storage). Nodes
-// counts the target nodes, ReadyNodes those that read it now.
+// counts the target nodes, ReadyNodes those that read it now. A rank-scoped
+// component has one entry per rank's artifact, counted on that rank's node,
+// and Model names the artifact's subfolder ("repo/rank1").
 type AcquisitionComponent struct {
 	Name           string `json:"name"`
 	Role           string `json:"role"`
