@@ -30,6 +30,10 @@ ee_ui_internal_imports	0	max
 setting_key_literal	0	max
 vendor_normalize_funcs	1	max
 infer_vendor_callers	0	max
+agent_runtime_name_comparisons	7	max
+agent_container_option_literals	1	max
+vendor_name_files_outside_definitions	39	max
+udocker_vendor_inference_funcs	6	max
 store_list_nodes_callers	9	max
 store_list_deployments_callers	6	max
 store_list_instances_callers	1	max
