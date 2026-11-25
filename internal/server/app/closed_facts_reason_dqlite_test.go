@@ -18,9 +18,9 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/enrollment"
 )
 
-// A member that does not lead says so in its answer, so the asker goes to
-// the leader, and writes nothing to its log: every follower gives that
-// answer. Any other failed read is logged, because the answer hides it.
+// A member that does not lead says so in its answer's text, for a person
+// reading the response, and writes nothing to its log: every follower gives
+// that answer. Any other failed read is logged, because the answer hides it.
 func TestClosedFactsEnrollmentSaysWhyAReadFailed(t *testing.T) {
 	for name, tc := range map[string]struct {
 		err          error
