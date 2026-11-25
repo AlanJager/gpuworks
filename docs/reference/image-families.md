@@ -43,7 +43,7 @@ Agent 的周期 `status.node` 消息在 `images[]` 中上报以下字段（仅�
 ## 系统镜像
 
 内置目录 `internal/server/imagecatalog/catalog-seed.json` 由 [`gpuworks-image-manifest`](cli.md#gpuworks-image-manifest)
-从 gpuworks-runner 构建矩阵生成，当前 39 个版本，全部是 `gpuworks/gpuworks-runner:<id>-<revision>`，
+从 gpuworks-runner 构建矩阵生成，当前 48 个版本，全部是 `gpuworks/gpuworks-runner:<id>-<revision>`，
 按引擎 × 框架分 16 个系列：
 
 | 系列 | 厂商 / framework | 引擎 | 示例 image_ref | 架构 |

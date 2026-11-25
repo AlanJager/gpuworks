@@ -174,6 +174,33 @@ items:
       r3 加装 decord2（import 名 decord），ERNIE-4.5-VL 的 HF 动态模块要它；PyPI 的 decord
       只有 x86_64 wheel，所以不用它。r4 再加装 moviepy：同一个动态模块还直接 import 它。
 
+  # Built and published before the matrix recorded them, with a vllm patch set this tree does not
+  # carry, so they are promoted as digest-pinned artifacts and not rebuilt from the recipe above.
+  # amd64 only for r1: 0.33.0 has no arm64 image, and the 0.34.0 arm64 image is not on every registry.
+  - id: cuda13.0-vllm0.33.0
+    revision: r1
+    backend: cuda
+    builder: prebuilt
+    engine: vllm
+    platforms: [linux/amd64]
+    artifact: quay.io/gpuworks/gpuworks-runner@sha256:ff5fbda29c1e87d46ad61373de921fd9356788c68937c5f6ea232a6ed90fa043
+    args: {ENGINE_VERSION: "0.33.0", FRAMEWORK_VERSION: "13.0"}
+    note: >-
+      CUDA 13 的 vllm 0.33.0 档，只有 amd64。base 是 vllm/vllm-openai:v0.33.0，含 decord2、moviepy，
+      mooncake 由 base 预装；不含 vllm-omni。
+
+  - id: cuda13.0-vllm0.34.0
+    revision: r1
+    backend: cuda
+    builder: prebuilt
+    engine: vllm
+    platforms: [linux/amd64]
+    artifact: quay.io/gpuworks/gpuworks-runner@sha256:3373f128fe0c52ef43e2056942636cd6ba40756d873d8fbff1205cc5403fa857
+    args: {ENGINE_VERSION: "0.34.0", FRAMEWORK_VERSION: "13.0"}
+    note: >-
+      CUDA 13 的 vllm 0.34.0 档，只有 amd64。base 是 vllm/vllm-openai:v0.34.0，含 decord2、moviepy，
+      mooncake 由 base 预装；不含 vllm-omni（omni 负载用 cuda13.0-vllm-omni0.34.0）。
+
   - id: cuda13.0-vllm-omni0.30.0
     revision: r4
     backend: cuda
@@ -195,6 +222,18 @@ items:
       （fugashi、unidic-lite，x86_64 另有 WeTextProcessing）；arm64 上没有 pynini 的 cp312 wheel，
       所以 IndexTTS 2.5 的中英文文本规范化只在 x86_64 上可用。r4 以 --no-deps 加装 voxcpm
       （VoxCPM2 用），并打 omni 补丁 003（MOSS-TTS-Realtime 参考音频编码的设备不一致）。
+
+  # Published before the matrix recorded it: the digest-pinned artifact is promoted as is.
+  # build.sh, verify.sh --all and push.sh --tags-from matrix skip prebuilt entries.
+  - id: cuda13.0-vllm-omni0.32.0
+    revision: r2
+    backend: cuda
+    builder: prebuilt
+    engine: vllm
+    artifact: quay.io/gpuworks/gpuworks-runner@sha256:34c6ca5e21337c9a6d296f22481f79927128762ac7224f9adfdb179a60b1c065
+    args: {ENGINE_VERSION: "0.32.0", FRAMEWORK_VERSION: "13.0"}
+    note: >-
+      omni 档，vllm-omni 0.32.0，amd64 与 arm64。用途同 cuda13.0-vllm-omni0.30.0。
 
   - id: cuda13.0-vllm-omni0.34.0
     revision: r1
@@ -243,6 +282,16 @@ items:
     note: >-
       CUDA 13 的 sglang 档，含 diffusion 依赖（从 base 的 sglang 源码树安装，
       装不上即构建失败）。
+
+  - id: cuda13.0-sglang0.5.23
+    revision: r2
+    backend: cuda
+    builder: prebuilt
+    engine: sglang
+    artifact: quay.io/gpuworks/gpuworks-runner@sha256:fbc5b7ccf18c3ccdebb87829b6ff6e3cd71d65509ca171969556f6ff41641277
+    args: {SGLANG_VERSION: "0.5.23", FRAMEWORK_VERSION: "13.0"}
+    note: >-
+      CUDA 13 的 sglang 0.5.23 档，含 diffusion 依赖，amd64 与 arm64。
 
   # cuda12.9 的 vllm 档需要替换 base 里的 torchcodec，原因与做法：
   #   上游 v0.31.0-cu129 的 torch 栈自洽（torch 2.13.0+cu129、torchvision 0.28.0+cu129、
@@ -337,6 +386,24 @@ items:
       （TP2 部署 + chat + dGPU 副本共享一张卡，2026-10-25），引擎参数带显式
       `--attention-backend FLASH_ATTN_V100`；不带该参数时是否自动选对尚未验证。
       V100 之外的卡请用其它 cuda 档。
+
+  - id: cuda12.8-v100-vllm1cat1.5.3
+    revision: r1
+    backend: cuda
+    engine: vllm-v100
+    platforms: [linux/amd64]
+    catalog: false
+    base: nvidia/cuda:12.8.1-devel-ubuntu24.04
+    base_note: 同 cuda12.8-v100-vllm1cat1.5.1。
+    args:
+      ENGINE_VERSION: "1cat1.5.3"
+      FRAMEWORK_VERSION: "12.8"
+      ONECAT_VERSION: "1.5.3+cu128"
+      ONECAT_WHEEL_SHA256: "0558021651c41ab111609d121cef029c09224de4b6e6f8fd362754dfdd84990f"
+    requires: [engine]
+    note: >-
+      V100 / V100S（sm_70）专用 vllm 档，引擎是 1Cat-vLLM 1.5.3。用途与限制同
+      cuda12.8-v100-vllm1cat1.5.1；本档尚无真机记录。
 
   # -----------------------------------------------------------------------
   # NVIDIA：System One 决策模型（目录引擎 callable）
@@ -525,6 +592,50 @@ items:
     requires: [engine, mooncake, overlays]
     note: A3（910C）的 0.30.0rc2 档，其余同 910b 档。
 
+  # Built from source and published before the matrix recorded them; this tree has no recipe for
+  # them, so the amd64 + arm64 pair is promoted as one digest-pinned multi-platform artifact.
+  # The release tags were (re)created with `docker buildx imagetools create` from the two
+  # per-architecture tags already on each registry; their artifact is the digest of that index.
+  - id: cann9.2-910b-vllm0.30.0
+    revision: r1
+    backend: cann
+    builder: prebuilt
+    engine: vllm
+    artifact: quay.io/gpuworks/gpuworks-runner@sha256:7ac8a84f7f8a5f4b0705a1d2eef2a216cf532441e808530390e51e9327caebdf
+    args: {ENGINE_VERSION: "0.30.0"}
+    note: >-
+      910B 的 vllm 0.30.0 档（vllm-ascend 0.30.0 正式版），CANN 9.2，含 NPU 版 mooncake。
+
+  - id: cann9.2-a3-vllm0.30.0
+    revision: r1
+    backend: cann
+    builder: prebuilt
+    engine: vllm
+    artifact: quay.io/gpuworks/gpuworks-runner@sha256:222a7261c1b67c43d7c88703fe8b107832fb642be6a0406a152d4eebe0ada988
+    args: {ENGINE_VERSION: "0.30.0"}
+    note: >-
+      A3（910C）的 vllm 0.30.0 档，其余同 910b 档。
+
+  - id: cann9.2-910b-vllm0.32.0rc1
+    revision: r1
+    backend: cann
+    builder: prebuilt
+    engine: vllm
+    artifact: quay.io/gpuworks/gpuworks-runner@sha256:955886489dcf9d17b462c9f514feca89b121e74b1bdebe4f88de9360bf775783
+    args: {ENGINE_VERSION: "0.32.0rc1"}
+    note: >-
+      910B 的 vllm 0.32.0 档（vllm-ascend 0.32.0rc1），CANN 9.2，含 NPU 版 mooncake。
+
+  - id: cann9.2-a3-vllm0.32.0rc1
+    revision: r1
+    backend: cann
+    builder: prebuilt
+    engine: vllm
+    artifact: quay.io/gpuworks/gpuworks-runner@sha256:0cef7941bcc0b93c254ab03cb57bb6f2976e5b4bc86d5b34ed34d6c458b92bfa
+    args: {ENGINE_VERSION: "0.32.0rc1"}
+    note: >-
+      A3（910C）的 vllm 0.32.0 档，其余同 910b 档。
+
   - id: cann9.2-950-vllm0.30.0rc2
     revision: r1
     backend: cann
@@ -652,6 +763,20 @@ items:
       SGLANG_VERSION: "0.5.18"
     requires: [engine, diffusion, overlays]
     note: A3（910C）的 sglang 档，其余同 910b 档。
+
+  # Built from source and published before the matrix recorded them; this tree has no recipe for
+  # them, so the amd64 + arm64 pair is promoted as one digest-pinned multi-platform artifact.
+  # The release tags were (re)created with `docker buildx imagetools create` from the two
+  # per-architecture tags already on each registry; their artifact is the digest of that index.
+  - id: cann9.1-a3-sglang0.5.23
+    revision: r1
+    backend: cann
+    builder: prebuilt
+    engine: sglang
+    artifact: quay.io/gpuworks/gpuworks-runner@sha256:7c40919aab30011895041c2c1a13b1d6d3daec5be4ef83dff3c575e49f0770e5
+    args: {SGLANG_VERSION: "0.5.23"}
+    note: >-
+      A3（910C）的 sglang 0.5.23 档，CANN 9.1，含 diffusion 依赖。
 
   - id: cann8.5-910b-vllm0.18.0
     revision: r2
