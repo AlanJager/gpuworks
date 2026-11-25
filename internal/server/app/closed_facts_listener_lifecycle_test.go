@@ -5,7 +5,6 @@ package app
 import (
 	"context"
 	"errors"
-	"net"
 	"net/http"
 	"sync"
 	"testing"
@@ -15,6 +14,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/enrollment"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/testenv/testport"
 )
 
 type closedFactsClassifySession struct {
@@ -28,14 +28,7 @@ func (s *closedFactsClassifySession) OpenClassifiedStore(ctx context.Context, _ 
 
 func TestClosedFactsListenerReplacementRetainsTimedOutOwnerThenReusesAddress(t *testing.T) {
 	f := newClosedFactsTLSFixture(t)
-	reserve, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.bundle.info.ListenAddress = reserve.Addr().String()
-	if err := reserve.Close(); err != nil {
-		t.Fatal(err)
-	}
+	f.bundle.info.ListenAddress = testport.Address(t)
 	entered, canceled, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	finish := func() { once.Do(func() { close(release) }) }

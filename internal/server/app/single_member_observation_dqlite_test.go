@@ -8,7 +8,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"io"
-	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -26,6 +25,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/diagnostics"
 	"gpuworks.ai/gpuworks/internal/server/enrollment"
 	"gpuworks.ai/gpuworks/internal/server/store"
+	"gpuworks.ai/gpuworks/internal/testenv/testport"
 )
 
 // A server that opened the cluster's database as a single member answers
@@ -54,14 +54,7 @@ func TestASingleMemberAnswersTheMemberQuestions(t *testing.T) {
 	if err := created.Close(); err != nil {
 		t.Fatal(err)
 	}
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	database := listener.Addr().String()
-	if err := listener.Close(); err != nil {
-		t.Fatal(err)
-	}
+	database := testport.Address(t)
 	if _, err := ActivateDatabaseAddress(t.Context(), cfg, database); err != nil {
 		t.Fatal(err)
 	}
