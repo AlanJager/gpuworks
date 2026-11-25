@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"gpuworks.ai/gpuworks/internal/server/messages"
 )
 
 // TestGatewayErrorTableIsComplete: every code has a status (but the
@@ -194,7 +196,7 @@ func TestGatewayErrorWire(t *testing.T) {
 			t.Errorf("%s names no request", tc.code)
 		}
 		var round struct {
-			Error apiErrorObject `json:"error"`
+			Error messages.GatewayError `json:"error"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &round); err != nil || round.Error.Code != tc.code {
 			t.Errorf("%s does not round-trip: %v %+v", tc.code, err, round)
