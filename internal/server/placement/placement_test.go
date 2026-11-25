@@ -106,10 +106,56 @@ func TestResolverRejectsSingleStepMemoryAmplification(t *testing.T) {
 	}
 }
 
+// A resolver runs once per rank and sees only that node's cards, so a group of
+// two nodes with a card apiece shows every rank a count of one. The instance's
+// node count is what lets a single-GPU contract refuse it.
+func TestResolverReadsTheInstanceNodeCount(t *testing.T) {
+	const source = `
+def resolve(gpu):
+    if gpu.count != 1 or gpu.nnodes != 1:
+        return reject("runs on one GPU of one node")
+    return {"WORLD": gpu.count * gpu.nnodes}
+`
+	if err := Compile(source); err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name       string
+		gpu        GPU
+		wantReject bool
+	}{
+		{name: "one card, node count unstated", gpu: GPU{Count: 1}},
+		{name: "one card on one node", gpu: GPU{Count: 1, NNodes: 1}},
+		{name: "two cards on one node", gpu: GPU{Count: 2, NNodes: 1}, wantReject: true},
+		{name: "one card on each of two nodes", gpu: GPU{Count: 1, NNodes: 2}, wantReject: true},
+	} {
+		result, err := Resolve(context.Background(), source, test.gpu)
+		if err != nil {
+			t.Fatalf("%s: %v", test.name, err)
+		}
+		if (result.Reason != "") != test.wantReject {
+			t.Fatalf("%s: result=%+v", test.name, result)
+		}
+		if !test.wantReject && result.Variables["WORLD"] != int64(1) {
+			t.Fatalf("%s: variables=%+v", test.name, result.Variables)
+		}
+	}
+	world, err := Resolve(context.Background(), `
+def resolve(gpu):
+    return {"WORLD": gpu.count * gpu.nnodes}
+`, GPU{Count: 4, NNodes: 2})
+	if err != nil || world.Variables["WORLD"] != int64(8) {
+		t.Fatalf("world of two four-card nodes = %+v, err=%v", world.Variables, err)
+	}
+}
+
 func TestResolverBoundsInputsAndScalarOutput(t *testing.T) {
 	tooMany := GPU{Count: MaxGPUs + 1}
 	if _, err := Resolve(context.Background(), scalableResolver, tooMany); err == nil {
 		t.Fatal("oversized GPU input was accepted")
+	}
+	if _, err := Resolve(context.Background(), scalableResolver, GPU{Count: 4, NNodes: MaxNodes + 1}); err == nil {
+		t.Fatal("oversized node count was accepted")
 	}
 	tooManyVariables := "def resolve(gpu):\n    return {" + strings.Join(func() []string {
 		values := make([]string, MaxResultVariables+1)

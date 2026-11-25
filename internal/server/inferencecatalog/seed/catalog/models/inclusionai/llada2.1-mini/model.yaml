@@ -37,12 +37,47 @@ specs:
   - --trust-remote-code
   - --attention-backend
   - flashinfer
-  - --disable-cuda-graph
+  # Decode CUDA graph stays on, capped at batch 8; prefill graph capture is
+  # disabled because it does not fit beside the KV pool on 24 GiB cards, which
+  # this profile (cc >= 8.0) also serves (issue #35). Both are memory limits,
+  # not a model incompatibility. Runner cuda13.0-sglang0.5.21-r2 (SGLang
+  # 0.5.21), TP2, --mem-fraction-static 0.88, JIT grouped-top-k router above.
+  #
+  # Prefill graph (default backend: breakable), with
+  # --cuda-graph-backend-prefill left unset:
+  # - 2x RTX 3090, 2026-11-19: about 2.27 GiB per GPU is left after the KV
+  #   pool (1.84 GiB at capture begin). Capture fails on the 17th of 50 token
+  #   buckets (num_tokens=704) inside graph.capture_end() with
+  #   "CUDA error: out of memory"; 2 of 2 launches exited. The
+  #   "num_active_captures_ > 0 INTERNAL ASSERT FAILED" printed after it is
+  #   raised once capture_end() has already failed; the OOM is the cause.
+  # - 2x H20-3e, 2026-11-24: 16.12 GiB per GPU is left after the KV pool. All
+  #   58 buckets capture, keeping 1.24 GiB, and the server answers; 2 of 2
+  #   launches. With --mem-fraction-static 0.98 (2.21 GiB left, 1.41 GiB at
+  #   capture begin) the first bucket (num_tokens=8192) fails with
+  #   torch.OutOfMemoryError; 1 of 1.
+  # Re-check after an SGLang/torch bump on a 24 GiB card: launch once without
+  # --cuda-graph-backend-prefill disabled.
+  #
+  # Decode graph: capped with --cuda-graph-max-bs-decode 8, which captures in
+  # 0.58 GiB. Uncapped, capture covers batch sizes up to 256 and runs out of
+  # memory at bs=248 with 15.35 GiB free at capture begin (2x H20-3e,
+  # 2026-11-24, 1 of 1). Do not re-add --disable-cuda-graph: it resolves the
+  # decode backend to disabled as well, so the two flags below would do
+  # nothing (checked on the same runner). Re-check before raising the cap.
+  - --cuda-graph-backend-prefill
+  - disabled
+  - --cuda-graph-max-bs-decode
+  - '8'
   performance_tradeoffs:
-  - param: --disable-cuda-graph
+  - param: --cuda-graph-backend-prefill
     reason: memory_fit
-    detail_en: "SGLang's CUDA graph capture is oversized for this model on A100; the profile runs without it."
-    detail_zh: "该模型在 A100 上的 SGLang CUDA 图捕获占用过大，此规格不做图捕获。"
+    detail_en: "Prefill graph capture does not fit beside the KV pool on a 24 GiB card: on 2x RTX 3090 (SGLang 0.5.21, TP2, about 2.27 GiB left per GPU) 2 of 2 launches ran out of memory during capture. On 2x H20-3e with 16.12 GiB left per GPU it captures in 1.24 GiB and serves."
+    detail_zh: "prefill 图捕获在 24 GiB 卡上放不进 KV 池之外的余量：2 张 RTX 3090（SGLang 0.5.21，TP2，每卡约剩 2.27 GiB）上 2/2 在捕获时显存不足退出。2 张 H20-3e 每卡剩 16.12 GiB 时可以捕获（占 1.24 GiB）并正常服务。"
+  - param: --cuda-graph-max-bs-decode
+    reason: memory_fit
+    detail_en: "Uncapped decode graph capture covers batch sizes up to 256 and ran out of memory at batch 248 on 2x H20-3e with 15.35 GiB free per GPU (SGLang 0.5.21, TP2). Capped at 8 it captures in 0.58 GiB."
+    detail_zh: "decode 图不设上限时要捕获到批大小 256，在 2 张 H20-3e 上（SGLang 0.5.21，TP2，每卡余量 15.35 GiB）捕获到批大小 248 时显存不足。上限设为 8 时捕获只占 0.58 GiB。"
   api:
     health_endpoint: /health
     operations:

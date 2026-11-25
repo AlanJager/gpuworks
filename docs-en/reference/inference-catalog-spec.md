@@ -423,7 +423,12 @@ placement:
 ```
 
 - You must define `resolve(gpu)`. `gpu` is a struct with `count`, `vendor`, `names`,
-  `memories_gib`, `min_memory_gib`, `indexes`, and `automatic`.
+  `memories_gib`, `min_memory_gib`, `indexes`, `automatic`, and `nnodes`.
+- `gpu` describes the cards **one node** gives the instance. A multi-node instance calls the resolver
+  once per rank, node by node, and each call sees only that node's cards: with two nodes contributing one card
+  each, every rank's `gpu.count` is 1. `gpu.nnodes` is the number of nodes the whole instance spans (1 on a
+  single node). A profile whose constraint covers the whole instance must check it too; a single-GPU profile writes
+  `if gpu.count != 1 or gpu.nnodes != 1: return reject(...)`, because `gpu.count != 1` alone lets a multi-GPU group across nodes through.
 - There are only two predeclared built-ins: `accept(gpu_memory_mib_per_device, variables?, prefer?)` and
   `reject(reason)`. `gpu_memory_mib_per_device` is an **admission requirement** (1..16777216 MiB;
   the upper limit only prevents int64 overflow), not an allocation request.
@@ -435,7 +440,7 @@ placement:
   `accept(..., prefer=gpu.count)` to select 8 GPUs on a node with 8 idle GPUs, while still selecting 4 when only 4 are idle.
   `prefer` affects only automatic GPU count selection: when the user specifies parallelism or GPU indexes, the candidate count is already fixed, and `prefer`
   does not change it. A nonzero `prefer` appears in the scheduling explanation as a `placement_preference` reason.
-  `prefer=gpu.count` is permitted bounded arithmetic (`gpu.count`, `gpu.min_memory_gib`, and literals).
+  `prefer=gpu.count` is permitted bounded arithmetic (`gpu.count`, `gpu.nnodes`, `gpu.min_memory_gib`, and literals).
 - Evaluation is deterministic and performs no I/O: `load`/import is prohibited, and `print` is a no-op. Limits: source
   ≤ 32 KiB, ≤ 100k steps, ≤ 30s wall-clock time (only a fallback; the deterministic limit is the step count), ≤ 64 result variables /
   ≤ 4096 bytes of total string content.
@@ -721,7 +726,7 @@ Some settings let an engine run on a given piece of hardware or a given model at
 | `overlap_schedule_disabled` | — | `--disable-overlap-schedule` | Must be explained |
 | `prefill_batch_small` | `--max-num-batched-tokens` < 2048 | `--chunked-prefill-size` < 2048 | Shown only |
 | `kv_memory_reduced` | `--gpu-memory-utilization` < 0.8 | `--mem-fraction-static` < 0.7 | Shown only |
-| `graph_capture_narrow` | `cudagraph_mode: FULL_DECODE_ONLY`, largest `cudagraph_capture_sizes` entry < 16 | `--cuda-graph-max-bs` < 16 | Shown only |
+| `graph_capture_narrow` | `cudagraph_mode: FULL_DECODE_ONLY`, largest `cudagraph_capture_sizes` entry < 16 | `--cuda-graph-max-bs` or `--cuda-graph-max-bs-decode` < 16, `--cuda-graph-backend-prefill disabled` | Shown only |
 | `kernel_fallback` | `--attention-backend TRITON_ATTN`, environment switches that turn a fast kernel off such as `VLLM_USE_DEEP_GEMM=0` | — | Shown only |
 
 The registry reads `args`, `env`, and the flags in `entrypoint`, `pre_start_argv` and `manual_command` split by shell quoting rules: a quoted JSON value with spaces is one value, and the command inside `sh -c '…'` is read word by word. Each input is read on its own, so a `--compilation-config` written across two inputs is not merged. vLLM's underscore spelling (`--max_num_seqs`) counts as the dashed one, and the reported `param` is the dashed form. `backend: eager` in `--compilation-config` is only the torch.compile backend; it does not stop graph replay and is not `graph_disabled`.
@@ -807,7 +812,7 @@ Warnings do not block import. A successful import response includes the same `wa
 <!-- translation-source-sha256: 83b305081ab8f015fcc842b0f7d0a0d03a0c7e75846702aff54692db07c1894d ### PD Layout and Manual Command -->
 <!-- translation-source-sha256: 976fe75b4bf21fd820f6239ae639396f075b0966d7b988fe601b905a08885f96 ## What the Template Declares and What the Platform Provides -->
 <!-- translation-source-sha256: ca8ad9d228ec55ff4037230581f5a1230b2b5fed81b4a0103dfa73df72cd835d ## entrypoint: The Sole Declaration Point for Entrypoint Overrides -->
-<!-- translation-source-sha256: a755bee59689f833778747841eb293a47a2b0d0dddafec599365a40a05ee5286 ## placement: Starlark Topology Derivation -->
+<!-- translation-source-sha256: 8aa019b6e8ab20f918555f11275840ef6da3032607bd6140c43350c2e156f044 ## placement: Starlark Topology Derivation -->
 <!-- translation-source-sha256: 8730a225b2be22fb1a6ce28a3795c8c6ef8697f0af90adfad1c78236c1eb3dd1 ### Variable Expansion -->
 <!-- translation-source-sha256: 326983de77aaf4bb52b0516a7cb8fe35122d37bffd501bf241bd514297f95ad7 ### How Thresholds Relate to Scheduling Admission -->
 <!-- translation-source-sha256: cb98dec344064c257aaf84b6c93df2d9329bb8760be072aea372759f1f3d666f ### When the Engine Really Uses Less Memory Than Estimated (Offload, Load-Time Quantization) -->
@@ -817,7 +822,7 @@ Warnings do not block import. A successful import response includes the same `wa
 <!-- translation-source-sha256: c43a7f1c915e00849d832b88aa1423056a03dc492634a4d24793ca3c94807e8d ### api.request_stats: Per-Request Statistics in Responses -->
 <!-- translation-source-sha256: f2dcc459ab368caf6601fff2c116fb06cdf6f4c7e4b03395844423906e1a87c6 ## components: Multiple Weight Sets -->
 <!-- translation-source-sha256: 5ffa7b32ad221104b1942267515674a5d244169f2e115e30796d882f6ccf52d0 ## dirs: Managed Writable Directories -->
-<!-- translation-source-sha256: d8159910bf55c76c4d66346dec46c313fadab1bd4cc0c20d7d069416a37908d4 ## performance_tradeoffs: Reasons for Performance-Costing Settings -->
+<!-- translation-source-sha256: 7620f9348a37aef34bcf86161854f38f331c06682ad4a107b572bec32258b27f ## performance_tradeoffs: Reasons for Performance-Costing Settings -->
 <!-- translation-source-sha256: 2ebe9bf5d43fdc1e745261f42679fd5503d1e94c1c37aaa7ffffdc4a46edbf40 ## Pre-Import Checks and Warnings -->
 <!-- translation-source-sha256: 439b1bcae33f36e507bd1217f4552947335ee6d22d0072b928a34e3ba1fbd9ac ## Validation Entry Points and Tools -->
 <!-- translation-localized-code-block: a580200df2b28bc011bb736a64288086932955375e5ae8897762ee97bd667e26 8e0792250b6c0eb3ec0dad5bfca28308dc0b1afeb27e9c33bb24ddb21e20ba07 -->

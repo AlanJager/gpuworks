@@ -210,7 +210,7 @@ specs:
     language: starlark
     resolver: |
       def resolve(gpu):
-          if gpu.count != 1:
+          if gpu.count != 1 or gpu.nnodes != 1:
               return reject("该档位需要正好 1 张 GPU")
           return accept(gpu_memory_mib_per_device = 65536, variables = {"GPU_COUNT": gpu.count})
   # The recipe measured 77,728 MiB on one B300 with only the text encoder streamed; this
@@ -732,7 +732,7 @@ specs:
     language: starlark
     resolver: |
       def resolve(gpu):
-          if gpu.count != 1:
+          if gpu.count != 1 or gpu.nnodes != 1:
               return reject("该档位需要正好 1 张 GPU")
           if gpu.min_memory_gib < 30:
               return reject("单卡显存至少需要 32 GiB")
@@ -889,7 +889,7 @@ specs:
     language: starlark
     resolver: |
       def resolve(gpu):
-          if gpu.count != 1:
+          if gpu.count != 1 or gpu.nnodes != 1:
               return reject("该档位需要正好 1 张 GPU")
           if gpu.min_memory_gib < 30:
               return reject("单卡显存至少需要 32 GiB")
