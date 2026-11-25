@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -25,8 +26,10 @@ import (
 // missing; it never fails the collection.
 type Cluster interface {
 	// Members are the cluster's members as this one knows them, itself
-	// included. Empty means this server is not a cluster member.
-	Members(ctx context.Context) []ClusterMember
+	// included: at least one, or an error when the membership could not be
+	// read. The collection then says so, and holds this member's files
+	// alone. A single server has no Cluster at all.
+	Members(ctx context.Context) ([]ClusterMember, error)
 	// Self is where this member's own part is read from.
 	Self() MemberSource
 	// OpenMemberPart asks another member for its part of the window.
@@ -155,14 +158,33 @@ func missingReason(err error) string {
 }
 
 // collectMembers stages the cluster members' parts under members/. A member
-// whose part is missing leaves a failed item members/<name>: a collection
-// with none of those holds every member's part.
+// whose part is missing leaves a failed item members/<name>, and a
+// membership that could not be read a failed item members: a collection
+// with neither holds every member's part.
 func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add func(BundleItem, *stagedEntry)) {
 	if m.cluster == nil {
 		return
 	}
-	members := m.cluster.Members(ctx)
-	if len(members) == 0 {
+	members, err := m.cluster.Members(ctx)
+	if err == nil && len(members) == 0 {
+		err = errors.New("the cluster lists no member")
+	}
+	if err != nil {
+		// Like a member that does not answer, this does not fail the
+		// collection; without the item it would read as a single server's.
+		add(failedItem("members", messages.CheckDiagnosticsItemReadFailed, err, 0), nil)
+		m.log.Warn("diagnostics collection could not read the cluster's members", "bundle", b.ID, "err", err)
+		// This member's own role records need its log alone. With no
+		// membership to name its directory by, they go beside that log.
+		dir := filepath.Join(work, "server")
+		files, failed, err := stageMemberPart(ctx, dir, m.cluster.Self(), b.From, b.To, m.now())
+		if err != nil {
+			add(failedItem(path.Join("server", failed), messages.CheckDiagnosticsItemReadFailed, err, 0), nil)
+		}
+		cut := memberCuts(dir)
+		for _, f := range files {
+			add(collectedItem("server/"+f.name, f.bytes, f.truncated || cut[f.name]), &stagedEntry{name: "server/" + f.name, path: f.path})
+		}
 		return
 	}
 	var bundleBudget atomic.Int64
@@ -186,7 +208,7 @@ func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add
 			var files []memberFile
 			var err error
 			if member.Self {
-				files, err = stageMemberPart(ctx, dir, m.cluster.Self(), b.From, b.To, m.now())
+				files, _, err = stageMemberPart(ctx, dir, m.cluster.Self(), b.From, b.To, m.now())
 				if err != nil {
 					entry.Missing = "failed"
 				}
@@ -195,16 +217,7 @@ func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add
 			}
 			// What the member itself cut (its member.json says) counts like
 			// what was cut on this side.
-			cut := map[string]bool{}
-			if facts, ferr := readMemberFacts(dir); ferr == nil {
-				for _, name := range facts.Truncated {
-					// Only what a part can cut: another member's bytes do
-					// not name the items of this collection.
-					if memberCutName(name) {
-						cut[name] = true
-					}
-				}
-			}
+			cut := memberCuts(dir)
 			for _, f := range files {
 				truncated := f.truncated || cut[f.name]
 				delete(cut, f.name)
@@ -296,4 +309,19 @@ func memberCutName(name string) bool {
 		return true
 	}
 	return false
+}
+
+// memberCuts are the names the member.json in dir lists as cut, of those a
+// part can cut: another member's bytes do not name the items of this
+// collection.
+func memberCuts(dir string) map[string]bool {
+	cut := map[string]bool{}
+	if facts, err := readMemberFacts(dir); err == nil {
+		for _, name := range facts.Truncated {
+			if memberCutName(name) {
+				cut[name] = true
+			}
+		}
+	}
+	return cut
 }

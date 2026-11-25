@@ -3,7 +3,6 @@
 package app
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -27,21 +26,10 @@ import (
 // local is this member's own configuration: where its database and log are.
 func newClosedFactsEnrollmentServer(bundle *enrollmentBundle, session joinedRaftSession, local Config, log *slog.Logger) (*enrollmentServer, error) {
 	requests := newMaterialRequestTracker()
-	handler, err := closedQuorumFactsHandler(bundle, session, requests)
-	if err != nil {
-		return nil, err
-	}
-	discovery, err := closedQuorumDiscoveryHandler(bundle, session, requests)
-	if err != nil {
-		return nil, err
-	}
 	router := chi.NewRouter()
-	router.Post(enrollment.ClusterQuorumFactsPath, handler)
-	router.Post(enrollment.ClusterQuorumDiscoveryPath, discovery)
-	if upgrade, err := clusterUpgradeHandler(bundle, session, requests, nil); err == nil {
-		router.Post(enrollment.ClusterUpgradePath, upgrade)
+	if err := registerMemberObservation(router, bundle, session, requests, nil, local, log); err != nil {
+		return nil, err
 	}
-	registerClusterDiagnostics(router, bundle, requests, local, log)
 	registerClosedMaterialUnavailable(router, bundle, session, requests)
 	config := bundle.tls.Clone()
 	config.ClientAuth = tls.RequireAndVerifyClientCert
@@ -59,9 +47,7 @@ func closedQuorumFactsHandler(bundle *enrollmentBundle, session joinedRaftSessio
 	if requests == nil || bundle == nil || bundle.trust == nil || bundle.tls == nil || len(bundle.tls.Certificates) != 1 {
 		return nil, errors.New("quorum facts require an authenticated enrollment identity")
 	}
-	reader, ok := session.(interface {
-		ReadLocalQuorumFactsForCluster(context.Context, store.ClusterIdentity, string) (bool, store.MaintenancePhaseState, []store.ClusterAdmission, cluster.QuorumProof, error)
-	})
+	reader, ok := session.(quorumFactsReader)
 	if !ok {
 		return nil, errors.New("native session does not support cluster quorum facts")
 	}

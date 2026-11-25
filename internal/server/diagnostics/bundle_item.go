@@ -11,21 +11,28 @@ import (
 // Bundle item ids: which part of a collection an item is. They follow from
 // the item's path, so the manifest does not store them.
 const (
-	BundleItemServerDisk    = "server_disk"
-	BundleItemServerHost    = "server_host_identity"
-	BundleItemServerLog     = "server_log"
-	BundleItemServerStall   = "server_stall_report"
-	BundleItemDebugFile     = "debug_file"
-	BundleItemNode          = "node"
-	BundleItemNodeAgentLog  = "node_agent_log"
-	BundleItemNodeDoctor    = "node_doctor"
-	BundleItemNodeDebugFile = "node_debug_file"
-	BundleItemInstanceLog   = "instance_log"
-	BundleItemRecords       = "records"
-	BundleItemMember        = "member"
-	BundleItemMemberIndex   = "member_index"
-	BundleItemMemberFile    = "member_file"
-	BundleItemRecord        = "record"
+	BundleItemServerDisk  = "server_disk"
+	BundleItemServerHost  = "server_host_identity"
+	BundleItemServerLog   = "server_log"
+	BundleItemServerStall = "server_stall_report"
+	// A cluster member's own files beside its log, when its membership
+	// could not be read (otherwise they are under members/<name>/).
+	BundleItemServerMember        = "server_member"
+	BundleItemServerRoleEvents    = "server_role_events"
+	BundleItemServerLeaderChanges = "server_leader_changes"
+	BundleItemServerClusterStatus = "server_cluster_status"
+	BundleItemDebugFile           = "debug_file"
+	BundleItemNode                = "node"
+	BundleItemNodeAgentLog        = "node_agent_log"
+	BundleItemNodeDoctor          = "node_doctor"
+	BundleItemNodeDebugFile       = "node_debug_file"
+	BundleItemInstanceLog         = "instance_log"
+	BundleItemRecords             = "records"
+	BundleItemMembers             = "members"
+	BundleItemMember              = "member"
+	BundleItemMemberIndex         = "member_index"
+	BundleItemMemberFile          = "member_file"
+	BundleItemRecord              = "record"
 )
 
 // ID is the lower_snake id of the part Path names.
@@ -40,6 +47,14 @@ func (it BundleItem) ID() string {
 		return BundleItemServerLog
 	case parts[0] == "server" && len(parts) == 3 && parts[1] == "stalls":
 		return BundleItemServerStall
+	case it.Path == "server/"+MemberFactsFile:
+		return BundleItemServerMember
+	case it.Path == "server/"+MemberRoleEventsFile:
+		return BundleItemServerRoleEvents
+	case it.Path == "server/"+MemberLeaderChangesFile:
+		return BundleItemServerLeaderChanges
+	case it.Path == "server/"+MemberStatusFile:
+		return BundleItemServerClusterStatus
 	case parts[0] == "debug":
 		return BundleItemDebugFile
 	case parts[0] == "nodes" && len(parts) == 2:
@@ -52,6 +67,8 @@ func (it BundleItem) ID() string {
 		return BundleItemNodeDebugFile
 	case parts[0] == "instances":
 		return BundleItemInstanceLog
+	case it.Path == "members":
+		return BundleItemMembers
 	case it.Path == "members/index.json":
 		return BundleItemMemberIndex
 	case parts[0] == "members" && len(parts) == 2:

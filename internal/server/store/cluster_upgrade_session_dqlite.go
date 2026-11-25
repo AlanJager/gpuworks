@@ -68,19 +68,8 @@ func (s *LegacyJoinedRaftSession) ClusterUpgrade(ctx context.Context, expected C
 	if err != nil {
 		return status, false, false, err
 	}
-	actual, err := st.ClusterIdentity(ctx)
-	if err != nil {
+	if err := admitClusterUpgradeCaller(ctx, st, expected, requesterKey); err != nil {
 		return status, leader, false, err
-	}
-	if actual.ClusterID != expected.ClusterID || actual.CAFingerprint != expected.CAFingerprint || actual.Protocol != expected.Protocol {
-		return status, leader, false, ErrClusterIdentityConflict
-	}
-	var admitted int
-	if err := st.db.WithContext(ctx).Raw(`SELECT count(*) FROM cluster_admissions WHERE key_fingerprint = ? AND revoked_at IS NULL`, requesterKey).Row().Scan(&admitted); err != nil {
-		return status, leader, false, err
-	}
-	if admitted != 1 {
-		return status, leader, false, ErrClusterAdmissionRejected
 	}
 	steps := s.clusterUpgradeSteps(st)
 	if action == "status" {
@@ -121,6 +110,26 @@ func (s *LegacyJoinedRaftSession) ClusterUpgrade(ctx context.Context, expected C
 		err = errors.New("unknown cluster upgrade step")
 	}
 	return status, leader, migrating, err
+}
+
+// admitClusterUpgradeCaller checks who asks for an upgrade step: the request
+// names this database's cluster, and the key is one the cluster admits now.
+func admitClusterUpgradeCaller(ctx context.Context, st *Store, expected ClusterIdentity, requesterKey string) error {
+	actual, err := st.ClusterIdentity(ctx)
+	if err != nil {
+		return err
+	}
+	if actual.ClusterID != expected.ClusterID || actual.CAFingerprint != expected.CAFingerprint || actual.Protocol != expected.Protocol {
+		return ErrClusterIdentityConflict
+	}
+	var admitted int
+	if err := st.db.WithContext(ctx).Raw(`SELECT count(*) FROM cluster_admissions WHERE key_fingerprint = ? AND revoked_at IS NULL`, requesterKey).Row().Scan(&admitted); err != nil {
+		return err
+	}
+	if admitted != 1 {
+		return ErrClusterAdmissionRejected
+	}
+	return nil
 }
 
 // runClusterMigration starts the migration unless one is running, and waits a

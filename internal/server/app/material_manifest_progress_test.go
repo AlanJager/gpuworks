@@ -19,9 +19,25 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/cluster/identity"
 )
 
+// materialTestIdleWindow is the idle window the fixture gives the client in
+// place of production's 15s, short enough that a test can cross it or be cut
+// by it within a second. It suits a handler whose pace the test sets itself
+// (a timer, a blocked channel). A handler that does real filesystem work
+// between two progress frames must not be held to it: one directory sync on
+// a busy disk takes longer, and the client then gives up for a reason the
+// test is not about.
+const materialTestIdleWindow = 200 * time.Millisecond
+
 // This fixture uses actual member certificates and the production pinned TLS
 // client. Only its timeout window is shortened; production keeps the 15s idle.
 func materialManifestProgressPeer(t *testing.T, handler http.HandlerFunc, serverWriteTimeout ...time.Duration) (*http.Client, string) {
+	t.Helper()
+	return materialManifestProgressPeerIdle(t, materialTestIdleWindow, handler, serverWriteTimeout...)
+}
+
+// materialManifestProgressPeerIdle is the fixture with the client's idle
+// window chosen by the caller.
+func materialManifestProgressPeerIdle(t *testing.T, idle time.Duration, handler http.HandlerFunc, serverWriteTimeout ...time.Duration) (*http.Client, string) {
 	t.Helper()
 	now := time.Now().UTC()
 	clusterID := strings.Repeat("b", 32)
@@ -85,12 +101,12 @@ func materialManifestProgressPeer(t *testing.T, handler http.HandlerFunc, server
 		t.Fatal(err)
 	}
 	transport := client.Transport.(*http.Transport)
-	transport.ResponseHeaderTimeout = 200 * time.Millisecond
+	transport.ResponseHeaderTimeout = idle
 	dial := transport.DialContext
 	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
 		conn, err := dial(ctx, network, address)
 		if err == nil {
-			conn.(*materialProgressConn).idle = 200 * time.Millisecond
+			conn.(*materialProgressConn).idle = idle
 		}
 		return conn, err
 	}
@@ -168,10 +184,10 @@ func TestMaterialManifestCompletedProgressOutlivesHeaderWindow(t *testing.T) {
 	if err := materializeRemoteMaterialManifest(ctx, client, origin, digest, 1, 2); err != nil {
 		t.Fatalf("completed stages did not keep the manifest request alive: %v (progress=%d)", err, progress.Load())
 	}
-	if progress.Load() != 6 || time.Since(started) <= 200*time.Millisecond {
+	if progress.Load() != 6 || time.Since(started) <= materialTestIdleWindow {
 		t.Fatal("request did not cross the absolute header window with real progress")
 	}
-	if client.Transport.(*http.Transport).ResponseHeaderTimeout != 200*time.Millisecond {
+	if client.Transport.(*http.Transport).ResponseHeaderTimeout != materialTestIdleWindow {
 		t.Fatal("manifest call changed the shared transport timeout")
 	}
 }

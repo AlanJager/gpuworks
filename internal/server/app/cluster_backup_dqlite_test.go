@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/bus"
+	"gpuworks.ai/gpuworks/internal/server/enrollment"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -200,5 +201,20 @@ func TestClusterBackupAndRestoreOfARunningMember(t *testing.T) {
 	identity, err := reopened.ClusterIdentity(ctx)
 	if err != nil || identity.ClusterID != bundle.info.ClusterID {
 		t.Fatalf("restored cluster identity = %+v, %v", identity, err)
+	}
+	// A restored member starts as a single member: its open store answers
+	// the upgrade status, and a step that changes the cluster is refused
+	// with the code and a reason that says what to do in either case.
+	observation, ok := reopened.SingleMemberObservation(nil)
+	if !ok {
+		t.Fatal("the restored member's open store does not answer the member questions")
+	}
+	if status, leader, _, err := observation.ClusterUpgrade(ctx, identity, memberKey, enrollment.ClusterUpgradeStatus); err != nil || !leader || status.Known == 0 || status.Applied != status.Known {
+		t.Fatalf("restored member's upgrade status = %+v, leader %v, %v", status, leader, err)
+	}
+	_, _, _, err = observation.ClusterUpgrade(ctx, identity, memberKey, enrollment.ClusterUpgradeBegin)
+	if !errors.Is(err, store.ErrClusterUpgradeRefused) || store.ClusterUpgradeRefusalCode(err) != store.ClusterUpgradeRefusedSingleMember ||
+		!strings.Contains(err.Error(), "restart it once") || !strings.Contains(err.Error(), "a cluster of one member applies its migrations when its new program starts and needs no upgrade step") {
+		t.Fatalf("a step on the restored member: %v; want the single-member refusal", err)
 	}
 }

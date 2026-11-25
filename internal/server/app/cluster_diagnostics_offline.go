@@ -1,6 +1,30 @@
 package app
 
-import "gpuworks.ai/gpuworks/internal/server/diagnostics"
+import (
+	"fmt"
+
+	"gpuworks.ai/gpuworks/internal/server/diagnostics"
+	"gpuworks.ai/gpuworks/internal/server/selfinstall"
+)
+
+// unclassifiedDirectory words why a data directory's collection cannot say
+// whether it is a cluster member's.
+func unclassifiedDirectory(err error) error {
+	return fmt.Errorf("whether this installation is a control-plane cluster member could not be read: %w", err)
+}
+
+// unclassifiedCluster is the cluster of a data directory whose cluster
+// markers cannot be read, and nil for every other: the collection of a
+// single server made without the server (gpuworks support-bundle) carries
+// the failed item for the first, and is otherwise left as it is.
+func unclassifiedCluster(cfg Config) diagnostics.Cluster {
+	// The directory is looked at once: a second look could find it readable
+	// and a member's, and a single server's collection would ask members.
+	if _, err := selfinstall.ClusterMember(cfg.DataDir); err != nil {
+		return unclassifiedMember(cfg, err)
+	}
+	return nil
+}
 
 // ClusterMemberDiagnosticsRequest is a collection made on a control-plane
 // cluster member without its server (gpuworks support-bundle): the member's

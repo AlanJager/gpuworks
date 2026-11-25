@@ -33,6 +33,30 @@ func (s *LegacyJoinedRaftSession) ReadLocalQuorumFacts(ctx context.Context, requ
 	if db == nil || db.ID != id || db.Address != address || id == 0 {
 		return fail(errors.New("native session is unavailable"))
 	}
+	legacy, phase, admissions, proof, err := readLocalQuorumFacts(ctx, db, address, raftDir, requesterKey)
+	if err != nil {
+		return fail(err)
+	}
+	if !s.mu.TryLock() {
+		return fail(errors.Join(ctx.Err(), errors.New("native session is classifying or closing")))
+	}
+	available := s.db == db
+	s.mu.Unlock()
+	if !available {
+		return fail(errors.New("native session retired during facts read"))
+	}
+	if err := ctx.Err(); err != nil {
+		return fail(err)
+	}
+	return legacy, phase, admissions, proof, nil
+}
+
+// readLocalQuorumFacts is the observation itself, over one database handle:
+// the member's own qualification and the cluster's facts in one local read
+// snapshot, bracketed by the quorum proof. It is what an established
+// member's session reads and what a member running as a single member
+// reads through its open store.
+func readLocalQuorumFacts(ctx context.Context, db *cluster.Database, address, raftDir, requesterKey string) (bool, MaintenancePhaseState, []ClusterAdmission, cluster.QuorumProof, error) {
 	clusterID, pin := db.TransportIdentity()
 	expected := ClusterIdentity{ClusterID: clusterID, CAFingerprint: pin, Protocol: ClusterProtocolVersion}
 	providerKey := db.TransportMemberKey()
@@ -52,19 +76,16 @@ func (s *LegacyJoinedRaftSession) ReadLocalQuorumFacts(ctx context.Context, requ
 		legacy, phase, admissions, err = readClosedClusterFactsDB(ctx, gormTx, expected, providerKey, requesterKey, first)
 		return err
 	})
-	if err != nil {
-		return fail(err)
+	return legacy, phase, admissions, proof, err
+}
+
+// observedClusterIdentity checks that an observation request names the
+// cluster this database belongs to, in this protocol.
+func observedClusterIdentity(db *cluster.Database, expected ClusterIdentity) error {
+	clusterID, pin := db.TransportIdentity()
+	if !validClusterDigest(expected.ClusterID, 16) || !validClusterDigest(expected.CAFingerprint, 32) || expected.Protocol != ClusterProtocolVersion ||
+		expected.ClusterID != clusterID || expected.CAFingerprint != pin {
+		return ErrClusterIdentityConflict
 	}
-	if !s.mu.TryLock() {
-		return fail(errors.Join(ctx.Err(), errors.New("native session is classifying or closing")))
-	}
-	available := s.db == db
-	s.mu.Unlock()
-	if !available {
-		return fail(errors.New("native session retired during facts read"))
-	}
-	if err := ctx.Err(); err != nil {
-		return fail(err)
-	}
-	return legacy, phase, admissions, proof, nil
+	return nil
 }
