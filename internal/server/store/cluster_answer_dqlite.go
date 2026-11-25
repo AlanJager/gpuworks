@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"math/bits"
 	"net"
+	"net/url"
 	"os"
 	"syscall"
 
@@ -75,6 +76,9 @@ const (
 	// CauseFile is a file that could not be opened, read or written: a
 	// finding about this member's disk.
 	CauseFile
+	// CauseFailedRequest is an HTTP request that itself failed, as opposed
+	// to a response that was read.
+	CauseFailedRequest
 )
 
 // CauseLostConnection is the ways a peer's connection goes away under a
@@ -143,6 +147,9 @@ func carriesOne(err error, cause AnswerCause) bool {
 	case CauseFile:
 		var file *fs.PathError
 		return errors.As(err, &file)
+	case CauseFailedRequest:
+		var request *url.Error
+		return errors.As(err, &request)
 	}
 	return false
 }
@@ -225,7 +232,10 @@ func EveryBranch(err error, holds func(error) bool) (held, joined bool) {
 	return len(branches) > 0, true
 }
 
-// JoinRule is how a policy reads an error with several causes.
+// JoinRule is how a policy reads an error with several causes. The four
+// rules are the four readings the callers had; only EveryBranchAlone lets
+// no cause excuse another's verdict, and the others are to be folded into it
+// one policy at a time, each with the table's diff as its evidence.
 type JoinRule uint8
 
 const (
@@ -254,9 +264,23 @@ type AnswerPolicy struct {
 	// UnlessFile is the part of NoAnswer that does not count when the error
 	// also carries CauseFile: a file's error number can read as a timeout.
 	UnlessFile AnswerCause
+	// Requires is what the error must carry as well before NoAnswer and
+	// NoAnswerLeaf count at all.
+	Requires AnswerCause
 	// Verdict wins over every accepted cause.
 	Verdict AnswerCause
 	Joined  JoinRule
+	// also recognises a cause only the caller's package knows; see Also.
+	also func(error) bool
+}
+
+// Also returns the policy that takes for no answer, besides its own causes,
+// an error recognises accepts: a cause the store cannot name. It is asked
+// wherever the policy's own causes are, under the same join rule, and is not
+// subject to Requires; a verdict still wins.
+func (p AnswerPolicy) Also(recognises func(error) bool) AnswerPolicy {
+	p.also = recognises
+	return p
 }
 
 // Unanswered reports whether err is no answer under the policy. It is false
@@ -276,7 +300,7 @@ func (p AnswerPolicy) Unanswered(err error) bool {
 			held, _ := EveryBranch(err, p.Unanswered)
 			return held
 		}
-		if p.accepted(err) || leafCause(err)&p.NoAnswerLeaf != 0 {
+		if p.accepted(err) {
 			return true
 		}
 		held, _ := EveryBranch(err, p.Unanswered)
@@ -289,13 +313,21 @@ func (p AnswerPolicy) Unanswered(err error) bool {
 	if p.Verdict != 0 && carries(err, p.Verdict) != 0 {
 		return false
 	}
-	return p.accepted(err) || leafCause(err)&p.NoAnswerLeaf != 0
+	return p.accepted(err)
 }
 
+// accepted reports whether err, read as one error, carries a cause the
+// policy takes for no answer.
 func (p AnswerPolicy) accepted(err error) bool {
+	if p.also != nil && p.also(err) {
+		return true
+	}
+	if p.Requires != 0 && carries(err, p.Requires) != p.Requires {
+		return false
+	}
 	accept := p.NoAnswer
 	if p.UnlessFile != 0 && carries(err, CauseFile) != 0 {
 		accept &^= p.UnlessFile
 	}
-	return accept != 0 && carries(err, accept) != 0
+	return (accept != 0 && carries(err, accept) != 0) || leafCause(err)&p.NoAnswerLeaf != 0
 }

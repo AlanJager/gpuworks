@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 	"syscall"
@@ -99,7 +100,19 @@ func answerLeaves() []answerCase {
 		{"file-disk-full", &fs.PathError{Op: "write", Path: "policy", Err: syscall.ENOSPC}},
 		{"file-reset", &fs.PathError{Op: "read", Path: "policy", Err: syscall.ECONNRESET}},
 		{"unclassified", errors.New("something else")},
+		{"request(net-reset)", request(op("read", syscall.ECONNRESET))},
+		{"request(net-timeout)", request(timeoutError{})},
+		{"request(eof)", request(io.EOF)},
+		{"request(deadline)", request(context.DeadlineExceeded)},
+		{"request(net-broken-pipe)", request(op("write", syscall.EPIPE))},
+		{"request(admission-rejected)", request(ErrClusterAdmissionRejected)},
+		{"request(unclassified)", request(errors.New("certificate is not the member's"))},
 	}
+}
+
+// request is err as the failure of an HTTP request to another member.
+func request(err error) error {
+	return &url.Error{Op: "Post", URL: "https://member/material", Err: err}
 }
 
 // answerSingles is each leaf bare, wrapped, wrapped twice, as the only branch
@@ -152,7 +165,7 @@ func answerRow(err error) string {
 }
 
 // Every sentinel under every policy, bare, wrapped and joined with every
-// other one. The table is a file because it has some four thousand rows; a
+// other one. The table is a file because it has some six thousand rows; a
 // change to a policy or to the classifier shows as a diff of it.
 func TestAnswerPolicyTable(t *testing.T) {
 	var table strings.Builder

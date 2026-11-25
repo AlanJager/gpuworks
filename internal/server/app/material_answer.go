@@ -4,36 +4,31 @@ package app
 
 import (
 	"errors"
-	"net/url"
 
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // The two questions whose "no answer" includes causes only this package
-// knows. Everything else is the store's classifier and its policies.
+// knows: the store's policy, and the cause added to it.
 
-// proofClusterLost reports a proof that lost its context, its database
+// proofClusterLostPolicy: the proof lost its context, its database
 // connection, the peer it was reading from, or the majority it needs.
-func proofClusterLost(err error) bool {
-	return errors.Is(err, errCandidateMaterialNoMajority) || errors.Is(err, errRemoteMaterialBatchUnavailable) ||
-		store.ProofClusterLost.Unanswered(err)
-}
+var proofClusterLostPolicy = store.ProofClusterLost.Also(func(err error) bool {
+	return errors.Is(err, errCandidateMaterialNoMajority) || errors.Is(err, errRemoteMaterialBatchUnavailable)
+})
 
-// peerUnreachable reports a peer that contributed no material copy because
-// it could not be reached. An authenticated response with missing, changed
-// or misidentified bytes is a proof failure, never an unreachable peer.
-func peerUnreachable(err error) bool {
-	// One unreachable cause must not excuse another branch's verdict.
-	if held, joined := store.EveryBranch(err, peerUnreachable); joined {
-		return held
-	}
+// peerUnreachablePolicy: a peer contributed no material copy because it
+// could not be reached, by the request's own failure or by what its answer
+// said: a receiver whose database port timed out, or one that refused
+// before it inspected anything. An authenticated response with missing,
+// changed or misidentified bytes is a proof failure, never an unreachable
+// peer.
+var peerUnreachablePolicy = store.PeerUnreachable.Also(func(err error) bool {
 	var partitioned *memberDatabasePartitioned
 	var refusal *materialReceiverStatus
-	if errors.As(err, &partitioned) || (errors.As(err, &refusal) && refusal.unauthorized) {
-		return true
-	}
-	// Only a request that itself failed: a connection that closes before or
-	// inside the response delivered no answer.
-	var request *url.Error
-	return errors.As(err, &request) && store.PeerUnreachable.Unanswered(err)
-}
+	return errors.As(err, &partitioned) || (errors.As(err, &refusal) && refusal.unauthorized)
+})
+
+func proofClusterLost(err error) bool { return proofClusterLostPolicy.Unanswered(err) }
+
+func peerUnreachable(err error) bool { return peerUnreachablePolicy.Unanswered(err) }

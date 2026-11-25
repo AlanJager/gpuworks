@@ -29,7 +29,8 @@ var (
 	// in time, or a connection lost under the question; of an error that is
 	// itself a join, every branch is. A join under a wrapper is read less
 	// strictly: a missing leader anywhere in it is enough, whatever it is
-	// joined to. No proof stage returns such an error.
+	// joined to. No proof stage returns such an error; the reading is kept
+	// as it was and is the first to tighten (see JoinRule).
 	ProofUnanswered = AnswerPolicy{
 		NoAnswer:     CauseNoLeader,
 		NoAnswerLeaf: CauseDeadline | CauseObservationTimeout | CauseBadConn | CauseEOF | CauseUnexpectedEOF,
@@ -39,7 +40,8 @@ var (
 	// ProofReadUnanswered: a database read the proof could not start. A
 	// failure response of the database stays a verdict: a refusal raised
 	// inside a statement arrives the same way. A join is not split: one of
-	// these causes anywhere in it is enough.
+	// these causes anywhere in it is enough, also next to a refusal. Kept
+	// as it was; to tighten with ProofUnanswered.
 	ProofReadUnanswered = AnswerPolicy{NoAnswer: CauseNoLeader | CauseObservationTimeout}
 
 	// ProofClusterLost: the proof lost its context, its database connection
@@ -73,17 +75,20 @@ var (
 	// the member's material. The caller's cancellation is not undecided. An
 	// error that is itself a join is never undecided here; the caller asks
 	// about each branch. A join under a wrapper is read less strictly: one
-	// of these causes anywhere in it is enough.
+	// of these causes anywhere in it is enough. Kept as it was; to tighten
+	// with ProofUnanswered.
 	ReplicationUndecided = AnswerPolicy{
 		NoAnswer:     CauseNoLeader | CauseObservationTimeout | CauseBadConn | CauseNoMajority,
 		NoAnswerLeaf: CauseDeadline,
 		Joined:       NotJoined,
 	}
 
-	// PeerUnreachable: a request to another member that delivered no answer.
-	// A failed certificate or identity check is not among these.
+	// PeerUnreachable: a request to another member that itself failed and
+	// delivered no answer. A failed certificate or identity check is not
+	// among these, and neither is the same network error outside a request.
 	PeerUnreachable = AnswerPolicy{
 		NoAnswer: CauseNetTimeout | CauseEOF | CauseUnexpectedEOF | CausePeerUnreachable | CauseDeadline,
+		Requires: CauseFailedRequest,
 		Joined:   EveryBranchAlone,
 	}
 )

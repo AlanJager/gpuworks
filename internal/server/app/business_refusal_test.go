@@ -179,18 +179,17 @@ func TestGateAndMemberHandlerRefusalsNameTheirReason(t *testing.T) {
 // the gate and the proof give in their own words has its code there, and a
 // reason nobody listed is answered as "other", never passed through.
 func TestRefusalHeaderCarriesOnlyListedCodes(t *testing.T) {
-	seen, words := map[string]bool{}, 0
-	for code, word := range businessRefusalCodes {
-		if code == "" || strings.ContainsAny(code, " :/.") {
-			t.Fatalf("code %q is not a plain word", code)
-		}
-		if _, alsoCode := businessRefusalCodes[word]; word != "" && alsoCode {
-			t.Fatalf("the gate's word %q for %q is itself a code", word, code)
-		}
-		if word != "" {
-			words++
+	seen := map[string]bool{}
+	for _, code := range businessRefusalCodes {
+		if seen[code] || code == "" || strings.ContainsAny(code, " :/.") {
+			t.Fatalf("code %q is repeated or not a plain word", code)
 		}
 		seen[code] = true
+	}
+	for word, code := range gateWordCodes {
+		if seen[word] || !seen[code] {
+			t.Fatalf("the gate's word %q is itself a code, or its code %q is not listed", word, code)
+		}
 	}
 	want := map[string]string{
 		"no_business_generation": "no_business_generation", "generation_changed": "generation_changed",
@@ -200,8 +199,10 @@ func TestRefusalHeaderCarriesOnlyListedCodes(t *testing.T) {
 		"renewal_unavailable": "renewal_unavailable", "request_canceled": "request_canceled", "request_deadline": "request_deadline",
 		"10.0.0.7:9002 refused": "other", "": "other",
 	}
-	if words != 5 {
-		t.Fatalf("this test names the gate's 5 own words, the list has %d", words)
+	for word := range gateWordCodes {
+		if _, named := want[word]; !named {
+			t.Fatalf("this test does not name the gate's word %q", word)
+		}
 	}
 	gate := newBusinessHandlerGate()
 	for reason, code := range want {

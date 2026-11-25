@@ -52,6 +52,13 @@ func TestProofAndPeerAnswersWithTheCausesOnlyTheServerKnows(t *testing.T) {
 		{"partitioned joined to a reset request", errors.Join(partitioned, request(reset)), true, true},
 		{"refusal by the cluster in a request", request(store.ErrClusterAdmissionRejected), false, false},
 		{"unclassified", errors.New("something else"), false, false},
+		// The store's policy and the cause added here are asked under one
+		// join rule: every branch for a peer, any cause for a lost cluster.
+		{"reset request joined to a partitioned receiver, wrapped", fmt.Errorf("peer 2: %w", errors.Join(request(reset), partitioned)), true, true},
+		{"three branches, one a refusal", errors.Join(request(reset), partitioned, refused), true, false},
+		{"nested join, all unreachable", errors.Join(partitioned, errors.Join(request(io.EOF), unauthorized)), false, true},
+		{"nested join hiding a refusal", errors.Join(partitioned, errors.Join(request(io.EOF), refused)), false, false},
+		{"no majority joined to a refusal", errors.Join(errCandidateMaterialNoMajority, refused), true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := proofClusterLost(tc.err); got != tc.clusterLost {

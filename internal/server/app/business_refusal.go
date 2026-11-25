@@ -6,23 +6,31 @@ import (
 	"log/slog"
 	"math/bits"
 	"net/http"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
+// gateWordCodes is the refusal code of each reason the gate and the material
+// proof name differently in the readiness log line; their other reasons are
+// the codes themselves.
+var gateWordCodes = map[string]string{
+	"expired":       refusalProofExpired,
+	"stopped":       refusalProofStopped,
+	"run_canceled":  refusalProofRunCanceled,
+	"headroom":      refusalProofHeadroom,
+	"epoch_changed": refusalProofEpochChanged,
+}
+
 // refusalCodeOf is the refusal code of a reason given as a code or in the
-// gate's own word; a reason the list does not have is "other".
+// gate's own word; a reason neither list has is "other".
 func refusalCodeOf(reason string) string {
-	if _, listed := businessRefusalCodes[reason]; listed {
-		return reason
+	if code, ok := gateWordCodes[reason]; ok {
+		return code
 	}
-	if reason != "" {
-		for code, word := range businessRefusalCodes {
-			if word == reason {
-				return code
-			}
-		}
+	if slices.Contains(businessRefusalCodes, reason) {
+		return reason
 	}
 	return refusalOther
 }
@@ -173,7 +181,7 @@ func (b *businessRefusals) serving(next http.Handler) http.Handler {
 // mark names the reason on the response and counts it. A probe asks about
 // the member and is not business: it gets the header and no count.
 func (b *businessRefusals) mark(w http.ResponseWriter, r *http.Request, reason string) {
-	if _, listed := businessRefusalCodes[reason]; !listed {
+	if !slices.Contains(businessRefusalCodes, reason) {
 		reason = refusalOther
 	}
 	w.Header().Set(businessRefusalHeader, reason)
