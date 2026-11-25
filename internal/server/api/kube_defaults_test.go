@@ -376,3 +376,24 @@ func TestKubePriorityAndPreemptionReachTheManifest(t *testing.T) {
 		}
 	}
 }
+
+// The agent's Pod mounts the directory shared storages are mounted under by
+// default from its node, so a mount point the agent creates there exists on
+// the node, and what the node mounts on it reaches the agent.
+func TestKubeManifestSharesTheDefaultStorageMountRoot(t *testing.T) {
+	rig := newTokenRig(t)
+	entry := decodeKube[map[string]any](t, rig.do(rig.session, http.MethodPost, "/api/v1/kube/clusters", `{"name":"nfs","server_url":"https://gw.example"}`))
+	m := rig.do(rig.session, http.MethodGet, "/api/v1/kube/clusters/"+entry["uuid"].(string)+"/manifest", "").Body.String()
+	root := store.DefaultStorageDirs().MountRoot
+	if !strings.HasPrefix(store.DefaultMountPoint("models-nfs"), root+"/") {
+		t.Fatalf("default mount point %s is outside %s", store.DefaultMountPoint("models-nfs"), root)
+	}
+	for _, want := range []string{
+		"- name: storage-mounts\n              mountPath: \"" + root + "\"\n              mountPropagation: Bidirectional",
+		"- name: storage-mounts\n          hostPath:\n            path: \"" + root + "\"\n            type: DirectoryOrCreate",
+	} {
+		if !strings.Contains(m, want) {
+			t.Fatalf("manifest lacks\n%s\nin\n%s", want, m)
+		}
+	}
+}
