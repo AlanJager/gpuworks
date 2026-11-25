@@ -46,6 +46,9 @@ const clusterDiagnosticsObservationAge = 30 * time.Second
 // enrollment listener or a database port answers within the probe timeout.
 type clusterDiagnostics struct {
 	cfg Config
+	// undecided is why the data directory's cluster markers could not be
+	// read; Members answers it. The rest still reads what it can.
+	undecided error
 
 	mu       sync.Mutex
 	observed clusterStatus
@@ -59,24 +62,12 @@ type clusterDiagnostics struct {
 func newClusterDiagnostics(cfg Config) diagnostics.Cluster {
 	member, err := selfinstall.ClusterMember(cfg.DataDir)
 	if err != nil {
-		return undecidedCluster{fmt.Errorf("whether this installation is a control-plane cluster member could not be read: %w", err)}
+		return &clusterDiagnostics{cfg: cfg, undecided: unclassifiedDirectory(err)}
 	}
 	if !member {
 		return nil
 	}
 	return &clusterDiagnostics{cfg: cfg}
-}
-
-// undecidedCluster is a data directory whose cluster markers could not be
-// read.
-type undecidedCluster struct{ err error }
-
-func (u undecidedCluster) Members(context.Context) ([]diagnostics.ClusterMember, error) {
-	return nil, u.err
-}
-func (undecidedCluster) Self() diagnostics.MemberSource { return nil }
-func (u undecidedCluster) OpenMemberPart(context.Context, diagnostics.ClusterMember, time.Time, time.Time) (diagnostics.MemberAnswer, error) {
-	return diagnostics.MemberAnswer{}, u.err
 }
 
 func (c *clusterDiagnostics) Self() diagnostics.MemberSource { return c }
@@ -105,6 +96,9 @@ func (c *clusterDiagnostics) observe(ctx context.Context) (clusterStatus, error)
 // membership that cannot be read is an error, never an empty list (the
 // persisted membership is never read as empty).
 func (c *clusterDiagnostics) Members(ctx context.Context) ([]diagnostics.ClusterMember, error) {
+	if c.undecided != nil {
+		return nil, c.undecided
+	}
 	report, err := c.observe(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("this member's cluster membership could not be read: %w", err)

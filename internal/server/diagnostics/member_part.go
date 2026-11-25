@@ -62,6 +62,8 @@ const (
 
 // MemberFacts is a part's member.json: who the member is and what it runs.
 type MemberFacts struct {
+	// ID 0 with an empty Address means the member's identity could not be
+	// read (its part is then beside its log, under server/).
 	ID      uint64 `json:"id"`
 	Address string `json:"address"`
 	Version string `json:"server_version"`

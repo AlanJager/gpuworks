@@ -344,12 +344,57 @@ func TestAMembershipThatCannotBeReadIsReportedAndTheCollectionStands(t *testing.
 				!strings.Contains(files["server/leader-changes.log"], "leader changed") || !strings.Contains(files["server/member.json"], `"server_version": "v-test"`) {
 				t.Fatalf("this member's log, role records or member.json are missing: %v", itemsByPath(done))
 			}
-			if itemsByPath(done)["server/role-events.log"].Status != proto.CheckPass || !strings.Contains(files["manifest.json"], `"path": "members"`) {
-				t.Fatalf("the manifest's items:\n%s", files["manifest.json"])
+			if !strings.Contains(files["server/cluster-status.txt"], "Overall: ok") || !strings.Contains(files["manifest.json"], `"path": "members"`) {
+				t.Fatalf("the status report or the manifest's item is missing:\n%s", files["manifest.json"])
+			}
+			for path, id := range map[string]string{
+				"server/member.json": "server_member", "server/role-events.log": "server_role_events",
+				"server/leader-changes.log": "server_leader_changes", "server/cluster-status.txt": "server_cluster_status",
+			} {
+				if it := itemsByPath(done)[path]; it.Status != proto.CheckPass || it.ID() != id {
+					t.Fatalf("%s = %+v (%s), want a collected item with id %s", path, it, it.ID(), id)
+				}
 			}
 			if c.asked["10.0.0.2:9001"] != 0 {
 				t.Fatal("a member was asked without a membership")
 			}
 		})
 	}
+}
+
+// What is extracted beside the log when the membership cannot be read is
+// reported like any other part: cut records show as cut, and records that
+// could not be extracted leave a failed item, not only a log line.
+func TestRoleRecordsBesideTheLogAreReportedWhenCutOrUnreadable(t *testing.T) {
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	unreadable := errors.New("this member's cluster membership could not be read: database identity is not in the data directory (/opt/gpuworks/data/gpuworks.db.dqlite/info.yaml)")
+	t.Run("cut at their bound", func(t *testing.T) {
+		lowerBound(t, &memberBounds.small, int64(400))
+		m, c := clusterFixture(t, now)
+		c.members, c.membersErr = nil, unreadable
+		at := "time=" + now.Add(-time.Minute).Format(time.RFC3339Nano) + " "
+		if err := os.WriteFile(c.self.logFile, []byte(strings.Repeat(at+roleLoopLate+"\n", 20)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		b, files := collect(t, m)
+		it := itemsByPath(b)["server/role-events.log"]
+		if it.Status != proto.CheckWarn || it.Code != messages.CheckDiagnosticsItemTruncated || len(files["server/role-events.log"]) > 400 || len(files["server/role-events.log"]) == 0 {
+			t.Fatalf("item = %+v, %d bytes; want the cut records shown as cut", it, len(files["server/role-events.log"]))
+		}
+	})
+	t.Run("not extracted", func(t *testing.T) {
+		m, c := clusterFixture(t, now)
+		c.members, c.membersErr = nil, unreadable
+		// A directory where this member's log file is expected: it opens and
+		// cannot be read.
+		c.self.logFile = t.TempDir()
+		b, files := collect(t, m)
+		it := itemsByPath(b)["server/role-events.log"]
+		if it.Status != proto.CheckFail || it.Code != messages.CheckDiagnosticsItemReadFailed || !strings.Contains(it.Evidence, "is a directory") {
+			t.Fatalf("item = %+v, want a failed item with the read error", it)
+		}
+		if _, ok := files["server/role-events.log"]; ok || itemsByPath(b)["members"].Status != proto.CheckFail {
+			t.Fatalf("the archive holds records that were not extracted, or lost the members item")
+		}
+	})
 }

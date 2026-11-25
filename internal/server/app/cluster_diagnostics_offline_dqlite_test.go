@@ -223,7 +223,13 @@ func TestAMemberWhoseMembershipCannotBeReadSaysSo(t *testing.T) {
 		if err == nil || len(members) != 0 || !strings.Contains(err.Error(), "whether this installation is a control-plane cluster member could not be read: ") || !strings.Contains(err.Error(), marker) {
 			t.Fatalf("members = %v, err = %v", members, err)
 		}
-		bundle, _, err := CollectClusterMemberDiagnostics(t.Context(), ClusterMemberDiagnosticsRequest{DataDir: data, WorkDir: t.TempDir(),
+		// Its log is still its log: the role records in it are extracted.
+		logFile := filepath.Join(data, "server.log")
+		at := time.Now().Add(-time.Minute).UTC().Format(time.RFC3339Nano)
+		if err := os.WriteFile(logFile, []byte("time="+at+` level=WARN msg="cluster database role event" event=loop_late late_ms=1819`+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		bundle, archive, err := CollectClusterMemberDiagnostics(t.Context(), ClusterMemberDiagnosticsRequest{DataDir: data, LogFile: logFile, WorkDir: t.TempDir(),
 			Request: diagnostics.BundleRequest{RequestedBy: "support-bundle"}}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 		if err != nil || bundle.State != "ready" {
 			t.Fatalf("collection = %q, %v", bundle.State, err)
@@ -232,8 +238,9 @@ func TestAMemberWhoseMembershipCannotBeReadSaysSo(t *testing.T) {
 		for _, it := range bundle.Items {
 			found = found || (it.Path == "members" && it.Status == proto.CheckFail && strings.Contains(it.Evidence, marker))
 		}
-		if !found {
-			t.Fatalf("no failed members item: %+v", bundle.Items)
+		files := archiveFiles(t, archive)
+		if !found || !strings.Contains(files["server/role-events.log"], "event=loop_late") || !strings.Contains(files["server/member.json"], `"server_version"`) {
+			t.Fatalf("no failed members item, or this member's role records are missing: %+v", bundle.Items)
 		}
 	})
 }

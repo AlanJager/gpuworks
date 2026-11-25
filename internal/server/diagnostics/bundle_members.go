@@ -175,14 +175,14 @@ func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add
 		m.log.Warn("diagnostics collection could not read the cluster's members", "bundle", b.ID, "err", err)
 		// This member's own role records need its log alone. With no
 		// membership to name its directory by, they go beside that log.
-		if self := m.cluster.Self(); self != nil {
-			files, err := stageMemberPart(ctx, filepath.Join(work, "server"), self, b.From, b.To, m.now())
-			if err != nil {
-				m.log.Warn("diagnostics collection could not read this member's role records", "bundle", b.ID, "err", err)
-			}
-			for _, f := range files {
-				add(collectedItem("server/"+f.name, f.bytes, f.truncated), &stagedEntry{name: "server/" + f.name, path: f.path})
-			}
+		dir := filepath.Join(work, "server")
+		files, err := stageMemberPart(ctx, dir, m.cluster.Self(), b.From, b.To, m.now())
+		if err != nil {
+			add(failedItem("server/"+MemberRoleEventsFile, messages.CheckDiagnosticsItemReadFailed, err, 0), nil)
+		}
+		cut := memberCuts(dir)
+		for _, f := range files {
+			add(collectedItem("server/"+f.name, f.bytes, f.truncated || cut[f.name]), &stagedEntry{name: "server/" + f.name, path: f.path})
 		}
 		return
 	}
@@ -216,16 +216,7 @@ func (m *Manager) collectMembers(ctx context.Context, b Bundle, work string, add
 			}
 			// What the member itself cut (its member.json says) counts like
 			// what was cut on this side.
-			cut := map[string]bool{}
-			if facts, ferr := readMemberFacts(dir); ferr == nil {
-				for _, name := range facts.Truncated {
-					// Only what a part can cut: another member's bytes do
-					// not name the items of this collection.
-					if memberCutName(name) {
-						cut[name] = true
-					}
-				}
-			}
+			cut := memberCuts(dir)
 			for _, f := range files {
 				truncated := f.truncated || cut[f.name]
 				delete(cut, f.name)
@@ -317,4 +308,19 @@ func memberCutName(name string) bool {
 		return true
 	}
 	return false
+}
+
+// memberCuts are the names the member.json in dir lists as cut, of those a
+// part can cut: another member's bytes do not name the items of this
+// collection.
+func memberCuts(dir string) map[string]bool {
+	cut := map[string]bool{}
+	if facts, err := readMemberFacts(dir); err == nil {
+		for _, name := range facts.Truncated {
+			if memberCutName(name) {
+				cut[name] = true
+			}
+		}
+	}
+	return cut
 }
