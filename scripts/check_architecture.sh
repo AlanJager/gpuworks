@@ -454,6 +454,14 @@ measure() {
     # given as a feature declaration's Key in a file importing featuregate.
     feature_key_literal_hits | grep -c . || true
     ;;
+  published_tags_outside_grammar)
+    # Published runner tags outside the release tag grammar. The image
+    # manifest generator rejects such a tag unless its matrix entry declares
+    # a legacy_reason, and rejects the declaration on a conforming tag, so
+    # the declarations are the exceptions. Counts every mention outside
+    # comment lines, whatever YAML style it is written in.
+    grep -v '^[[:space:]]*#' build/runner-images/matrix.yaml | grep -o 'legacy_reason' | grep -c . || true
+    ;;
   *)
     # `measure` runs inside a command substitution, so exiting here would only
     # kill the subshell. Emit a sentinel the caller turns into a failure.
