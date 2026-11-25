@@ -3,12 +3,14 @@ import type { DetectedTemplateChip } from "../../api";
 import VendorLogo from "../../components/VendorLogo";
 import { FilterChips } from "../../ui-kit/FilterChips";
 import { chipDisplayLabel, chipKey } from "../inferenceTemplateFlat";
+import { useVendorDictionary } from "../../hooks/useVendorDictionary";
 import { compareVendors } from "../../vendors";
 
 export function TemplateHardwareFilters({ chips, detectedKeys, value, onChange }: {
   chips: DetectedTemplateChip[]; detectedKeys: Set<string>; value: string; onChange: (value: string) => void;
 }) {
   const { t } = useTranslation("inferenceTemplates");
+  useVendorDictionary();
   const vendors = [...new Set(chips.map(chip => chip.vendor))].sort(compareVendors);
   return <section className="template-hardware-filters template-filter-row">
     <span className="template-filter-label">{t("chips.mine")}</span>
