@@ -37,6 +37,9 @@ var wrapperCauses = []string{
 	"enginecore failed to start",
 	"workerproc initialization failed",
 	"an exception in a background process",
+	// SGLang's server while it is still launching, on the signal a failed
+	// scheduler or detokenizer sends it.
+	"received sigquit from a child process",
 }
 
 // RootCause is the line an engine's failure should be reported by. It is
