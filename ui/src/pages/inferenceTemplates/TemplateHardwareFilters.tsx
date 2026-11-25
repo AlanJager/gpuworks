@@ -4,7 +4,7 @@ import VendorLogo from "../../components/VendorLogo";
 import { FilterChips } from "../../ui-kit/FilterChips";
 import { chipDisplayLabel, chipKey } from "../inferenceTemplateFlat";
 import { useVendorDictionary } from "../../hooks/useVendorDictionary";
-import { compareVendors } from "../../vendors";
+import { compareVendors, vendorFallbackName } from "../../vendors";
 
 export function TemplateHardwareFilters({ chips, detectedKeys, value, onChange }: {
   chips: DetectedTemplateChip[]; detectedKeys: Set<string>; value: string; onChange: (value: string) => void;
@@ -17,7 +17,7 @@ export function TemplateHardwareFilters({ chips, detectedKeys, value, onChange }
     <div className="min-w-0">
     <div className="template-hardware-groups">{vendors.map(vendor => <div className="template-hardware-group" key={vendor}>
       <VendorLogo vendor={vendor} size={18} />
-      <FilterChips label={t(`vendor.${vendor}`, { defaultValue: vendor })} value={value} onChange={onChange}
+      <FilterChips label={t(`vendor.${vendor}`, { defaultValue: vendorFallbackName(vendor) })} value={value} onChange={onChange}
         items={chips.filter(chip => chip.vendor === vendor).map(chip => ({ value: chipKey(chip), label: <span>
           <i aria-hidden="true" className={`template-chip-dot${detectedKeys.has(chipKey(chip)) ? "" : " is-hypothetical"}`} />{chipDisplayLabel(chip)}
         </span> }))} />

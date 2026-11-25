@@ -18,7 +18,7 @@ What you do not need to change: any runtime driver (`internal/agent/runtime/*`),
 
 Registration is two lines and cannot be one: the definition is in a package the server and the agent share, and the driver is in the agent only.
 
-The console takes the vendors' order, names and frameworks from the vendor dictionary the server sends (`GET /api/v1/accelerator-vendors`), and the "Support Declared in the Definitions" table of the support matrix is generated from the definitions; neither is edited by hand. After changing a definition, regenerate the table and the console's test fixture (see Step 3). What is still added by hand is the icon (`ui/src/components/vendorAssets.ts` and `ui/public/vendor-logos/`; without one the console draws a round mark with the first letter, whose colour and letter can be set in `VendorLogo.tsx`) and the translated name under `vendor.<id>` in `common.json`. The vendor names other pages keep for themselves (`deploy.json`, `inferenceTemplates.json`) fall back to the name the server gives and need not be added.
+The console takes the vendors' order, names and frameworks from the vendor dictionary the server sends (`GET /api/v1/accelerator-vendors`), and the "Support Declared in the Definitions" table of the support matrix is generated from the definitions; neither is edited by hand. After changing a definition, regenerate the table and the console's test fixture (see Step 3). What is still added by hand is the icon (`ui/src/components/vendorAssets.ts` and `ui/public/vendor-logos/`; without one the console draws a round mark with the first letter, whose colour and letter can be set in `VendorLogo.tsx`) and the translated name under `vendor.<id>` in `common.json`. The vendor names other pages keep for themselves need not be added: without one the template pages (`inferenceTemplates.json`) use the name the server gives, and the deploy pages (`deploy.json`) show the id in capitals.
 
 ## Step 1: The Vendor Definition
 
@@ -81,14 +81,14 @@ Rules for `list`:
 
 Metric names are the ones registered in `internal/platformmetrics`.
 
-Optional interfaces a driver implements as needed. The framework uses one that is implemented, and a driver without it does not have that capability; the last two also take effect only with the matching declaration in the definition. These are the ones most often needed when adding a vendor; `internal/agent/gpu` has others that are used by type assertion (topology, NVLink, accelerator ports).
+Optional interfaces a driver implements as needed. The framework uses one that is implemented, and a driver without it does not have that capability; the last two are complete only with the matching declaration in the definition. These are the ones most often needed when adding a vendor; `internal/agent/gpu` has others that are used by type assertion (topology, NVLink, accelerator ports).
 
 | Interface | What it does | Also needed in the definition |
 |---|---|---|
 | `DriverAwareInjector` | The way to grant differs by runtime | Nothing |
 | `ComputeProcessLister` | Which processes are on a card, to tell occupancy from outside the platform | Nothing |
-| `HostRuntimeChecker` | Has the vendor's runtime actually use one card on the host (the per-card runtime check) | `CheckRuntime` among `checks`. Without it the check still runs and a failure still marks the card unusable, but the result is not reported and cannot be rechecked by hand |
-| `ContainerRuntimeGrader` | How the output is graded when the runtime check runs inside an image | `smokeFramework` and `smokeScript`, and `CheckRuntime` among `checks`. Without them the check does not run in an image |
+| `HostRuntimeChecker` | Has the vendor's runtime actually use one card on the host (the per-card runtime check) | `CheckRuntime` among `checks`. Without it the check still runs and a failure still marks the card unusable, but the result is not reported and the console offers no recheck |
+| `ContainerRuntimeGrader` | How the output is graded when the runtime check runs inside an image | `smokeFramework` and `smokeScript`, without which the check does not run in an image; and `CheckRuntime` among `checks`, as in the row above |
 
 ### Granting Devices
 
@@ -126,7 +126,7 @@ After a vendor is added, these existing tests ask you to update them, on purpose
 | `TestVendorRuntimeAdmission` in `accelerator` | Add a row: the runtimes this vendor is accepted on. It decides what is refused before scheduling, so it is written out |
 | `TestDefaultProbersPreserveExistingVendorOrder` and `TestMixedVendorAutoKeepsExistingProberPriority` in `agent/gpu` | Add to the expected probe order. NVIDIA comes after every vendor that ships a compatible `nvidia-smi` |
 | `TestEngineProfileGoldens` in `server/deploy` | `GPUWORKS_UPDATE_PROFILE_GOLDEN=1 go test -run TestEngineProfileGoldens ./internal/server/deploy/` |
-| `TestSupportMatrixTableIsWrittenFromTheDefinitions` in `accelerator` | `GPUWORKS_UPDATE_SUPPORT_MATRIX=1 go test -run TestSupportMatrixTableIsWrittenFromTheDefinitions ./internal/accelerator/` |
+| `TestSupportMatrixTableIsWrittenFromTheDefinitions` in `accelerator` | `GPUWORKS_UPDATE_SUPPORT_MATRIX=1 go test -run TestSupportMatrixTableIsWrittenFromTheDefinitions ./internal/accelerator/`, then `python3 docs-site/check_translations.py --write docs/reference/support-matrix.md` to record that page's new source hash |
 | `TestAcceleratorVendorsWireJSONIsTheConsoleFixture` in `server/api` | `GPUWORKS_UPDATE_VENDOR_FIXTURE=1 go test -run TestAcceleratorVendorsWireJSONIsTheConsoleFixture ./internal/server/api/` |
 
 ## Step 4: Before Submitting
@@ -185,11 +185,11 @@ grep -n 'probeCards(' internal/agent/gpu/<vendor>*.go | grep -v '_test\.go'
 - Do not take "the device node exists" or "the environment variable is set" for "inference runs".
 
 <!-- translation-source-sha256: 70761906f3f9d64cc518f65d6f2a068e4d3bc5f680e70d2d14dff422aa3f3bd2 # Adding a New Accelerator Vendor -->
-<!-- translation-source-sha256: 035f0e461dc791c048c635e60e02a202a3b905cc629d90b2720b3cc3f7fa88a7 ## Files to Touch -->
+<!-- translation-source-sha256: 1e5b74d35315defd480717c1c2da072c7d9c96f0971aab21b9a67d0f172e1474 ## Files to Touch -->
 <!-- translation-source-sha256: 72f35532382ae1f8b24c0827fa855a5c43bf367873e2e75b1910e2509f73face ## Step 1: The Vendor Definition -->
-<!-- translation-source-sha256: 42366b695a9dc29118b9cbb5865620fb7ea0130a0166f4d665bf213aad3cf61a ## Step 2: The Driver -->
+<!-- translation-source-sha256: f87115249ebd97728701ece1fbf0b11cebb5e1ca1db5ed142eea0cab744d0030 ## Step 2: The Driver -->
 <!-- translation-source-sha256: 8fa3cafc245b6882ec70b3edaff7eee36df16d04a1e496ebe3a2502d1294761d ### Granting Devices -->
-<!-- translation-source-sha256: 5796554ec67eda46d3b93b57c311375d97c4eb893fb8400b811bc2471812eddd ## Step 3: Fixtures and Tests -->
+<!-- translation-source-sha256: 78d3739634eae66535d388435344994d7005d2d16ad271250e6eb6e4d251ae22 ## Step 3: Fixtures and Tests -->
 <!-- translation-source-sha256: e5f1e773baca5a8cd4cf9893e9316affc36ea6e6872236476e3c1b7d7e9324ce ## Step 4: Before Submitting -->
 <!-- translation-source-sha256: ee9f7e0f0fc8ea4baad3104d491662e298b0ac9a7ed15220e70e8295c9de2f77 ## Verification on Real Hardware -->
 <!-- translation-source-sha256: 2a010a7d0323e9c73afa958349150abfecfac4d1c07beed17b014624fdf36c94 ## Review Standard -->
