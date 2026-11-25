@@ -115,3 +115,21 @@ test("the picker's brands follow the server's order once the dictionary arrives,
     setVendorDictionary(served.items);
   }
 });
+
+test("the hardware filter's brands follow the server's order once the dictionary arrives, and a brand the console has no name for takes the server's", async () => {
+  const fs = await import("node:fs");
+  const { setVendorDictionary } = await import("../src/vendors.ts");
+  const served = JSON.parse(fs.readFileSync(new URL("./fixtures/accelerator-vendors.json", import.meta.url), "utf8"));
+  const chips = [{ vendor: "example", name: "Example X1" }, { vendor: "amd", name: "AMD Radeon 8060S", arch_id: "gfx1151" }, detected];
+  setVendorDictionary([]);
+  try {
+    const { container } = render(wrap(<TemplateHardwareFilters chips={chips} detectedKeys={new Set<string>()} value="" onChange={() => {}} />));
+    const brands = () => [...container.querySelectorAll(".template-hardware-group .vendor-logo")].map((logo) => logo.className.replace(/.*vendor-logo-/, ""));
+    assert.deepEqual(brands(), ["amd", "unknown", "nvidia"]);
+    act(() => setVendorDictionary([...served.items, { id: "example", brand: "Example", frameworks: [], runtimes: [], features: [] }]));
+    assert.deepEqual(brands(), ["nvidia", "amd", "example"]);
+    assert.ok(screen.getByRole("group", { name: "Example" }));
+  } finally {
+    setVendorDictionary(served.items);
+  }
+});

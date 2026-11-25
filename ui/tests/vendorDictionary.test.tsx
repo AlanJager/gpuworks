@@ -80,19 +80,26 @@ test("a page left open through a failed load gets its vendors without being open
   setVendorDictionary([]);
   await retryWindow();
   let calls = 0;
+  // The second answer is held until the test has looked at the page, so
+  // what it sees between the two requests does not depend on timing.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
   const realFetch = globalThis.fetch;
   globalThis.fetch = (async () => {
     calls += 1;
     if (calls === 1) throw new Error("offline");
+    await held;
     return new Response(JSON.stringify({ items: served.items.slice(0, 2), total: 2 }), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
   try {
     render(<Order />);
-    await waitFor(() => assert.equal(calls, 1));
+    await waitFor(() => assert.equal(calls, 2));
     assert.equal(screen.getByRole("status").textContent, "empty");
+    release();
     await waitFor(() => assert.equal(screen.getByRole("status").textContent, "NVIDIA,AMD"));
     assert.equal(calls, 2);
   } finally {
+    release();
     globalThis.fetch = realFetch;
   }
 });
