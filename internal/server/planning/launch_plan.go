@@ -346,7 +346,7 @@ func previewRequestedFeatures(req LaunchRequest) (*proto.RequestedFeatures, erro
 // for the preview and the controller by construction: both spend the catalog's
 // spec and runtime weights, its measured KV cost, and the node's cache fact.
 func launchInput(st *store.Store, req LaunchRequest) (Input, error) {
-	componentWeightBytes, componentArtifacts := componentSum(req.Selection.Components)
+	componentWeightBytes, componentArtifacts := componentSum(req.Selection.Components, req.Topology.NodeRank)
 	validator, err := TemplateGPUValidator(req.Selection)
 	if err != nil {
 		return Input{}, err
@@ -452,15 +452,20 @@ func launchGPU(node *store.Node, indexes []int) (store.GPU, error) {
 	return gpu, nil
 }
 
-func componentSum(components []deploy.ComponentBinding) (int64, []Artifact) {
+// componentSum is what rank's launch holds of the non-primary components: the
+// weights the whole group holds (a rank-scoped component's part counted once
+// per rank, as the primary's is, ADR 0076), and the artifact rank reads of
+// each, which disk admission counts at one rank's size.
+func componentSum(components []deploy.ComponentBinding, rank int) (int64, []Artifact) {
 	var weightBytes int64
 	var artifacts []Artifact
 	for _, component := range components {
 		if component.Role == "primary" || component.WeightBytes <= 0 {
 			continue
 		}
-		weightBytes += component.WeightBytes
-		artifacts = append(artifacts, Artifact{ModelID: component.StoreModelID, StorageBytes: component.WeightBytes})
+		weightBytes += component.GroupWeightBytes()
+		id, _ := component.RankModelID(rank)
+		artifacts = append(artifacts, Artifact{ModelID: id, StorageBytes: component.WeightBytes})
 	}
 	return weightBytes, artifacts
 }

@@ -83,16 +83,17 @@ func (c *createState) admitWeights() error {
 	}
 	admitted := append([]weightTarget(nil), c.weights...)
 	for _, component := range c.components {
-		if _, err := c.s.resolveSaveToStorage(c.req.ModelSource, component.model, c.targets); err != nil {
+		nodes := component.nodesOf(c.targets, c.rankNodes)
+		if _, err := c.s.resolveSaveToStorage(c.req.ModelSource, component.model, nodes); err != nil {
 			return conflict(err)
 		}
-		admitted = append(admitted, weightTarget{model: component.model, nodes: c.targets})
+		admitted = append(admitted, weightTarget{model: component.model, nodes: nodes})
 	}
 	// A template component no target can read yet follows the primary into
 	// the shared storage it already sits on, rather than into every node's
 	// local storage; the evaluate forecast shows the same plans. The
 	// deployment still keeps only what the request named.
-	c.componentPlans, err = c.s.planComponents(c.req.ModelSource, c.model, c.components, c.weightStorage, store.StoragePins(c.reqs), c.targets)
+	c.componentPlans, err = c.s.planComponents(c.req.ModelSource, c.model, c.components, c.weightStorage, store.StoragePins(c.reqs), c.targets, c.rankNodes)
 	if err != nil {
 		return internal(err)
 	}
