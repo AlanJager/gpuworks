@@ -4,12 +4,15 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"net/http"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/cluster"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -28,8 +31,9 @@ func (f *candidateGrantFixture) revokeThird(t *testing.T, ctx context.Context) {
 
 // A member is revoked and stays in the database, running. It is not a member
 // any more, and that says nothing about the other two: they go on proving
-// past the proof's window and past the unconfirmed limit, admit each other,
-// and commit. The revoked member is in nobody's member list, its own proof
+// past the proof's window and past the unconfirmed limit, and commit. The
+// revoked member is in nobody's member list, which is what a connection
+// between members is decided on; its own proof
 // is refused, and removing it from the database afterwards changes nothing
 // for the others. Three real voters, the real proof and the real grant; the
 // workers' clock is the test's.
@@ -79,22 +83,6 @@ func TestNativeRevokedMemberStillInTheDatabaseDoesNotCloseTheOthers(t *testing.T
 		}
 	}
 
-	// A connection between the two that remain is admitted from a fresh
-	// grant; one from the revoked member is not.
-	none := func(time.Duration) ([]store.ClusterTransportMember, bool) { return nil, false }
-	grant := func(ctx context.Context) ([]store.ClusterTransportMember, error) {
-		_, members, err := f.stores[0].GrantClusterMembership(ctx, expected, f.keys[0])
-		return members, err
-	}
-	for peer, want := range map[int]string{1: f.keys[1], 2: ""} {
-		pick := func(members []store.ClusterTransportMember) string {
-			return memberRoutePeer(members, f.databases[0].ID, f.keys[0], f.keys[peer])
-		}
-		if key, err := memberRouteKey(ctx, none, grant, pick); err != nil || key != want {
-			t.Fatalf("a connection from member %d: key %q err %v, want %q", peer, key, err, want)
-		}
-	}
-
 	setting := store.SettingKey("beside-a-revoked-member")
 	if err := f.stores[0].SetBusinessSetting(ctx, setting, "committed"); err != nil {
 		t.Fatalf("a write by a member that remains: %v", err)
@@ -132,10 +120,11 @@ func TestNativeRevokedMemberStillInTheDatabaseDoesNotCloseTheOthers(t *testing.T
 	}
 }
 
-// A member is revoked while another member's proof is between its two
-// grants. That proof does not complete and does not close the member; the
-// next one succeeds.
-func TestNativeRevocationMidProofIsFollowedByASuccessfulProof(t *testing.T) {
+// A member that publishes material is revoked while another member's proof
+// is between its two grants. The closing grant names the revoked source's
+// key and is refused for it: that proof does not complete and does not close
+// the member, and the next one, which no longer names the key, succeeds.
+func TestNativeRevokedSourceKeyMidProofIsFollowedByASuccessfulProof(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
 	defer cancel()
 	f := newCandidateGrantFixture(t, ctx)
@@ -286,5 +275,155 @@ func TestNativeReplicationPassBesideARevokedMemberDoesNotCloseTheMember(t *testi
 	// The revoked member's own pass is refused, and that does close it.
 	if err := pass(2); !errors.Is(err, store.ErrClusterAdmissionRejected) || !materialReplicationFailureInvalidates(err) {
 		t.Fatalf("pass of the revoked member: %v", err)
+	}
+}
+
+// quorumFacts projects the facts route's answer from the real database: the
+// leader's own quorum proof and the admission rows, as the route's reader
+// hands them over. The store's read under the route is tested in the store.
+func (f *candidateGrantFixture) quorumFacts(t *testing.T, ctx context.Context, leader, requester int) (int, error) {
+	t.Helper()
+	proof, err := f.databases[leader].WithLocalQuorumReadSnapshot(ctx, func(context.Context, *sql.Tx, cluster.QuorumProof) error { return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	var admissions []store.ClusterAdmission
+	if err := f.stores[0].DB().WithContext(ctx).Order("key_fingerprint").Find(&admissions).Error; err != nil {
+		t.Fatal(err)
+	}
+	phase, err := f.stores[0].ReadMaintenancePhase(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	facts, _, _, err := projectClosedQuorumFacts(f.expected(), strings.Repeat("a", 64), false, phase, admissions, proof, f.keys[requester], f.keys[leader])
+	return len(facts.Members), err
+}
+
+func (f *candidateGrantFixture) leaderIndex(t *testing.T, ctx context.Context) int {
+	t.Helper()
+	leader, err := f.databases[0].Leader(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, database := range f.databases {
+		if database.ID == leader.ID {
+			return i
+		}
+	}
+	t.Fatalf("leader %d is not a fixture member", leader.ID)
+	return -1
+}
+
+// The facts route, which cluster status and a member's discovery read,
+// answers beside a revoked member that is still in the database: the answer
+// lists the admitted members. Three real voters, the leader's real proof.
+func TestNativeQuorumFactsBesideARevokedMemberListTheAdmittedMembers(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
+	defer cancel()
+	f := newCandidateGrantFixture(t, ctx)
+	lead := f.leaderIndex(t, ctx)
+	other, gone := (lead+1)%3, (lead+2)%3
+	if n, err := f.quorumFacts(t, ctx, lead, other); err != nil || n != 3 {
+		t.Fatalf("facts with three admitted members: %d members %v", n, err)
+	}
+	if _, err := f.stores[lead].RevokeClusterAdmission(ctx, f.expected().ClusterID, f.keys[gone]); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := f.quorumFacts(t, ctx, lead, other); err != nil || n != 2 {
+		t.Fatalf("facts beside a revoked member that is still in the database: %d members %v", n, err)
+	}
+	if _, err := f.quorumFacts(t, ctx, lead, gone); !errors.Is(err, store.ErrClusterAdmissionRejected) {
+		t.Fatalf("facts for the revoked member: %v", err)
+	}
+}
+
+// The member that leads the database is revoked and keeps leading. Every
+// grant of the other two commits through it, and they go on proving and
+// committing. It is not a provider of facts: the facts route has no answer
+// until an admitted member leads. Three real voters.
+func TestNativeRevokedDatabaseLeaderDoesNotCloseTheOthers(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 4*time.Minute)
+	defer cancel()
+	f := newCandidateGrantFixture(t, ctx)
+	f.publish(t, ctx, 0)
+	lead := f.leaderIndex(t, ctx)
+	rest := []int{(lead + 1) % 3, (lead + 2) % 3}
+	members := map[int]*refusalMember{}
+	for _, i := range rest {
+		members[i] = f.refusalMember(t, i, time.Now, nil)
+		members[i].mustProve(t, ctx, "initial proof")
+	}
+	if _, err := f.stores[lead].RevokeClusterAdmission(ctx, f.expected().ClusterID, f.keys[lead]); err != nil {
+		t.Fatal(err)
+	}
+	if still := f.leaderIndex(t, ctx); still != lead {
+		t.Fatalf("the revoked member was expected to lead the database still; member %d leads", still)
+	}
+	for _, i := range rest {
+		if ready, err := members[i].eligibility.Reprove(ctx); !ready || err != nil {
+			t.Fatalf("proof of member %d with a revoked leader: ready=%t err=%v", i, ready, err)
+		}
+		_, list, err := f.stores[i].GrantClusterMembership(ctx, f.expected(), f.keys[i])
+		if err != nil || len(list) != 2 {
+			t.Fatalf("grant of member %d through a revoked leader: %+v %v", i, list, err)
+		}
+		if journal := members[i].journal.String(); count(journal, journalClosed) != 0 {
+			t.Fatalf("member %d closed:\n%s", i, journal)
+		}
+	}
+	setting := store.SettingKey("through-a-revoked-leader")
+	if err := f.stores[rest[0]].SetBusinessSetting(ctx, setting, "committed"); err != nil {
+		t.Fatalf("a write by a member that remains: %v", err)
+	}
+	if got := f.stores[rest[1]].GetSetting(setting); got != "committed" {
+		t.Fatalf("the other member that remains reads %q", got)
+	}
+	if n, err := f.quorumFacts(t, ctx, lead, rest[0]); err == nil {
+		t.Fatalf("the revoked leader provided facts listing %d members", n)
+	}
+}
+
+// A member that publishes no material is revoked while another member's
+// proof is between its two grants. The proof's grants do not name its key,
+// so the closing grant succeeds with a shorter member list: the proof ends
+// without an answer and does not close the member, and the next one
+// succeeds.
+func TestNativeMemberListShrinksMidProofThenTheNextProofSucceeds(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
+	defer cancel()
+	f := newCandidateGrantFixture(t, ctx)
+	unpublished := f.stores[0].DB().WithContext(ctx).Where("source_member_id = ?", int64(f.databases[2].ID)).Delete(&store.MaterialManifestRecord{})
+	if unpublished.Error != nil || unpublished.RowsAffected != 1 {
+		t.Fatalf("withdraw the third member's manifest pointer: %d %v", unpublished.RowsAffected, unpublished.Error)
+	}
+	member := f.refusalMember(t, 0, time.Now, nil)
+	member.mustProve(t, ctx, "initial proof")
+	var once sync.Once
+	revoked := make(chan error, 1)
+	f.mu.Lock()
+	f.before = func() {
+		once.Do(func() {
+			_, err := f.stores[0].RevokeClusterAdmission(ctx, f.expected().ClusterID, f.keys[2])
+			revoked <- err
+		})
+	}
+	f.mu.Unlock()
+	ready, err := member.eligibility.Reprove(ctx)
+	select {
+	case revokeErr := <-revoked:
+		if revokeErr != nil {
+			t.Fatal(revokeErr)
+		}
+	default:
+		t.Fatal("the proof did not reach its peer requests, so nothing was revoked under it")
+	}
+	if ready || !errors.Is(err, context.DeadlineExceeded) || !member.eligibility.Eligible() {
+		t.Fatalf("the proof under which the member list shrank: ready=%t err=%v eligible=%t, want no answer", ready, err, member.eligibility.Eligible())
+	}
+	if ready, err := member.eligibility.Reprove(ctx); !ready || err != nil {
+		t.Fatalf("the proof after the list shrank: ready=%t err=%v", ready, err)
+	}
+	if journal := member.journal.String(); count(journal, journalClosed) != 0 {
+		t.Fatalf("a close was logged:\n%s", journal)
 	}
 }
