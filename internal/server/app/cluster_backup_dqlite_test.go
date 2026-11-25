@@ -197,7 +197,7 @@ func TestClusterBackupAndRestoreOfARunningMember(t *testing.T) {
 	}
 	// A restored member starts as a single member: its open store answers
 	// the upgrade status, and a step that changes the cluster is refused
-	// with the code and a reason that says what to do in either case.
+	// with a reason that says what to do in either case.
 	observation, ok := reopened.SingleMemberObservation(nil)
 	if !ok {
 		t.Fatal("the restored member's open store does not answer the member questions")
@@ -206,7 +206,7 @@ func TestClusterBackupAndRestoreOfARunningMember(t *testing.T) {
 		t.Fatalf("restored member's upgrade status = %+v, leader %v, %v", status, leader, err)
 	}
 	_, _, _, err = observation.ClusterUpgrade(ctx, identity, memberKey, enrollment.ClusterUpgradeBegin)
-	if !errors.Is(err, store.ErrClusterUpgradeRefused) || store.ClusterUpgradeRefusalCode(err) != store.ClusterUpgradeRefusedSingleMember ||
+	if !errors.Is(err, store.ErrClusterUpgradeRefused) || !errors.Is(err, store.ErrClusterUpgradeSingleMember) ||
 		!strings.Contains(err.Error(), "restart it once") || !strings.Contains(err.Error(), "a cluster of one member applies its migrations when its new program starts and needs no upgrade step") {
 		t.Fatalf("a step on the restored member: %v; want the single-member refusal", err)
 	}

@@ -83,7 +83,7 @@ func TestASingleMemberAnswersTheMemberQuestions(t *testing.T) {
 			t.Fatalf("%s: quorum discovery: %+v, %v; want the one member", start, discovery, err)
 		}
 		status, err := client.ClusterUpgrade(ctx, cert, key, enrollment.ClusterUpgradeStatus)
-		if err != nil || !status.Leader || status.Refused != "" || status.RefusedCode != "" || status.Error != "" || status.Known == 0 || status.Applied != status.Known {
+		if err != nil || !status.Leader || status.Refused != "" || status.Error != "" || status.Known == 0 || status.Applied != status.Known {
 			t.Fatalf("%s: upgrade status: %+v, %v; want the schema this member runs and no refusal", start, status, err)
 		}
 		if status.KnownExtensions != 1 || status.AppliedExtensions != 1 || status.AppliedByExtension["observed"] != 1 {
@@ -147,12 +147,12 @@ func TestASingleMemberAnswersTheMemberQuestions(t *testing.T) {
 			}
 			time.Sleep(200 * time.Millisecond)
 		}
-		// Every step that changes the cluster is refused, with the code a
-		// caller acts on and the status unchanged.
+		// Every step that changes the cluster is refused, with the reason
+		// that says what to do and the status unchanged.
 		for _, action := range []string{enrollment.ClusterUpgradeBegin, enrollment.ClusterUpgradeMigrate, enrollment.ClusterUpgradeFinish, enrollment.ClusterUpgradeAbort, enrollment.ClusterUpgradeLead} {
 			answer, err := client.ClusterUpgrade(ctx, cert, key, action)
-			if err != nil || answer.Error != "" || answer.RefusedCode != store.ClusterUpgradeRefusedSingleMember ||
-				!strings.Contains(answer.Refused, "this member runs as a single member") {
+			if err != nil || answer.Error != "" ||
+				!strings.Contains(answer.Refused, "this member runs as a single member") || !strings.Contains(answer.Refused, "restart it once") {
 				t.Fatalf("%s: %s: %+v, %v; want the single member's refusal", start, action, answer, err)
 			}
 			if answer.Phase != status.Phase || answer.PhaseRevision != status.PhaseRevision || answer.Applied != status.Applied {
