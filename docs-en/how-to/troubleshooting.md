@@ -918,8 +918,14 @@ This method is verified only for Hugging Face; private ModelScope repositories a
 
 **Metadata is missing after registration**
 
-If the response includes `metadata_notice` (`MODEL_METADATA_UNREACHABLE` / `MODEL_METADATA_FORBIDDEN`), check the control plane's outbound access.
-Select **Used by the management node for model metadata** on an available site rule, and select **Used for management node outbound access** on the proxy if needed.
+Start from the code in `metadata_notice` or in the "fetch metadata" error. It tells the site's answer from the management node's own problem:
+
+| Code | Meaning | What to do |
+|---|---|---|
+| `MODEL_REPO_NOT_FOUND` | The site answered and has no such repository | Check the repository ID against the source; the same model often has a different ID on Hugging Face and on ModelScope |
+| `MODEL_REVISION_NOT_FOUND` | The repository exists and has no files at that revision | Use a branch or commit of this source; a commit ID does not carry across sites |
+| `MODEL_REPO_ACCESS_DENIED` | The site returned 401 / 403 | A private or gated repository needs [credentials](configure-pull-settings.md#credentials); without a token Hugging Face also returns 401 for a repository that does not exist, so check the repository ID first |
+| `MODEL_METADATA_UNREACHABLE` / `MODEL_METADATA_FORBIDDEN` | No address gave the management node an answer about the repository, or the rules forbid every address | Check the management node's outbound access: select **Used by the management node for model metadata** on an available site rule, and select **Used for management node outbound access** on the proxy if needed |
 
 **The source node is offline, or peer sync fails**
 
@@ -1581,7 +1587,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 00fc38d618e1a69522bbd7408e10c3b46e5e7a4b20bcf5fbe9918a4eb0fd0efb ## Containers from Several gpuworks Installations on One Machine -->
 <!-- translation-source-sha256: 42fed8d49a7803ff38e5219e59e18fbd01e2d979874ce46b0f29cd76d6b78913 ## Model Downloads Stall, Fail, or Leave Incomplete Directories -->
 <!-- translation-source-sha256: 178536686b1efd8668c7e8d46049e9e86b9e70f96c29fb441228f7b2442ca5ff ### Check Completeness First -->
-<!-- translation-source-sha256: 5e36b7ae1509b4a6f2cc93a9978750fa40997e3697950a227a86cab9991b750b ### Choose a Resolution Based on the Error -->
+<!-- translation-source-sha256: 013d23a93b7ad4aa7bca003a2fcbbfb97c6e17c6571ac8fa8df03ea0144fda27 ### Choose a Resolution Based on the Error -->
 <!-- translation-source-sha256: b97e97ab10808d30ba4bc280f167cd9bb320a6be2a37f6b73e16e14d34e70152 ### Long Downloads: Check Source Switching and Resume Progress -->
 <!-- translation-source-sha256: 15199cdc0f07486d121b220a634cb7cbd7198b8935c85f1396a0eca8440eb136 ### Retry After the Fix and Confirm the Result -->
 <!-- translation-source-sha256: e0dfe8a8bfbb8a0f359c56d406e3618b4b7ea94111dbc7526470cc3e9f9a6848 ## Image Pull Failures -->

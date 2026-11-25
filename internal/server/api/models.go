@@ -105,7 +105,7 @@ func (a *apiHandlers) createModel(w http.ResponseWriter, r *http.Request) {
 		// works before download. Network failures leave fields unknown, and the
 		// answer says why.
 		if meta, err := a.deployments().FetchModelMeta(r.Context(), req.Source, req.SourceID, req.Revision, "", ""); err == nil {
-			notice = a.metadataNotice(meta, req.Source, "")
+			notice = a.metadataNotice(meta, entity)
 			a.applyFetchedMetadata(r.Context(), entity, meta)
 			// A registration without a chosen ref would otherwise follow a moving
 			// default branch: every node could download different bytes under the

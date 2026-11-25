@@ -168,3 +168,43 @@ func TestMetadataSourcesFollowTheManagementNodesRules(t *testing.T) {
 		t.Fatalf("source=url = %d %s", code, body)
 	}
 }
+
+// A refresh that read nothing answers with what the site said, in the site's
+// own HTTP meaning: a repository or revision the site does not have is 404, a
+// refusal is 403, and only a site that gave no answer about the repository is
+// the 502 that points at the rules.
+func TestRefreshAnswersWithWhatTheSourceSaid(t *testing.T) {
+	st := metadataSourcesStore(t, "api_metadata_refresh_answer")
+	model, err := st.UpsertModel(&store.Model{Source: "modelscope", SourceID: "zai-org/glm-5", Revision: "master", Name: "m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	site := "https://modelscope.cn"
+	for name, tc := range map[string]struct {
+		answer modelmeta.Answer
+		status int
+		body   string
+	}{
+		"no such repository": {modelmeta.Answer{Outcome: modelmeta.OutcomeRepoNotFound, Endpoint: site, Status: 404}, http.StatusNotFound,
+			`{"code":"MODEL_REPO_NOT_FOUND","error":"modelscope.cn answered 404 for zai-org/glm-5","params":{"host":"modelscope.cn","repo":"zai-org/glm-5","source":"modelscope","status":404}}`},
+		"no such revision": {modelmeta.Answer{Outcome: modelmeta.OutcomeRevisionNotFound, Endpoint: site, Status: 404}, http.StatusNotFound,
+			`{"code":"MODEL_REVISION_NOT_FOUND","error":"modelscope.cn answered 404 for zai-org/glm-5","params":{"host":"modelscope.cn","repo":"zai-org/glm-5","revision":"master","source":"modelscope","status":404}}`},
+		"access refused": {modelmeta.Answer{Outcome: modelmeta.OutcomeDenied, Endpoint: site, Status: 401}, http.StatusForbidden,
+			`{"code":"MODEL_REPO_ACCESS_DENIED","error":"modelscope.cn answered 401 for zai-org/glm-5","params":{"host":"modelscope.cn","repo":"zai-org/glm-5","source":"modelscope","status":401}}`},
+		"an error status that says nothing": {modelmeta.Answer{Outcome: modelmeta.OutcomeUnreachable, Endpoint: site, Status: 503}, http.StatusBadGateway,
+			`{"code":"MODEL_METADATA_UNREACHABLE","error":"the management node reached none of modelscope.cn","params":{"hosts":"modelscope.cn","route":"/api/v1/pull/source-rules","source":"modelscope","status":503}}`},
+		"no connection": {modelmeta.Answer{Outcome: modelmeta.OutcomeUnreachable, Endpoint: site}, http.StatusBadGateway,
+			`{"code":"MODEL_METADATA_UNREACHABLE","error":"the management node reached none of modelscope.cn","params":{"hosts":"modelscope.cn","route":"/api/v1/pull/source-rules","source":"modelscope"}}`},
+	} {
+		h := &apiHandlers{d: Deps{Store: st, FetchModelMeta: (&metadataReads{}).hook(&modelmeta.Meta{Answer: tc.answer})}}
+		rctx := chi.NewRouteContext()
+		rctx.URLParams.Add("id", fmt.Sprint(model.ID))
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/models/1/metadata/refresh", strings.NewReader(`{}`))
+		req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+		rec := httptest.NewRecorder()
+		h.refreshModelMetadata(rec, req)
+		if rec.Code != tc.status || strings.TrimSpace(rec.Body.String()) != tc.body {
+			t.Errorf("%s: refresh = %d %s\nwant %d %s", name, rec.Code, rec.Body.String(), tc.status, tc.body)
+		}
+	}
+}
