@@ -28,10 +28,15 @@ import (
 type AnswerCause uint32
 
 const (
-	// CauseRefused is a refusal of this member or of the cluster's state:
-	// admission rejected, identity conflict, a maintenance phase that does
-	// not serve, or business writes closed.
-	CauseRefused AnswerCause = 1 << iota
+	// CauseAdmissionRejected is a member's admission the database refused.
+	CauseAdmissionRejected AnswerCause = 1 << iota
+	// CauseIdentityConflict is a cluster identity that is not the
+	// database's.
+	CauseIdentityConflict
+	// CauseMaintenanceNotServing is a maintenance phase that does not serve.
+	CauseMaintenanceNotServing
+	// CauseBusinessWritesClosed is business writes closed on this member.
+	CauseBusinessWritesClosed
 	// CausePhaseChanged is a maintenance phase that moved under the caller.
 	CausePhaseChanged
 	// CauseNoRow is a row that is not there.
@@ -81,6 +86,21 @@ const (
 	CauseFailedRequest
 )
 
+// What a refusal is, for every caller. A member is refused when its
+// admission is rejected or its cluster identity conflicts; whose admission
+// it was is RefusesMember's question. The cluster is not serving during a
+// maintenance phase or while business writes are closed, which is no verdict
+// on any member.
+const (
+	CauseMemberRefused     = CauseAdmissionRejected | CauseIdentityConflict
+	CauseClusterNotServing = CauseMaintenanceNotServing | CauseBusinessWritesClosed
+	CauseRefused           = CauseMemberRefused | CauseClusterNotServing
+)
+
+// Causes reports which of the causes in among err carries anywhere in it,
+// wrapped or joined.
+func Causes(err error, among AnswerCause) AnswerCause { return carries(err, among) }
+
 // CauseLostConnection is the ways a peer's connection goes away under a
 // request, as the material paths take them when no file is involved.
 const CauseLostConnection = CauseNetTimeout | CausePeerUnreachable | CauseBrokenPipe | CauseIODeadline
@@ -105,9 +125,14 @@ func carries(err error, among AnswerCause) AnswerCause {
 
 func carriesOne(err error, cause AnswerCause) bool {
 	switch cause {
-	case CauseRefused:
-		return errors.Is(err, ErrClusterAdmissionRejected) || errors.Is(err, ErrClusterIdentityConflict) ||
-			errors.Is(err, ErrMaintenanceNotServing) || errors.Is(err, ErrBusinessWritesClosed)
+	case CauseAdmissionRejected:
+		return errors.Is(err, ErrClusterAdmissionRejected)
+	case CauseIdentityConflict:
+		return errors.Is(err, ErrClusterIdentityConflict)
+	case CauseMaintenanceNotServing:
+		return errors.Is(err, ErrMaintenanceNotServing)
+	case CauseBusinessWritesClosed:
+		return errors.Is(err, ErrBusinessWritesClosed)
 	case CausePhaseChanged:
 		return errors.Is(err, ErrMaintenancePhaseChanged)
 	case CauseNoRow:
