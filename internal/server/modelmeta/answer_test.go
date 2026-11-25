@@ -91,16 +91,17 @@ func TestFetchSaysWhatTheSourceAnsweredWhenItReadNothing(t *testing.T) {
 		candidates       []string
 		want             Answer
 	}{
-		"modelscope has no such repository":      {"modelscope", "master", []string{msMissing.URL}, Answer{OutcomeRepoNotFound, msMissing.URL, 404}},
-		"modelscope has no such revision":        {"modelscope", "deadbeef", []string{msWrongRevision.URL}, Answer{OutcomeRevisionNotFound, msWrongRevision.URL, 404}},
-		"hugging face asked without a token":     {"huggingface", "main", []string{hfAnonymous.URL}, Answer{OutcomeDenied, hfAnonymous.URL, 401}},
-		"hugging face has no such repository":    {"huggingface", "main", []string{hfMissing.URL}, Answer{OutcomeRepoNotFound, hfMissing.URL, 404}},
-		"hugging face has no such revision":      {"huggingface", "deadbeef", []string{hfWrongRevision.URL}, Answer{OutcomeRevisionNotFound, hfWrongRevision.URL, 404}},
-		"hugging face shows a gated repository":  {"huggingface", "main", []string{hfGated.URL}, Answer{OutcomeDenied, hfGated.URL, 403}},
-		"connection refused":                     {"huggingface", "main", []string{dead}, Answer{OutcomeUnreachable, dead, 0}},
-		"an error status that says nothing":      {"huggingface", "main", []string{overloaded.URL}, Answer{OutcomeUnreachable, overloaded.URL, 503}},
-		"a dead mirror before the site's answer": {"huggingface", "main", []string{dead, hfMissing.URL}, Answer{OutcomeRepoNotFound, hfMissing.URL, 404}},
-		"a mirror's answer before a dead site":   {"huggingface", "main", []string{hfMissing.URL, dead}, Answer{OutcomeRepoNotFound, hfMissing.URL, 404}},
+		"modelscope has no such repository":      {"modelscope", "master", []string{msMissing.URL}, Answer{Outcome: OutcomeRepoNotFound, Endpoint: msMissing.URL, Status: 404}},
+		"modelscope has no such revision":        {"modelscope", "deadbeef", []string{msWrongRevision.URL}, Answer{Outcome: OutcomeRevisionNotFound, Endpoint: msWrongRevision.URL, Status: 404}},
+		"hugging face asked without a token":     {"huggingface", "main", []string{hfAnonymous.URL}, Answer{Outcome: OutcomeDenied, Endpoint: hfAnonymous.URL, Status: 401}},
+		"hugging face has no such repository":    {"huggingface", "main", []string{hfMissing.URL}, Answer{Outcome: OutcomeRepoNotFound, Endpoint: hfMissing.URL, Status: 404}},
+		"hugging face has no such revision":      {"huggingface", "deadbeef", []string{hfWrongRevision.URL}, Answer{Outcome: OutcomeRevisionNotFound, Endpoint: hfWrongRevision.URL, Status: 404}},
+		"hugging face shows a gated repository":  {"huggingface", "main", []string{hfGated.URL}, Answer{Outcome: OutcomeDenied, Endpoint: hfGated.URL, Status: 403}},
+		"connection refused":                     {"huggingface", "main", []string{dead}, Answer{Outcome: OutcomeUnreachable, Endpoint: dead, Status: 0}},
+		"an error status that says nothing":      {"huggingface", "main", []string{overloaded.URL}, Answer{Outcome: OutcomeUnreachable, Endpoint: overloaded.URL, Status: 503}},
+		"a dead mirror before the site's answer": {"huggingface", "main", []string{dead, hfMissing.URL}, Answer{Outcome: OutcomeRepoNotFound, Endpoint: hfMissing.URL, Status: 404, Disputed: true}},
+		"a mirror's answer before a dead site":   {"huggingface", "main", []string{hfMissing.URL, dead}, Answer{Outcome: OutcomeRepoNotFound, Endpoint: hfMissing.URL, Status: 404, Disputed: true}},
+		"two addresses without the repository":   {"huggingface", "main", []string{hfMissing.URL, hfAnonymous.URL}, Answer{Outcome: OutcomeDenied, Endpoint: hfAnonymous.URL, Status: 401}},
 	} {
 		meta, err := FetchFrom(context.Background(), tc.source, "acme/model", tc.revision, "", tc.candidates, nil, nil)
 		if err != nil {
@@ -111,6 +112,9 @@ func TestFetchSaysWhatTheSourceAnsweredWhenItReadNothing(t *testing.T) {
 		}
 		if meta.ConfigRaw != "" || meta.README != "" || meta.WeightBytes != 0 {
 			t.Errorf("%s: read %+v from a source that served nothing", name, meta)
+		}
+		if definite := tc.want.Outcome != OutcomeDenied && tc.want.Outcome != OutcomeUnreachable && !tc.want.Disputed; meta.Answer.Definite() != definite {
+			t.Errorf("%s: definite = %v, want %v", name, meta.Answer.Definite(), definite)
 		}
 	}
 }
@@ -132,7 +136,7 @@ func TestFetchReportsATimeoutAsUnreachable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := (Answer{OutcomeUnreachable, silent.URL, 0}); meta.Answer != want {
+	if want := (Answer{Outcome: OutcomeUnreachable, Endpoint: silent.URL, Status: 0}); meta.Answer != want {
 		t.Fatalf("answer = %+v, want %+v", meta.Answer, want)
 	}
 }

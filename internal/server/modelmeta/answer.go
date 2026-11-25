@@ -34,6 +34,15 @@ type Answer struct {
 	Outcome  Outcome
 	Endpoint string
 	Status   int
+	// Disputed: another address of the same source gave no answer about the
+	// repository, so this one's "not found" may be a mirror's gap.
+	Disputed bool
+}
+
+// Definite reports whether the source said, with no address left unheard,
+// that it does not have the repository or the revision.
+func (a Answer) Definite() bool {
+	return !a.Disputed && (a.Outcome == OutcomeRepoNotFound || a.Outcome == OutcomeRevisionNotFound)
 }
 
 // answerOf classifies a failed request to endpoint.
@@ -68,7 +77,11 @@ func statusOf(err error) int {
 func unanswered(answers []Answer) Answer {
 	for i := len(answers) - 1; i >= 0; i-- {
 		if answers[i].Outcome != OutcomeUnreachable {
-			return answers[i]
+			answer := answers[i]
+			for _, other := range answers {
+				answer.Disputed = answer.Disputed || other.Outcome == OutcomeUnreachable
+			}
+			return answer
 		}
 	}
 	if len(answers) > 0 {

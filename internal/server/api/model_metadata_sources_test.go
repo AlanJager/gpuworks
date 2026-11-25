@@ -208,3 +208,67 @@ func TestRefreshAnswersWithWhatTheSourceSaid(t *testing.T) {
 		}
 	}
 }
+
+// A registration is refused when the site says it has no such repository or
+// revision, and nothing is stored; force registers it with the notice. A site
+// that refuses access, gives no answer, or is contradicted by an address that
+// gave none does not refuse a registration.
+func TestRegistrationOfARepositoryTheSourceLacksIsRefusedUnlessForced(t *testing.T) {
+	st := metadataSourcesStore(t, "api_registration_refused")
+	site := "https://modelscope.cn"
+	register := func(answer modelmeta.Answer, body string) *httptest.ResponseRecorder {
+		h := &apiHandlers{d: Deps{Store: st, FetchModelMeta: (&metadataReads{}).hook(&modelmeta.Meta{Answer: answer})}}
+		rec := httptest.NewRecorder()
+		h.createModel(rec, httptest.NewRequest(http.MethodPost, "/api/v1/models", strings.NewReader(body)))
+		return rec
+	}
+	stored := func() int {
+		models, err := st.ListModels()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(models)
+	}
+	missing := modelmeta.Answer{Outcome: modelmeta.OutcomeRepoNotFound, Endpoint: site, Status: 404}
+	body := `{"source":"modelscope","source_id":"zai-org/glm-5","revision":"master","name":"zai-org/glm-5"}`
+
+	rec := register(missing, body)
+	if want := `{"code":"MODEL_REPO_NOT_FOUND","error":"modelscope.cn answered 404 for zai-org/glm-5","params":{"host":"modelscope.cn","repo":"zai-org/glm-5","source":"modelscope","status":404}}`; rec.Code != http.StatusUnprocessableEntity || strings.TrimSpace(rec.Body.String()) != want {
+		t.Fatalf("registration = %d %s", rec.Code, rec.Body.String())
+	}
+	rec = register(modelmeta.Answer{Outcome: modelmeta.OutcomeRevisionNotFound, Endpoint: site, Status: 404}, `{"source":"modelscope","source_id":"Qwen/Qwen2-0.5B","revision":"91d2aff3"}`)
+	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), `"code":"MODEL_REVISION_NOT_FOUND"`) || !strings.Contains(rec.Body.String(), `"revision":"91d2aff3"`) {
+		t.Fatalf("registration at a revision the site lacks = %d %s", rec.Code, rec.Body.String())
+	}
+	if n := stored(); n != 0 {
+		t.Fatalf("%d models stored by refused registrations", n)
+	}
+
+	rec = register(missing, strings.Replace(body, `{`, `{"force":true,`, 1))
+	var forced dto.Model
+	if err := json.Unmarshal(rec.Body.Bytes(), &forced); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusCreated || forced.ID == 0 || forced.MetadataNotice == nil || forced.MetadataNotice.Code != "MODEL_REPO_NOT_FOUND" {
+		t.Fatalf("forced registration = %d %s", rec.Code, rec.Body.String())
+	}
+
+	for name, tc := range map[string]struct {
+		answer modelmeta.Answer
+		code   string
+	}{
+		"access refused":              {modelmeta.Answer{Outcome: modelmeta.OutcomeDenied, Endpoint: site, Status: 401}, "MODEL_REPO_ACCESS_DENIED"},
+		"no answer":                   {modelmeta.Answer{Outcome: modelmeta.OutcomeUnreachable, Endpoint: site}, "MODEL_METADATA_UNREACHABLE"},
+		"nothing recorded":            {modelmeta.Answer{}, "MODEL_METADATA_UNREACHABLE"},
+		"a mirror's gap, site silent": {modelmeta.Answer{Outcome: modelmeta.OutcomeRepoNotFound, Endpoint: site, Status: 404, Disputed: true}, "MODEL_REPO_NOT_FOUND"},
+	} {
+		rec := register(tc.answer, fmt.Sprintf(`{"source":"modelscope","source_id":"org/%d","revision":"master"}`, stored()))
+		var wire dto.Model
+		if err := json.Unmarshal(rec.Body.Bytes(), &wire); err != nil {
+			t.Fatal(err)
+		}
+		if rec.Code != http.StatusCreated || wire.MetadataNotice == nil || wire.MetadataNotice.Code != tc.code {
+			t.Errorf("%s: registration = %d %s", name, rec.Code, rec.Body.String())
+		}
+	}
+}
