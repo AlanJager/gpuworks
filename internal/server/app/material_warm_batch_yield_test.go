@@ -249,7 +249,7 @@ func TestMaterialWarmBatchYieldStopsAtCapturedProof(t *testing.T) {
 			case "caller-cancel":
 				cancel()
 			case "invalidate":
-				e.Invalidate()
+				e.Invalidate(closeMaterialPass)
 			case "stop":
 				e.Stop()
 			case "proof-failure":

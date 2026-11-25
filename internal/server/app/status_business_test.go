@@ -42,7 +42,7 @@ func TestStatusRequiresCurrentBusinessAdmissionAfterQuorumObservation(t *testing
 			}
 			if mode == "refused" {
 				// What a refusal from the database does to this member.
-				eligibility.Invalidate()
+				eligibility.Invalidate(closeMaterialPass)
 			}
 			gate.setBusinessHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path != "/api/v1/readyz" {
@@ -105,7 +105,7 @@ func TestStatusReadinessRejectsEligibilityLossDuringActualSettingsRead(t *testin
 			gate := newBusinessHandlerGate()
 			gate.requireMaterialEligibility()
 			gate.setMaterialEligibility(eligibility)
-			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}))
+			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}, nil))
 			server := httptest.NewServer(gate)
 			t.Cleanup(server.Close)
 			entered, resume := make(chan struct{}), make(chan struct{})
@@ -194,7 +194,7 @@ func TestStatusReadinessRechecksAdmissionAfterOneRealRead(t *testing.T) {
 				}
 				switch mode {
 				case "refused after the read":
-					eligibility.Invalidate()
+					eligibility.Invalidate(closeMaterialPass)
 				case "request canceled after the read":
 					cancel()
 				case "proof expires after the read":
@@ -203,7 +203,7 @@ func TestStatusReadinessRechecksAdmissionAfterOneRealRead(t *testing.T) {
 					gate.setBusinessHandler(nil)
 				}
 			})
-			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}))
+			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}, nil))
 			rec := httptest.NewRecorder()
 			gate.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/readyz", nil).WithContext(ctx))
 			if rec.Code != http.StatusServiceUnavailable {
@@ -227,7 +227,7 @@ func TestStatusReadyRequiresRealBusinessSettingsReads(t *testing.T) {
 		t.Fatal(err)
 	}
 	gate := newBusinessHandlerGate()
-	gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st}))
+	gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st}, nil))
 	server := httptest.NewServer(gate)
 	t.Cleanup(server.Close)
 	if got := probeBusiness(t.Context(), server.Listener.Addr().String(), time.Second); got != "open" {
@@ -262,10 +262,10 @@ func TestStatusReadinessUsesMaterialAndGenerationGuards(t *testing.T) {
 			if ready, err := eligibility.Reprove(t.Context()); !ready || err != nil {
 				t.Fatalf("prepare: %t %v", ready, err)
 			}
-			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}))
+			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}, nil))
 			switch index {
 			case 1:
-				eligibility.Invalidate()
+				eligibility.Invalidate(closeMaterialPass)
 			case 2:
 				gate.setBusinessHandler(nil)
 			}

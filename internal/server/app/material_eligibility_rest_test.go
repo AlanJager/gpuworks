@@ -169,7 +169,7 @@ func TestMaterialEligibilityRestCancellationAndInvalidation(t *testing.T) {
 					t.Fatal("success did not enter quiet interval")
 				case <-time.After(interval / 8):
 				}
-				e.Invalidate()
+				e.Invalidate(closeMaterialPass)
 				if e.Eligible() {
 					t.Fatal("invalidation did not close immediately")
 				}

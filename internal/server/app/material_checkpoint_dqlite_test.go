@@ -46,7 +46,7 @@ func TestNativeMaterialCheckpointRequiresExactSingleCause(t *testing.T) {
 			if got := materialReplicationFailureInvalidates(tc.err); got == benign {
 				t.Fatalf("worker invalidates=%v benign=%v", got, benign)
 			}
-			if unavailableMaterialPeer(tc.err) {
+			if peerUnreachable(tc.err) {
 				t.Fatal("SQL checkpoint was misclassified as an unavailable peer")
 			}
 		})

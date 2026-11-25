@@ -15,10 +15,10 @@ import (
 // Authenticated GET /api/v1/healthz keeps its token check and adds the three
 // member answers plus entry candidacy. Any other route is admitted when the
 // member is business-ready, including a healthy follower that is not the scheduler.
-func memberServiceHandler(next http.Handler, member *App) http.Handler {
+func memberServiceHandler(next http.Handler, member *App, refusals *businessRefusals) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if next == nil {
-			refuseMemberBusiness(w, r, refusalNoHandler)
+			refusals.refuse(w, r, refusalNoHandler)
 			return
 		}
 		if r.Method == http.MethodGet && r.URL.Path == "/healthz" {
@@ -26,11 +26,11 @@ func memberServiceHandler(next http.Handler, member *App) http.Handler {
 			return
 		}
 		if r.Method == http.MethodGet && r.URL.Path == "/api/v1/healthz" {
-			serveMemberHealth(w, r, next, member)
+			serveMemberHealth(w, r, next, member, refusals)
 			return
 		}
-		if reason := member.businessRefusalReason(); reason != "" {
-			refuseMemberBusiness(w, r, reason)
+		if service := member.memberService(r.Context(), false); !service.BusinessReady {
+			refusals.refuse(w, r, service.BusinessRefusal)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -87,7 +87,7 @@ func (a *App) sessionsRoutable() bool {
 // would mark every target stale together.
 func (a *App) targetsCurrent() bool { return true }
 
-func serveMemberHealth(w http.ResponseWriter, r *http.Request, next http.Handler, member *App) {
+func serveMemberHealth(w http.ResponseWriter, r *http.Request, next http.Handler, member *App, refusals *businessRefusals) {
 	rec := &capturingResponse{}
 	next.ServeHTTP(rec, r)
 	if member == nil || rec.status != http.StatusOK {
@@ -104,7 +104,7 @@ func serveMemberHealth(w http.ResponseWriter, r *http.Request, next http.Handler
 	payload["business_ready"] = service.BusinessReady
 	payload["schedulable"] = service.Schedulable
 	payload["entry_candidate"] = member.entryCandidate(r.Context(), service.BusinessReady)
-	if refused := memberBusinessRefusals.snapshot(); len(refused) != 0 {
+	if refused := refusals.snapshot(); len(refused) != 0 {
 		payload["business_refusals"] = refused
 	}
 	encoded, err := json.Marshal(payload)
@@ -119,31 +119,6 @@ func serveMemberHealth(w http.ResponseWriter, r *http.Request, next http.Handler
 	copyHeader(w.Header(), header)
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(append(encoded, '\n'))
-}
-
-// businessRefusalReason is empty when this member's business is ready: the
-// facts memberService reads, without the scheduling answer.
-func (a *App) businessRefusalReason() string {
-	if a == nil || a.store == nil {
-		return memberRefusalReason(false, false, false, false)
-	}
-	return memberRefusalReason(true, a.materialsSurviveFault(), a.sessionsRoutable(), a.targetsCurrent())
-}
-
-// memberRefusalReason names the first fact EvaluateMemberService finds
-// missing for business; it is empty when that function says ready.
-func memberRefusalReason(live, materialsSurviveFault, sessionRoutable, targetCurrent bool) string {
-	switch {
-	case !live:
-		return refusalNoHandler
-	case !materialsSurviveFault:
-		return refusalProofNotEligible
-	case !sessionRoutable:
-		return refusalSessionsUnroutable
-	case !targetCurrent:
-		return refusalTargetNotCurrent
-	}
-	return ""
 }
 
 type capturingResponse struct {

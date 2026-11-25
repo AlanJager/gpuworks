@@ -68,7 +68,7 @@ func TestCandidateMaterialInvalidationClosesRequestsBeforeBusinessStopWait(t *te
 	}
 	done := make(chan struct{})
 	go func() {
-		a.invalidateCandidateMaterialEligibility()
+		a.invalidateCandidateMaterialEligibility(closeMaterialPass)
 		close(done)
 	}()
 	var releaseOnce sync.Once
@@ -167,7 +167,7 @@ func TestClosedMaterialEligibilityInvalidationAndRepeatedRunOwner(t *testing.T) 
 		case <-time.After(time.Millisecond):
 		}
 	}
-	a.invalidateCandidateMaterialEligibility()
+	a.invalidateCandidateMaterialEligibility(closeMaterialPass)
 	if first.Eligible() {
 		t.Fatal("observed change retained old proof")
 	}
@@ -220,7 +220,7 @@ func TestClosedMemberBusinessWritesRequireExplicitAdmission(t *testing.T) {
 	if err := create("admitted"); err != nil {
 		t.Fatal(err)
 	}
-	a.invalidateCandidateMaterialEligibility()
+	a.invalidateCandidateMaterialEligibility(closeMaterialPass)
 	if err := create("invalidated"); !errors.Is(err, store.ErrBusinessWritesClosed) {
 		t.Fatalf("material invalidation left writes open: %v", err)
 	}

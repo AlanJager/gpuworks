@@ -5,17 +5,11 @@ package app
 import (
 	"cmp"
 	"context"
-	"database/sql/driver"
 	"errors"
-	"io"
-	"io/fs"
 	"log/slog"
 	"maps"
-	"net"
-	"os"
 	"path/filepath"
 	"slices"
-	"syscall"
 	"time"
 
 	"gorm.io/gorm"
@@ -275,37 +269,10 @@ func materialPeerVote(err error) (bool, error) {
 	if err == nil {
 		return true, nil
 	}
-	if unavailableMaterialPeer(err) || (proofClusterUnavailable(err) && !errors.Is(err, context.Canceled) && !errors.Is(err, errCandidateMaterialNoMajority)) {
+	if peerUnreachable(err) || (proofClusterLost(err) && !errors.Is(err, context.Canceled) && !errors.Is(err, errCandidateMaterialNoMajority)) {
 		return false, nil
 	}
 	return false, err
-}
-
-func proofClusterUnavailable(err error) bool {
-	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, driver.ErrBadConn) || errors.Is(err, errCandidateMaterialNoMajority) || errors.Is(err, errRemoteMaterialBatchUnavailable) || materialNetworkInterrupted(err)
-}
-
-func materialNetworkInterrupted(err error) bool {
-	if err == nil {
-		return false
-	}
-	// A file's error is a finding about this member's disk, also when its
-	// system call number reads as a timeout (ETIMEDOUT, EAGAIN on a network
-	// file system): the bytes could not be read, so nothing vouches for them.
-	var file *fs.PathError
-	if errors.As(err, &file) {
-		return false
-	}
-	var timeout net.Error
-	if errors.As(err, &timeout) && timeout.Timeout() {
-		return true
-	}
-	// A peer that dies mid-body ends a length-framed response early; the
-	// truncated bytes are never counted, so it only withholds that vote.
-	return errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED) ||
-		errors.Is(err, syscall.EHOSTUNREACH) || errors.Is(err, syscall.ENETUNREACH) ||
-		errors.Is(err, syscall.EPIPE) || errors.Is(err, os.ErrDeadlineExceeded) ||
-		errors.Is(err, io.ErrUnexpectedEOF)
 }
 
 // materialMembershipInterrupted reports a lost leader or a grant that only
@@ -318,7 +285,7 @@ func materialMembershipInterrupted(ctx context.Context, err error, previous, cur
 	if cerr := ctx.Err(); cerr != nil {
 		return true, cerr
 	}
-	if proofClusterUnavailable(err) || (err == nil && observedMembersOnlyShrink(previous, current)) {
+	if proofClusterLost(err) || (err == nil && observedMembersOnlyShrink(previous, current)) {
 		return true, context.DeadlineExceeded
 	}
 	return false, nil
@@ -333,17 +300,9 @@ func materialReadinessFailure(ctx context.Context, cause ...error) (bool, error)
 		return false, err
 	}
 	for _, err := range cause {
-		if proofClusterUnavailable(err) || proofReadUnanswered(err) {
+		if proofClusterLost(err) || store.ProofReadUnanswered.Unanswered(err) {
 			return false, context.DeadlineExceeded
 		}
 	}
 	return false, nil
-}
-
-// proofReadUnanswered reports a database read the proof could not start: no
-// leader to ask, or a leader not read in time. Neither compares a byte, so
-// neither is a negative proof. A failure the database itself answered stays a
-// verdict: a refusal raised inside a statement arrives the same way.
-func proofReadUnanswered(err error) bool {
-	return store.ReplicatedLeaderUnavailable(err) || errors.Is(err, store.ErrClusterMembershipObservationTimeout)
 }
