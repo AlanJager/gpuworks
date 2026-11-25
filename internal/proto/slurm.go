@@ -19,8 +19,9 @@ const (
 // enrollment (POST /api/v1/slurm/enroll, 403): the server answers
 // {"code":"SLURM_ENROLL_REFUSED","params":{"reason":...,"entry":...}} with
 // reason unknown_token (the token is unknown or revoked), other_cluster (the
-// token is bound to another Slurm cluster) or node_taken (another entry of this
-// Slurm cluster holds the node; entry names it).
+// token is bound to another Slurm cluster), node_taken (another entry of this
+// Slurm cluster holds the node; entry names it) or EnrollReasonRefused (the
+// fleet takes no new node now; the node is taken once there is room).
 const ErrorSlurmEnrollRefused = "SLURM_ENROLL_REFUSED"
 
 // The reasons of an ErrorSlurmEnrollRefused answer.
@@ -29,3 +30,8 @@ const (
 	SlurmEnrollOtherCluster = "other_cluster"
 	SlurmEnrollNodeTaken    = "node_taken"
 )
+
+// EnrollReasonRefused is the reason of a refused enrollment, Kubernetes
+// (KUBE_ENROLL_REFUSED) or Slurm alike, when the fleet takes no new node
+// now: an enrollment guard refused it, and params.refusal_code names why.
+const EnrollReasonRefused = "enrollment_refused"

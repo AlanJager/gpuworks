@@ -196,11 +196,6 @@ func (a *App) assembleClosedMemberMaterials(ctx context.Context, bundle *enrollm
 	if err != nil {
 		return err
 	}
-	businessHTTP := a.businessHTTP
-	identity := store.ClusterIdentity{ClusterID: bundle.info.ClusterID, CAFingerprint: bundle.info.CAFingerprint, Protocol: bundle.info.Protocol}
-	businessHTTP.setBusinessRequestGuard(func(next http.Handler) http.Handler {
-		return guardBusinessRequestsForStore(next, st, identity, route.ID, memberKey, a.log)
-	})
 	if _, classified := a.joinedRaft.(joinedStoreClassifier); !classified {
 		// Classified waiting owners installed the barrier before material
 		// preparation. Ordinary closed-member construction installs it here.
@@ -344,6 +339,9 @@ func (a *App) installClosedBusinessWriteBarrier() error {
 		a.materialEligibility.setOnInvalidated(a.closeBusinessAdmission)
 	}
 	a.materialEligibilityMu.Unlock()
+	// A write the database refused because this member is no longer admitted
+	// closes the member now; its next renewal would only learn the same.
+	a.store.OnWriterRefused(a.invalidateCandidateMaterialEligibility)
 	return a.store.InstallBusinessWriteBarrier(func(context.Context) error {
 		a.materialEligibilityMu.Lock()
 		eligibility := a.materialEligibility
@@ -372,8 +370,7 @@ func (a *App) closedTransportAuthorizationRefresh(refresh func(context.Context) 
 		// its cycle or got a database failure response says nothing about
 		// this member, whether or not the cycle's deadline was reached. It
 		// keeps the proof and the next cycle repeats it. The proof's own
-		// window still ends a member that cannot verify for that long, and
-		// every business request still obtains its own grant.
+		// window still ends a member that cannot verify for that long.
 		ctxErr := ctx.Err()
 		undecided := store.ClusterGrantUndecided(err)
 		closes := errors.Is(ctxErr, context.Canceled) || !undecided

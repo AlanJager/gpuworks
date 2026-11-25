@@ -8,11 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
-
-	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 func TestBusinessHandlerGateClosesWhenMaterialProofExpires(t *testing.T) {
@@ -20,15 +17,6 @@ func TestBusinessHandlerGateClosesWhenMaterialProofExpires(t *testing.T) {
 	eligibility := newMaterialEligibility(func() time.Time { return now }, func(context.Context) (bool, error) { return true, nil }, time.Hour)
 	gate := newBusinessHandlerGate()
 	gate.requireMaterialEligibility()
-	majority := true
-	gate.setBusinessRequestGuard(func(next http.Handler) http.Handler {
-		return guardBusinessRequests(next, store.ClusterIdentity{}, 1, "local-key", func(context.Context, store.ClusterIdentity, string) (uint64, []store.ClusterTransportMember, error) {
-			if !majority {
-				return 0, nil, context.DeadlineExceeded
-			}
-			return 1, []store.ClusterTransportMember{{ID: 1, KeyFingerprint: "local-key"}, {ID: 2, KeyFingerprint: "peer-key"}}, nil
-		})
-	})
 	gate.setBusinessHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusAccepted) }))
 	request := func(path string, want int) {
 		t.Helper()
@@ -45,9 +33,6 @@ func TestBusinessHandlerGateClosesWhenMaterialProofExpires(t *testing.T) {
 		t.Fatalf("material proof: ready=%t err=%v", ready, err)
 	}
 	request("/api/v1/nodes", http.StatusAccepted)
-	majority = false
-	request("/api/v1/nodes", http.StatusServiceUnavailable)
-	majority = true
 	now = now.Add(materialEligibilityWindow)
 	request("/api/v1/nodes", http.StatusServiceUnavailable)
 	request("/healthz", http.StatusOK)
@@ -57,78 +42,6 @@ func TestBusinessHandlerGateClosesWhenMaterialProofExpires(t *testing.T) {
 	request("/api/v1/nodes", http.StatusAccepted)
 	eligibility.Invalidate()
 	request("/api/v1/nodes", http.StatusServiceUnavailable)
-}
-
-func TestBusinessHandlerGateRechecksAdmissionAfterMajorityWait(t *testing.T) {
-	for _, change := range []string{"expired", "invalidated", "withdrawn"} {
-		t.Run(change, func(t *testing.T) {
-			var clock atomic.Int64
-			clock.Store(time.Now().UTC().UnixNano())
-			eligibility := newMaterialEligibility(func() time.Time { return time.Unix(0, clock.Load()) },
-				func(context.Context) (bool, error) { return true, nil }, time.Hour)
-			if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready {
-				t.Fatalf("initial material proof: ready=%t err=%v", ready, err)
-			}
-			entered := make(chan struct{})
-			release := make(chan struct{})
-			t.Cleanup(func() {
-				select {
-				case <-release:
-				default:
-					close(release)
-				}
-			})
-			gate := newBusinessHandlerGate()
-			gate.requireMaterialEligibility()
-			gate.setMaterialEligibility(eligibility)
-			gate.setBusinessRequestGuard(func(next http.Handler) http.Handler {
-				return guardBusinessRequests(next, store.ClusterIdentity{}, 1, "local-key",
-					func(context.Context, store.ClusterIdentity, string) (uint64, []store.ClusterTransportMember, error) {
-						close(entered)
-						<-release
-						return 1, []store.ClusterTransportMember{{ID: 1, KeyFingerprint: "local-key"}, {ID: 2, KeyFingerprint: "peer-key"}}, nil
-					})
-			})
-			called := make(chan struct{}, 1)
-			gate.setBusinessHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				called <- struct{}{}
-				w.WriteHeader(http.StatusAccepted)
-			}))
-			finished := make(chan int, 1)
-			go func() {
-				recorder := httptest.NewRecorder()
-				gate.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/nodes", nil))
-				finished <- recorder.Code
-			}()
-			select {
-			case <-entered:
-			case <-time.After(2 * time.Second):
-				t.Fatal("request did not reach majority check")
-			}
-			switch change {
-			case "expired":
-				clock.Add(materialEligibilityWindow.Nanoseconds())
-			case "invalidated":
-				eligibility.Invalidate()
-			case "withdrawn":
-				gate.setBusinessHandler(nil)
-			}
-			close(release)
-			select {
-			case status := <-finished:
-				if status != http.StatusServiceUnavailable {
-					t.Fatalf("revoked admission entered business: status=%d", status)
-				}
-			case <-time.After(2 * time.Second):
-				t.Fatal("request did not finish after majority check")
-			}
-			select {
-			case <-called:
-				t.Fatal("business handler ran after admission was revoked")
-			default:
-			}
-		})
-	}
 }
 
 func TestClosedAppMaterialWorkerGatesInstalledBusinessHandler(t *testing.T) {

@@ -442,7 +442,7 @@ func (s *Store) EnrollSlurmNode(token, slurmCluster, nodeName string) (*Node, *S
 			SlurmClusterID: cluster.ID, SlurmNode: nodeName,
 		}
 		created = true
-		if err := tx.Create(&node).Error; err != nil {
+		if err := s.insertNodeTx(tx, &node); err != nil {
 			return err
 		}
 		return linkSlurmNodeToInstance(tx, cluster, node)
@@ -452,6 +452,7 @@ func (s *Store) EnrollSlurmNode(token, slurmCluster, nodeName string) (*Node, *S
 	}
 	if created {
 		s.publishNode(node.UUID, "pending")
+		s.publishNodeFleet(node.ID, NodeInserted)
 	}
 	return &node, &cluster, nil
 }

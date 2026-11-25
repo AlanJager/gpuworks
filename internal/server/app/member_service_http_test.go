@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -65,6 +67,28 @@ func TestHealthyFollowerAcceptsTheEngineCatalog(t *testing.T) {
 	follower := readMemberHealth(t, entry, token)
 	if !follower.Live || !follower.BusinessReady || follower.Schedulable {
 		t.Fatalf("healthy follower answers = %+v", follower)
+	}
+	// The count of refused business per reason is part of the authenticated
+	// answer once there is one, under exactly this key and these values, and
+	// never of the other two answers.
+	refusals := &businessRefusals{recoveryEvery: time.Nanosecond}
+	refusals.log.Store(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	useRefusals(t, refusals)
+	if none := requestMemberEntry(entry, http.MethodGet, "/api/v1/healthz", token); none.Code != http.StatusOK || strings.Contains(none.Body.String(), "business_refusals") {
+		t.Fatalf("health with no refusal: %d %s", none.Code, none.Body.String())
+	}
+	for range 3 {
+		refusals.record(refusalNoKnownLeader)
+	}
+	refusals.record(refusalClusterUpgrade)
+	counted := requestMemberEntry(entry, http.MethodGet, "/api/v1/healthz", token)
+	if wire := `"business_refusals":{"cluster_upgrade":1,"no_known_leader":3}`; counted.Code != http.StatusOK || strings.Count(counted.Body.String(), wire) != 1 {
+		t.Fatalf("authenticated health lacks %s: %d %s", wire, counted.Code, counted.Body.String())
+	}
+	for _, path := range []string{"/healthz", "/api/v1/healthz"} {
+		if anonymous := requestMemberEntry(entry, http.MethodGet, path, ""); strings.Contains(anonymous.Body.String(), "business_refusals") || strings.Contains(anonymous.Body.String(), "no_known_leader") {
+			t.Fatalf("%s without a token exposed the refusal counts: %s", path, anonymous.Body.String())
+		}
 	}
 	engines := requestMemberEntry(entry, http.MethodGet, "/api/v1/engines", token)
 	var catalog struct {

@@ -19,6 +19,23 @@ The community distribution carries neither the cluster runtime nor any cluster c
 - **Business is served by the member that leads the database.** Any other member that receives a business request (management API, console, `/v1` inference, an agent connecting) hands it over unchanged on the mutual-TLS channel between members, so the answer through the entry is the same whichever member it lands on. `/healthz` and `/api/v1/readyz` are answered by the member that received them. A member that cannot observe a leader for the moment answers business requests with 503, which the entry may retry.
 - **A write sent to a member that cannot commit it**: it answers 503, nothing is committed, and the entry can send the request to another member.
 - **A member that has not opened business** (just started, cut off from the majority, or with materials not yet verified): business requests and `/api/v1/readyz` both answer 503 with the body `member business service is not ready`.
+- **Why a member refused a request**: the 503 above, and the 403 the leader gives a request forwarded by a member it does not admit, carry the response header `X-Gpuworks-Refusal`, whose value is one of the codes below. It is given before authentication and holds the code only, no address and no identity. Once a refusal has happened, `GET /api/v1/healthz` with a token has one more field, `business_refusals`: the count per code since the process started. Both are diagnostics for operators and collectors; the codes may change between releases, and clients must not depend on them.
+
+  | Code | Meaning |
+  |---|---|
+  | `no_business_generation`, `generation_changed`, `no_business_handler` | The member's business handler is not installed yet, or was withdrawn under the request |
+  | `cluster_upgrade` | Business is closed for a cluster upgrade |
+  | `proof_missing`, `proof_expired`, `proof_stopped`, `proof_run_canceled`, `proof_canceled`, `proof_not_eligible` | The member has no valid confirmation of its membership at the moment |
+  | `sessions_not_routable`, `target_not_current` | The member cannot accept session calls, or its target version is not the current one |
+  | `no_known_leader`, `not_the_leader`, `leader_unreachable` | No leader was observed in the last few seconds; a forwarded request reached a member that does not lead; the forward to the leader failed |
+  | `forward_peer_unidentified`, `forward_not_ready`, `forward_peer_undecided`, `forward_peer_not_admitted` | On the leader: the forwarding side has no member certificate; the member route is not ready; no answer about the forwarding member; the forwarding member is not admitted (403) |
+  | `proof_headroom`, `proof_epoch_changed`, `proof_owner_changed`, `renewal_unavailable`, `request_canceled`, `request_deadline` | Only on `/api/v1/readyz`: the confirmation ends too soon or changed under the probe; the probe was cancelled or ran out of time |
+  | `other` | A reason this table does not name |
+- **A short storage stall**: a member admits requests on the membership it last confirmed. The confirmation is renewed in the background every few seconds and no request waits for it, so a storage stall of a few seconds neither refuses nor delays a request for authorization. While a renewal gets no answer (a storage stall, a timeout, no database leader) the member keeps admitting requests, and closes business only when no renewal has succeeded for 60 seconds after the start of the last successful confirmation. A pass that copies the members' key files to the other members and runs out of time, finds no database leader, or for the moment gets no answer from a majority of members (one member down and another refusing just then, for example) does not close the member either; files that differ from what was verified, are missing or cannot be read do.
+- **After a member is revoked or cut off**:
+  - Writes: a revoked member's write is refused before it commits, even while the member still reaches the database leader, and the member then closes its own business; a member cut off from the majority could not commit anyway. A check that itself fails (writer taken, no leader, a dropped connection, a timeout) is not a refusal and is returned to the caller as it is. The writes that decide membership itself, loading a backup or an import into an empty database, and the server's own work at startup do not pass this check.
+  - Reads and inference requests: when the database answers that the member was revoked, the member closes at once, normally at its next renewal after the revocation, within a few seconds. When its renewals get no answer, at most 60 seconds after the start of its last successful confirmation; until then it answers from the data it last saw.
+  - Connections between members: admitted on a member list confirmed within the last 15 seconds, and for at most 60 seconds when it cannot be confirmed, the same limit as for the member's own requests; a member revoked during a storage stall is therefore still accepted by the others for up to 60 seconds. The member that commits a revocation drops its list at once. A connection that is already open is checked only when it is opened.
 
 ## Limits
 
@@ -143,7 +160,7 @@ Current limits:
 
 <!-- translation-source-sha256: d893a7614f922930a0120a0577e4098bee4fbdbc0a805c47575855a11736c20c # Control-Plane Cluster Behaviour and Limits -->
 <!-- translation-source-sha256: 759f9f888c6cdaa0e610709be4e93ac8423ae04edf6c39dc34a64a1eae8fa022 ## Composition -->
-<!-- translation-source-sha256: 142dbf736ea9e3307388d697bf8e3bc6404972ce7557916b76037348cea06640 ## Behaviour on Failure -->
+<!-- translation-source-sha256: f61034837ac10febd8a479706df4c0dc1d4eacd1509dc914a9a1dc02334fe459 ## Behaviour on Failure -->
 <!-- translation-source-sha256: 0c107885f72821f97efd1713f64d70cb0abf5ddbedd10e0a4dc63a4733bcaebb ## Limits -->
 <!-- translation-source-sha256: 9e89485ec3a2abdb08f0d3078725abc743c57e8b2ccd468f545b1e19926fb1d6 ## Storage Tiers -->
 <!-- translation-source-sha256: d72b72f457c50043c6c73ae68c1b125b8b8ef2e4e9c9242d4db0f9a239e006d7 ## Why the Database Leader Changed: Role Records -->

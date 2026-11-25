@@ -19,6 +19,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -26,6 +27,8 @@ import (
 
 	"gpuworks.ai/gpuworks/internal/server/cluster"
 	"gpuworks.ai/gpuworks/internal/server/cluster/storagetier"
+	"gpuworks.ai/gpuworks/internal/server/hub"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // forwardCluster is a set of members joined by a real mutual-TLS member
@@ -50,6 +53,9 @@ type forwardMember struct {
 	dropped    atomic.Int64
 	authorized atomic.Int64
 	admit      atomic.Bool
+	// unanswered makes the next authorizations end as a grant that brought
+	// no answer, as during a storage stall.
+	unanswered atomic.Int64
 	seen       chan *http.Request
 }
 
@@ -141,6 +147,11 @@ func (c *forwardCluster) newMember(id uint64) *forwardMember {
 			line, _ := rw.ReadString('\n')
 			fmt.Fprintf(rw, "member %d echoes %s", id, line)
 			_ = rw.Flush()
+		case "/slow":
+			select {
+			case <-r.Context().Done():
+			case <-time.After(5 * time.Second):
+			}
 		case "/die":
 			conn, _, _ := w.(http.Hijacker).Hijack()
 			_ = conn.Close()
@@ -157,6 +168,10 @@ func (c *forwardCluster) newMember(id uint64) *forwardMember {
 	}
 	authorize := func(context.Context, *x509.Certificate) error {
 		m.authorized.Add(1)
+		if m.unanswered.Load() > 0 {
+			m.unanswered.Add(-1)
+			return fmt.Errorf("grant: %w", context.DeadlineExceeded)
+		}
 		if !m.admit.Load() {
 			return errors.New("not admitted")
 		}
@@ -304,19 +319,27 @@ func TestMemberForwardCarriesStreamsAndUpgrades(t *testing.T) {
 
 func TestMemberForwardRefusesInsteadOfGuessing(t *testing.T) {
 	c := newForwardCluster(t, 1, 2, 3)
-	refused := func(name, url string) {
+	refused := func(name, url, reason string) {
 		t.Helper()
-		if status, body, _ := forwardGet(t, url); status != http.StatusServiceUnavailable || !strings.Contains(body, "member business service is not ready") {
+		before := memberBusinessRefusals.snapshot()[reason]
+		status, body, header := forwardGet(t, url)
+		if status != http.StatusServiceUnavailable || !strings.Contains(body, "member business service is not ready") {
 			t.Fatalf("%s: %d %q", name, status, body)
+		}
+		if got := header.Get(businessRefusalHeader); got != reason {
+			t.Fatalf("%s: refusal header %q, want %q", name, got, reason)
+		}
+		if got := memberBusinessRefusals.snapshot()[reason]; got != before+1 {
+			t.Fatalf("%s: %s counted %d -> %d, want one more", name, reason, before, got)
 		}
 	}
 	// No member has observed a leader: nobody serves business.
-	refused("no leader observed", c.members[1].public.URL+"/api/v1/nodes")
+	refused("no leader observed", c.members[1].public.URL+"/api/v1/nodes", refusalNoKnownLeader)
 	c.lead(2)
 	// The observation ages out when the database stops answering.
 	c.members[1].leader.Store(0)
 	c.members[1].forward.observed.Store(&memberLeaderObservation{leader: 2, at: time.Now().Add(-memberLeaderFresh - time.Second)})
-	refused("stale observation", c.members[1].public.URL+"/api/v1/nodes")
+	refused("stale observation", c.members[1].public.URL+"/api/v1/nodes", refusalNoKnownLeader)
 
 	// Members disagree for a moment after a leader change: 1 still names 2,
 	// while 2 already sees 3 lead. Member 2 refuses; it does not forward a
@@ -328,7 +351,7 @@ func TestMemberForwardRefusesInsteadOfGuessing(t *testing.T) {
 	for len(c.members[3].seen) > 0 {
 		<-c.members[3].seen
 	}
-	refused("forwarded to a member that no longer leads", c.members[1].public.URL+"/api/v1/nodes")
+	refused("forwarded to a member that no longer leads", c.members[1].public.URL+"/api/v1/nodes", refusalNotTheLeader)
 	if len(c.members[3].seen) != 0 || len(c.members[2].seen) != 0 {
 		t.Fatal("a forwarded request was served or forwarded again by a member that does not lead")
 	}
@@ -336,8 +359,16 @@ func TestMemberForwardRefusesInsteadOfGuessing(t *testing.T) {
 	// A member the leader does not admit is refused before business runs.
 	c.lead(3)
 	c.members[3].admit.Store(false)
-	if status, _, _ := forwardGet(t, c.members[1].public.URL+"/api/v1/nodes"); status != http.StatusForbidden {
-		t.Fatalf("unadmitted member was answered %d", status)
+	notAdmitted := memberBusinessRefusals.snapshot()[refusalPeerNotAdmitted]
+	status, body, header := forwardGet(t, c.members[1].public.URL+"/api/v1/nodes")
+	if status != http.StatusForbidden || !strings.Contains(body, "member is not admitted") {
+		t.Fatalf("unadmitted member was answered %d %q", status, body)
+	}
+	if got := header.Get(businessRefusalHeader); got != refusalPeerNotAdmitted {
+		t.Fatalf("refusal header %q, want %q", got, refusalPeerNotAdmitted)
+	}
+	if got := memberBusinessRefusals.snapshot()[refusalPeerNotAdmitted]; got != notAdmitted+1 {
+		t.Fatalf("%s counted %d -> %d, want one more", refusalPeerNotAdmitted, notAdmitted, got)
 	}
 	if len(c.members[3].seen) != 0 {
 		t.Fatal("business ran for a member that is not admitted")
@@ -349,8 +380,29 @@ func TestMemberForwardSurvivesTheLeaderDyingMidRequest(t *testing.T) {
 	c.lead(2)
 	// The leader drops the connection while answering: the client gets a
 	// refusal it may retry, not a hang and not another member's answer.
-	if status, _, _ := forwardGet(t, c.members[1].public.URL+"/die"); status != http.StatusServiceUnavailable {
-		t.Fatalf("a request the leader dropped was answered %d", status)
+	unreachable := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]
+	if status, _, header := forwardGet(t, c.members[1].public.URL+"/die"); status != http.StatusServiceUnavailable || header.Get(businessRefusalHeader) != refusalLeaderUnreachable {
+		t.Fatalf("a request the leader dropped was answered %d, refusal %q", status, header.Get(businessRefusalHeader))
+	}
+	if got := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]; got != unreachable+1 {
+		t.Fatalf("%s counted %d -> %d, want one more", refusalLeaderUnreachable, unreachable, got)
+	}
+	// A client that goes away while the leader is answering says nothing
+	// about the leader: it is not counted and opens no run of refusals.
+	before := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]
+	gone, cancel := context.WithCancel(context.Background())
+	req, err := http.NewRequestWithContext(gone, http.MethodGet, c.members[1].public.URL+"/slow", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.AfterFunc(50*time.Millisecond, cancel)
+	if resp, err := http.DefaultClient.Do(req); err == nil {
+		resp.Body.Close()
+		t.Fatal("the cancelled request was answered")
+	}
+	time.Sleep(200 * time.Millisecond)
+	if got := memberBusinessRefusals.snapshot()[refusalLeaderUnreachable]; got != before {
+		t.Fatalf("a client abort was counted as %s: %d -> %d", refusalLeaderUnreachable, before, got)
 	}
 	// The leader's route goes away entirely; requests are refused until the
 	// members observe the next leader, then served by it.
@@ -437,6 +489,192 @@ func TestMemberForwardIsInertWithoutARoute(t *testing.T) {
 	defer ln.Close()
 	if err := forward.ServeMemberSessions(ln); err == nil {
 		t.Fatal("an unconfigured route was served")
+	}
+}
+
+// One member asks another's module a question over the member route and
+// gets that member's own answer, whoever leads; a member that is not
+// admitted, a module that answers nothing, and a member with no route are
+// all "no answer", and nothing is served to a caller without a certificate.
+func TestMemberAsksAnotherMembersModule(t *testing.T) {
+	c := newForwardCluster(t, 1, 2, 3)
+	for id, m := range c.members {
+		m.forward.answers = func(name string) MemberAnswerer {
+			if name != "fake" {
+				return nil
+			}
+			return func(_ context.Context, question []byte) ([]byte, error) {
+				if string(question) == "fail" {
+					return nil, errors.New("no")
+				}
+				return []byte(fmt.Sprintf("member %d heard %q", id, question)), nil
+			}
+		}
+	}
+	ask := func(from, to uint64, name, question string) (string, error) {
+		out, err := c.members[from].forward.ask(context.Background(), to, name, []byte(question))
+		return string(out), err
+	}
+	// No leader is observed and business is refused; a question is still answered.
+	for _, to := range []uint64{2, 3} {
+		if got, err := ask(1, to, "fake", "hello"); err != nil || got != fmt.Sprintf(`member %d heard "hello"`, to) {
+			t.Fatalf("ask member %d = %q, %v", to, got, err)
+		}
+	}
+	c.lead(2)
+	if got, err := ask(3, 1, "fake", "again"); err != nil || got != `member 1 heard "again"` {
+		t.Fatalf("ask a member that does not lead = %q, %v", got, err)
+	}
+	for name, call := range map[string]func() (string, error){
+		"a module that answers nothing": func() (string, error) { return ask(1, 2, "other", "x") },
+		"a name that is no module":      func() (string, error) { return ask(1, 2, "../fake", "x") },
+		"an answerer that fails":        func() (string, error) { return ask(1, 2, "fake", "fail") },
+		"a member with no route":        func() (string, error) { return ask(1, 9, "fake", "x") },
+	} {
+		if got, err := call(); !errors.Is(err, ErrMemberUnreachable) {
+			t.Errorf("%s = %q, %v, want %v", name, got, err, ErrMemberUnreachable)
+		}
+	}
+	if _, err := ask(1, 2, "fake", strings.Repeat("x", MemberQuestionLimit+1)); err == nil {
+		t.Error("a question over the limit was sent")
+	}
+	// The member asked does not admit the asker.
+	c.members[2].admit.Store(false)
+	c.members[3].forward.proxies = map[uint64]*httputil.ReverseProxy{} // a new connection, so admission is checked again
+	if got, err := ask(3, 2, "fake", "x"); !errors.Is(err, ErrMemberUnreachable) {
+		t.Errorf("asked by a member that is not admitted = %q, %v", got, err)
+	}
+	// Without a member certificate the route does not complete a handshake.
+	plain := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: c.pool, ServerName: "127.0.0.1"}}, Timeout: 5 * time.Second}
+	if resp, err := plain.Post("https://"+c.members[1].route.Addr().String()+memberAskPrefix+"fake", "application/octet-stream", strings.NewReader("x")); err == nil {
+		resp.Body.Close()
+		t.Errorf("a caller without a member certificate was answered %d", resp.StatusCode)
+	}
+}
+
+// A module's Init runs before the member's route exists. A question asked
+// then says so, apart from a single server and from a member that does not
+// answer, so the module can tell "not asked" from "no answer".
+func TestAskingBeforeTheMemberRouteIsUp(t *testing.T) {
+	ctx := context.Background()
+	single := &App{}
+	if _, err := single.askMember(ctx, 2, "fake", nil); !errors.Is(err, ErrNotClusterMember) {
+		t.Fatalf("a server on an ordinary store = %v", err)
+	}
+	never := &App{ha: &memberRuntime{}}
+	if _, err := never.askMember(ctx, 2, "fake", nil); !errors.Is(err, ErrNotClusterMember) {
+		t.Fatalf("a member never enrolled in a cluster = %v", err)
+	}
+	// Enrolled, and the modules' Init is running: no route yet.
+	runtime := &memberRuntime{bundle: &enrollmentBundle{}}
+	member := &App{ha: runtime}
+	if _, err := member.askMember(ctx, 2, "fake", nil); !errors.Is(err, ErrMemberRouteNotReady) {
+		t.Fatalf("before the route exists = %v, want %v", err, ErrMemberRouteNotReady)
+	}
+	// The route exists but has no certificate-bound transport yet.
+	runtime.forward = newMemberForward(nil, func(context.Context) (uint64, error) { return 0, errors.New("none") }, func() int { return 0 }, func() {})
+	if _, err := member.askMember(ctx, 2, "fake", nil); !errors.Is(err, ErrMemberRouteNotReady) {
+		t.Fatalf("before the transport is set = %v, want %v", err, ErrMemberRouteNotReady)
+	}
+	// Once it is up, a member that is not there is "no answer".
+	c := newForwardCluster(t, 1, 2)
+	up := &App{ha: &memberRuntime{bundle: &enrollmentBundle{}, forward: c.members[1].forward}}
+	if _, err := up.askMember(ctx, 9, "fake", nil); !errors.Is(err, ErrMemberUnreachable) {
+		t.Fatalf("a member with no route = %v, want %v", err, ErrMemberUnreachable)
+	}
+}
+
+// The order New starts a cluster member in, with the functions it calls: the
+// modules' Init first (startExtensions), then the member's handler, which
+// makes the route to the other members, then the certificate-bound
+// transport. A module that asks a member from Init is told the route is not
+// ready; the same Host gets the member's answer once the route is up. No
+// database is started: the store and the hub are only held by the route.
+func TestAModuleAsksAMemberInTheOrderNewStartsIt(t *testing.T) {
+	ctx := context.Background()
+	c := newForwardCluster(t, 2)
+	c.members[2].forward.answers = func(name string) MemberAnswerer {
+		return func(_ context.Context, question []byte) ([]byte, error) {
+			return []byte(name + " on member 2 heard " + string(question)), nil
+		}
+	}
+	runtime := &memberRuntime{bundle: &enrollmentBundle{}}
+	a := &App{ha: runtime, store: &store.Store{}, hub: &hub.Hub{}}
+	runtime.business = a
+	host := &Host{app: a, name: "fake"}
+
+	// 1. Init runs: no route exists.
+	if _, err := host.AskMember(ctx, 2, []byte("at init")); !errors.Is(err, ErrMemberRouteNotReady) {
+		t.Fatalf("asked from Init = %v, want %v", err, ErrMemberRouteNotReady)
+	}
+	// 2. New wraps the handler: the route exists, without its transport.
+	_ = a.memberHandler(http.NotFoundHandler())
+	if runtime.forward == nil {
+		t.Fatal("the member's handler made no route")
+	}
+	if _, err := host.AskMember(ctx, 2, []byte("no transport")); !errors.Is(err, ErrMemberRouteNotReady) {
+		t.Fatalf("asked before the transport = %v, want %v", err, ErrMemberRouteNotReady)
+	}
+	// 3. The member's sessions are routed: certificates and the peers' routes.
+	cert := c.certificate("member-7", 77)
+	server := &tls.Config{Certificates: []tls.Certificate{cert}, ClientAuth: tls.RequireAndVerifyClientCert, ClientCAs: c.pool, MinVersion: tls.VersionTLS13}
+	peerTLS := func(context.Context, uint64, string) (*tls.Config, error) {
+		return &tls.Config{Certificates: []tls.Certificate{cert}, RootCAs: c.pool, ServerName: "127.0.0.1", MinVersion: tls.VersionTLS13}, nil
+	}
+	if err := runtime.forward.SetMemberSecureTransport(7, server, peerTLS, func(context.Context, *x509.Certificate) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	runtime.forward.SetMemberRoute(2, c.members[2].route.Addr().String())
+	got, err := host.AskMember(ctx, 2, []byte("after the route is up"))
+	if err != nil || string(got) != "fake on member 2 heard after the route is up" {
+		t.Fatalf("asked after the route is up = %q, %v", got, err)
+	}
+}
+
+// Seen on the real hosts: during a storage stall the leader's grant for a
+// member's connection timed out, the result was kept for the life of that
+// connection, and for 62 to 102 seconds every request the member forwarded
+// was answered 403 "member is not admitted" although the member was admitted
+// all along. A grant that brings no answer decides nothing: the request is
+// answered "not ready", and the next request on the same connection asks
+// again and is served.
+func TestGrantTimeoutDuringAStallDoesNotRefuseTheMembersConnectionAfterwards(t *testing.T) {
+	c := newForwardCluster(t, 1, 2)
+	c.lead(2)
+	leader, follower := c.members[2], c.members[1]
+	leader.unanswered.Store(2)
+	for i := range 2 {
+		status, body, header := forwardGet(t, follower.public.URL+"/api/v1/nodes")
+		if status != http.StatusServiceUnavailable || !strings.Contains(body, "member business service is not ready") {
+			t.Fatalf("request %d during the stall: %d %q, want 503 not ready, never 403", i, status, body)
+		}
+		if got := header.Get(businessRefusalHeader); got != refusalPeerUndecided {
+			t.Fatalf("request %d during the stall: refusal %q, want %q", i, got, refusalPeerUndecided)
+		}
+	}
+	status, body, header := forwardGet(t, follower.public.URL+"/api/v1/nodes")
+	if status != http.StatusOK || header.Get("X-Served-By") != "2" {
+		t.Fatalf("first request after the stall: %d %q", status, body)
+	}
+	// The stall's attempts and the one that answered: three questions, and
+	// none after the answer, on the one connection the member keeps open.
+	if got := leader.authorized.Load(); got != 3 {
+		t.Fatalf("the leader asked %d times, want 3", got)
+	}
+	if status, _, _ := forwardGet(t, follower.public.URL+"/api/v1/nodes"); status != http.StatusOK || leader.authorized.Load() != 3 {
+		t.Fatalf("a decided connection: status %d, asked %d times", status, leader.authorized.Load())
+	}
+	// A refusal is an answer, and is kept.
+	c2 := newForwardCluster(t, 1, 2)
+	c2.lead(2)
+	c2.members[2].admit.Store(false)
+	for range 2 {
+		if status, _, _ := forwardGet(t, c2.members[1].public.URL+"/api/v1/nodes"); status != http.StatusForbidden {
+			t.Fatalf("a member that is not admitted was answered %d", status)
+		}
+	}
+	if got := c2.members[2].authorized.Load(); got != 1 {
+		t.Fatalf("a refused connection was asked about %d times, want 1", got)
 	}
 }
 

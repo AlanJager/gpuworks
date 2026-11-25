@@ -6,14 +6,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"gorm.io/gorm"
-	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // Actual pinned mTLS batch bytes and durable material-grant SQL contend on the
@@ -79,33 +77,18 @@ func TestWarmHintYieldsBeforeGrantBearingHTTP(t *testing.T) {
 	yielded := make(chan struct{}, 1)
 	workErr := make(chan error, 1)
 	var checks, repairs atomic.Int32
-	// This uses the actual request guard and a fresh durable complete transport
-	// grant each time. Static fixture IDs model its returned live topology only;
-	// native Raft authority is outside this default test.
-	guarded := guardBusinessRequests(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) }), expected, 8, f.senderKey,
-		func(ctx context.Context, id store.ClusterIdentity, key string) (uint64, []store.ClusterTransportMember, error) {
-			revision, admissions, err := st.GrantClusterTransportAdmissions(ctx, id, key)
-			if err != nil {
-				return 0, nil, err
-			}
-			members := make([]store.ClusterTransportMember, 0, len(admissions))
-			for _, a := range admissions {
-				id := uint64(7)
-				if a.KeyFingerprint == f.senderKey {
-					id = 8
-				}
-				members = append(members, store.ClusterTransportMember{ID: id, KeyFingerprint: a.KeyFingerprint})
-			}
-			return revision, members, nil
-		})
+	// Each per-file check takes a fresh durable transport grant, as the warm
+	// verification of a real member does.
+	freshGrant := func(ctx context.Context) error {
+		_, _, err := st.GrantClusterTransportAdmissions(ctx, expected, f.senderKey)
+		return err
+	}
 	go func() {
 		defer close(workerDone)
 		workErr <- flushMaterialReceiptHintsWithYield(ctx, f.client, f.server.URL, f.memberID, items,
 			func(materialBatchItem) error {
 				checks.Add(1)
-				rec := httptest.NewRecorder()
-				guarded.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/settings", nil).WithContext(ctx))
-				if rec.Code != http.StatusOK {
+				if err := freshGrant(ctx); err != nil {
 					return errors.New("fresh per-file grant denied")
 				}
 				return nil

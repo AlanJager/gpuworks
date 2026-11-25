@@ -113,12 +113,17 @@ func (r *memberRuntime) runClosed(ctx context.Context, a *App) (bool, error) {
 }
 
 func (r *memberRuntime) handler(next http.Handler) http.Handler {
+	next = memberBusinessRefusals.serving(next)
+	if a := r.business; a != nil && a.log != nil {
+		memberBusinessRefusals.log.Store(a.log)
+	}
 	if a := r.business; a != nil && a.store != nil && a.hub != nil {
 		r.forward = newMemberForward(a.log, a.store.ObservedActionLeader, a.hub.SessionCount, a.hub.DropSessions)
 		// Admission comes first on either end: a member whose business is
 		// not ready neither serves nor forwards.
 		r.forward.local = memberServiceHandler(next, a)
 		r.forward.agents = newMemberAgentRelay(r.forward, a.hub)
+		r.forward.answers = a.memberAnswerer
 		return memberServiceHandler(r.forward.wrap(next), a)
 	}
 	return memberServiceHandler(next, r.business)

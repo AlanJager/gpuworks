@@ -16,7 +16,8 @@ const (
 	// A proof may spend one membership grant timeout and still leave that
 	// same timeout of freshness. The deadline and the proof context both
 	// start before the first read. A proof that exceeds the window is
-	// discarded instead of stretching the age of bytes it already read.
+	// discarded instead of stretching the age of bytes it already read; it
+	// publishes nothing, and by itself it does not close the member.
 	materialEligibilityWindow = 10*time.Second + store.ClusterMembershipGrantTimeout
 	// materialReproofInterval paces a proof that did not succeed, and bounds
 	// how long warm verification and readiness wait behind a renewal.
@@ -34,6 +35,14 @@ const (
 	// materialEligibilityWindow - 2*ClusterMembershipGrantTimeout changes
 	// nothing; four seconds keeps one more second while proofs are fast.
 	materialIdleReproofRest = 4 * time.Second
+	// materialUnconfirmedLimit bounds how long a member keeps admitting
+	// requests on renewals that got no answer. A renewal that only ran out of
+	// time is not a refusal and extends admission, which is what carries a
+	// member through a storage stall; without a bound a member whose every
+	// renewal times out would answer forever from a view nothing confirms:
+	// no request takes a grant of its own. Past the bound the member closes
+	// until a renewal succeeds.
+	materialUnconfirmedLimit = 4 * materialEligibilityWindow
 )
 
 // materialProofPhase spreads member starts within the existing cadence. Mix
@@ -54,24 +63,34 @@ func materialProofPhase(id uint64) time.Duration {
 // first byte, so a slow proof cannot extend the age of its earliest read.
 // An ordinary request reads Eligible only; it never scans material files.
 type materialEligibility struct {
-	mu            sync.Mutex
-	proofSlot     chan struct{}
-	now           func() time.Time
-	prove         func(context.Context) (bool, error)
-	interval      time.Duration
-	idleRest      time.Duration
-	deadline      time.Time
-	bridging      bool
-	provedAt      time.Time
+	mu        sync.Mutex
+	proofSlot chan struct{}
+	now       func() time.Time
+	prove     func(context.Context) (bool, error)
+	interval  time.Duration
+	idleRest  time.Duration
+	deadline  time.Time
+	bridging  bool
+	provedAt  time.Time
+	// answered is set when an answer other than success, an invalidation or
+	// Stop was seen since the last successful proof. From then on an attempt
+	// that brings no answer extends nothing; only a successful proof clears it.
+	answered      bool
+	expiry        *time.Timer
 	epoch         uint64
 	cancel        context.CancelFunc
 	proofCtx      context.Context
+	proofParent   context.Context
+	proofEpoch    uint64
 	runCtx        context.Context
 	running       bool
 	stopped       bool
 	onInvalidated func()
-	proving       atomic.Bool
-	phase         time.Duration
+	// onOutcome is told, after a proof was decided and any invalidation it
+	// caused was delivered, whether it was accepted as a fresh confirmation.
+	onOutcome func(proved bool)
+	proving   atomic.Bool
+	phase     time.Duration
 }
 
 func newMaterialEligibility(now func() time.Time, prove func(context.Context) (bool, error), interval time.Duration) *materialEligibility {
@@ -103,6 +122,12 @@ func (e *materialEligibility) setIdleRest(rest time.Duration) {
 func (e *materialEligibility) setOnInvalidated(fn func()) {
 	e.mu.Lock()
 	e.onInvalidated = fn
+	e.mu.Unlock()
+}
+
+func (e *materialEligibility) setOnOutcome(fn func(proved bool)) {
+	e.mu.Lock()
+	e.onOutcome = fn
 	e.mu.Unlock()
 }
 
@@ -154,8 +179,14 @@ func (e *materialEligibility) eligibleForResult(minRemaining time.Duration) (boo
 		e.mu.Unlock()
 		return false, reason, 0
 	}
+	if e.proofCtx != nil && e.outlivedWindow(e.proofParent, e.proofCtx, e.proofEpoch) && e.confirmedRecently(e.now()) {
+		// The proof in progress only ran out of its own window; see Reprove.
+		// This check may run before the proof's own cancellation callback.
+		e.admitUntil(e.unconfirmedDeadline(e.now()))
+		e.proofCtx = nil
+	}
 	if e.proofCtx != nil && e.proofCtx.Err() != nil {
-		e.deadline = time.Time{}
+		e.closeAdmission()
 		onInvalidated := e.onInvalidated
 		e.mu.Unlock()
 		if onInvalidated != nil {
@@ -172,14 +203,14 @@ func (e *materialEligibility) eligibleForResult(minRemaining time.Duration) (boo
 		// context ends. Proofs are serialized, so a slow renewal would otherwise
 		// close every member together. A grant that needs headroom still waits
 		// for a published proof.
-		if (e.bridging || e.proving.Load()) && e.proofCtx != nil && e.proofCtx.Err() == nil {
+		if (e.bridging || e.proving.Load()) && e.proofCtx != nil && e.proofCtx.Err() == nil && e.confirmedRecently(now) {
 			e.mu.Unlock()
 			if minRemaining <= 0 {
 				return true, "", 0
 			}
 			return false, "headroom", 0
 		}
-		e.deadline = time.Time{}
+		e.admitUntil(time.Time{})
 		e.bridging = false
 		onInvalidated := e.onInvalidated
 		e.mu.Unlock()
@@ -243,7 +274,7 @@ func (e *materialEligibility) Invalidate() {
 	}
 	e.mu.Lock()
 	e.epoch++
-	e.deadline = time.Time{}
+	e.closeAdmission()
 	cancel := e.cancel
 	onInvalidated := e.onInvalidated
 	e.mu.Unlock()
@@ -286,6 +317,7 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	e.cancel = cancel
 	e.proofCtx = proofCtx
 	epoch := e.epoch
+	e.proofParent, e.proofEpoch = ctx, epoch
 	started := e.now()
 	e.bridging = !e.deadline.IsZero() && started.Before(e.deadline)
 	e.mu.Unlock()
@@ -297,8 +329,17 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 			e.mu.Unlock()
 			return
 		}
+		if e.outlivedWindow(ctx, proofCtx, epoch) && e.confirmedRecently(e.now()) {
+			// The proof only ran out of its own window. That is no answer
+			// about this member, so admission continues on the last
+			// confirmation, up to the unconfirmed limit.
+			e.admitUntil(e.unconfirmedDeadline(e.now()))
+			e.proofCtx = nil
+			e.mu.Unlock()
+			return
+		}
 		e.epoch++
-		e.deadline = time.Time{}
+		e.closeAdmission()
 		onInvalidated := e.onInvalidated
 		e.mu.Unlock()
 		if onInvalidated != nil {
@@ -315,41 +356,70 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	e.cancel = nil
 	e.proofCtx = nil
 	e.bridging = false
+	// An answer of "not ready" is a verdict even when it arrives late.
+	verdict := err == nil && !ready
+	now := e.now()
+	attemptDeadline := started.Add(materialEligibilityWindow)
+	// The window is over when the clock says so, whether or not the proof
+	// context's own timer has run yet: a proof whose stages time out at the
+	// window's end, or a process that was not scheduled across it, returns
+	// here first.
+	pastWindow := !now.Before(attemptDeadline)
+	// A success that arrives after its window proves nothing about now; it
+	// is no answer, exactly as when the context had already ended.
+	lateSuccess := err == nil && ready && pastWindow
 	if err == nil && proofCtx.Err() != nil {
 		err = proofCtx.Err()
 	}
-	// A failed refresh must not throw away a result that is still inside its
-	// window. Otherwise one blip closes every member together. A grant or
-	// peer-idle timeout is not a negative material answer either: if the
-	// earlier window has already ended, the attempt's own start still bounds
-	// how long ordinary admission may continue. Cancellation, an explicit
-	// invalidation, a definitive failure with no open earlier proof, and a
-	// proof that outlives the window still close.
-	attemptDeadline := started.Add(materialEligibilityWindow)
-	live := proofCtx.Err() == nil && e.epoch == epoch && !e.stopped
-	unexpired := !e.deadline.IsZero() && e.now().Before(e.deadline)
-	deadlineOnly := err != nil && errors.Is(err, context.DeadlineExceeded) && live
-	keepEarlier := (err != nil || !ready) && live && unexpired
-	renewAttempt := !keepEarlier && deadlineOnly && e.now().Before(attemptDeadline)
-	invalidated := !keepEarlier && !renewAttempt && (e.stopped || e.epoch != epoch || proofCtx.Err() != nil || err != nil || !ready || !e.now().Before(attemptDeadline))
+	// Three kinds of outcome besides success:
+	//   - no answer: every cause is an expired deadline, no leader to ask, or
+	//     a leader not read in time. It keeps a result still inside its
+	//     window; past it, the attempt's own start, or for a proof that
+	//     outlived its window one more window, bounds admission, never beyond
+	//     the unconfirmed limit. Otherwise one blip closes every member.
+	//   - a refusal by the database: closes at once, also inside a live window.
+	//   - any other answer ("not ready", an error nothing classifies): a read
+	//     cut by a leadership change looks the same, so the earlier result
+	//     keeps its own window, but the answer is latched:
+	//     no later attempt without an answer extends admission.
+	// Cancellation and an invalidation close at once. Only a successful proof
+	// reopens what an answer or an invalidation closed.
+	noAnswer := lateSuccess || (!verdict && materialProofUnanswered(err))
+	refused := errors.Is(err, store.ErrClusterAdmissionRejected) || errors.Is(err, store.ErrClusterIdentityConflict)
+	live := proofCtx.Err() == nil && !pastWindow && e.epoch == epoch && !e.stopped
+	unexpired := !e.deadline.IsZero() && now.Before(e.deadline)
+	outlived := noAnswer && (e.outlivedWindow(ctx, proofCtx, epoch) || (pastWindow && e.undisturbed(ctx, proofCtx, epoch))) && e.confirmedRecently(now)
+	proved := err == nil && ready && live && now.Before(attemptDeadline)
+	keepEarlier := !proved && !refused && live && unexpired
+	renewAttempt := !keepEarlier && noAnswer && live && now.Before(attemptDeadline) && e.confirmedRecently(now)
+	invalidated := !proved && !keepEarlier && !renewAttempt && !outlived
 	notifyInvalidated := invalidated && e.epoch == epoch
-	if keepEarlier {
+	switch {
+	case proved:
+		e.provedAt, e.answered = started, false
+		e.admitUntil(attemptDeadline)
+	case keepEarlier:
+		e.answered = e.answered || !noAnswer
 		ready = false
-	} else if renewAttempt {
+	case renewAttempt:
 		// Not a successful proof: provedAt stays, so a write gate stops
 		// treating the closure as transient before this deadline ends.
-		e.deadline = attemptDeadline
+		limit := e.provedAt.Add(materialUnconfirmedLimit)
+		if limit.After(attemptDeadline) {
+			limit = attemptDeadline
+		}
+		e.admitUntil(limit)
 		ready = false
-	} else if invalidated {
+	case outlived:
+		e.admitUntil(e.unconfirmedDeadline(now))
+		ready = false
+	default:
 		if e.epoch == epoch {
-			e.deadline = time.Time{}
+			e.closeAdmission()
 		}
 		ready = false
-	} else {
-		e.deadline = started.Add(materialEligibilityWindow)
-		e.provedAt = started
 	}
-	onInvalidated := e.onInvalidated
+	onInvalidated, onOutcome := e.onInvalidated, e.onOutcome
 	e.mu.Unlock()
 	// An already-started callback must finish before the slot can admit a
 	// replacement proof; it may still be withdrawing the previous routes.
@@ -358,6 +428,9 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	}
 	if notifyInvalidated && onInvalidated != nil {
 		onInvalidated()
+	}
+	if onOutcome != nil {
+		onOutcome(proved)
 	}
 	cancel()
 	return ready, err
@@ -434,7 +507,7 @@ func (e *materialEligibility) Stop() {
 	e.mu.Lock()
 	e.stopped = true
 	e.epoch++
-	e.deadline = time.Time{}
+	e.closeAdmission()
 	cancel := e.cancel
 	onInvalidated := e.onInvalidated
 	e.mu.Unlock()

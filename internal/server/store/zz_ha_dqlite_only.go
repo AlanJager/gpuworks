@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"gorm.io/gorm"
@@ -228,13 +229,25 @@ func clusterMembershipAttemptInterrupted(err error) bool {
 	if clusterMembershipAttemptDefinitive(err) {
 		return false
 	}
-	var network net.Error
 	return errors.Is(err, errClusterMembershipChanged) ||
 		ReplicatedLeaderUnavailable(err) ||
 		errors.Is(err, driver.ErrBadConn) ||
 		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
 		errors.Is(err, ErrClusterMembershipObservationTimeout) ||
-		errors.As(err, &network)
+		connectionError(err)
+}
+
+// connectionError reports an error of the network layer or an expired
+// deadline. A bare system call error number also satisfies net.Error, and a
+// file that cannot be opened or written carries one: that is a finding about
+// this member's disk, not an interruption.
+func connectionError(err error) bool {
+	var network net.Error
+	if !errors.As(err, &network) {
+		return false
+	}
+	_, bare := network.(syscall.Errno)
+	return !bare
 }
 
 // clusterMembershipAttemptDefinitive reports the outcomes no repeat or wait
@@ -396,6 +409,9 @@ func (s *Store) grantTransportAdmissionsThroughInterruption(ctx context.Context,
 // Only native construction binds this callback. Public callers cannot replace
 // the authority or member key with a request-supplied identity.
 func (s *Store) bindTransportAuthorization(expected ClusterIdentity, key string, apply func(identity.TransportPolicy) (identity.TransportPolicy, error), active func() (identity.TransportPolicy, error)) {
+	if s.writerGuard != nil && validClusterDigest(key, 32) {
+		s.writerGuard.key.Store(&key)
+	}
 	s.refreshTransportAuthorization = func(ctx context.Context) error {
 		revision, admissions, err := s.grantTransportAdmissionsThroughInterruption(ctx, expected, key)
 		if err != nil {

@@ -312,7 +312,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 			for index := range candidate {
 				indexes[index] = candidate[index].Index
 			}
-			resolved, err := placement.Resolve(context.Background(), in.PlacementResolver, placementGPU(in.Node, indexes, len(in.GPUIndexes) == 0))
+			resolved, err := placement.Resolve(context.Background(), in.PlacementResolver, placementGPU(in.Node, indexes, len(in.GPUIndexes) == 0, in.Parallel.NNodes))
 			if err != nil {
 				candidateError = err
 				return scheduler.CandidateEvaluation{RejectionReason: err.Error()}
@@ -331,7 +331,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 		out.PlacementError = candidateError
 	}
 	if out.Result.OK && out.Result.Plan != nil && strings.TrimSpace(in.PlacementResolver) != "" {
-		out.Placement, out.PlacementError = placement.Resolve(context.Background(), in.PlacementResolver, placementGPU(in.Node, out.Result.Plan.GPUIndexes, len(in.GPUIndexes) == 0))
+		out.Placement, out.PlacementError = placement.Resolve(context.Background(), in.PlacementResolver, placementGPU(in.Node, out.Result.Plan.GPUIndexes, len(in.GPUIndexes) == 0, in.Parallel.NNodes))
 		if out.PlacementError == nil && out.Placement.Reason != "" {
 			out.PlacementError = fmt.Errorf("placement rejected chosen GPU set: %s", out.Placement.Reason)
 		}
@@ -349,7 +349,7 @@ func (in Input) Evaluate(st *store.Store) Output {
 	if out.Placement.GPUMemoryMiBPerDevice > 0 {
 		runtimeMemoryBytesPerGPU = out.Placement.GPUMemoryMiBPerDevice << 20
 	} else if !out.Result.OK {
-		runtimeMemoryBytesPerGPU = refusedPlacementContract(in.PlacementResolver, in.Node, in.GPUIndexes)
+		runtimeMemoryBytesPerGPU = refusedPlacementContract(in.PlacementResolver, in.Node, in.GPUIndexes, in.Parallel.NNodes)
 	}
 	out.Breakdown = estimate.Compute(estimate.Params{
 		Config: cfg, ReserveBase: reserveBase, WeightBytes: weightBytes, ComponentWeightBytes: componentWeightBytes, PerDtype: nil,
@@ -443,7 +443,7 @@ func componentDiskNeed(st *store.Store, node *store.Node, storageID uint, fallba
 // on the weights instead would contradict a template that says they do not
 // apply (a tiered engine). The request's cards, else the node's, stand in; a
 // resolver that rejects them or cannot run declares nothing.
-func refusedPlacementContract(resolver string, node *store.Node, indexes []int) int64 {
+func refusedPlacementContract(resolver string, node *store.Node, indexes []int, nnodes int) int64 {
 	if strings.TrimSpace(resolver) == "" || node == nil {
 		return 0
 	}
@@ -456,15 +456,19 @@ func refusedPlacementContract(resolver string, node *store.Node, indexes []int) 
 	if len(indexes) == 0 {
 		return 0
 	}
-	resolved, err := placement.Resolve(context.Background(), resolver, placementGPU(node, indexes, automatic))
+	resolved, err := placement.Resolve(context.Background(), resolver, placementGPU(node, indexes, automatic, nnodes))
 	if err != nil || resolved.Reason != "" {
 		return 0
 	}
 	return resolved.GPUMemoryMiBPerDevice << 20
 }
 
-func placementGPU(node *store.Node, indexes []int, automatic bool) placement.GPU {
-	input := placement.GPU{Count: len(indexes), Indexes: append([]int(nil), indexes...), Automatic: automatic}
+// placementGPU is the resolver's input for the cards one node gives the
+// instance. nnodes is the instance's node count: every rank of a multi-node
+// group resolves on its own node's cards, so a resolver that limits the whole
+// instance reads it beside the count.
+func placementGPU(node *store.Node, indexes []int, automatic bool, nnodes int) placement.GPU {
+	input := placement.GPU{Count: len(indexes), NNodes: max(nnodes, 1), Indexes: append([]int(nil), indexes...), Automatic: automatic}
 	selected := make(map[int]struct{}, len(indexes))
 	for _, index := range indexes {
 		selected[index] = struct{}{}

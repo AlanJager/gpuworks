@@ -20,7 +20,7 @@ func (s *Store) InitializeClusterSeedAdmission(ctx context.Context, clusterID, k
 		return ClusterAdmission{}, err
 	}
 	var result ClusterAdmission
-	err = s.clusterWriteTransaction(ctx, func(tx *gorm.DB) error {
+	err = s.membershipWriteTransaction(ctx, func(tx *gorm.DB) error {
 		if err := requireClusterIdentity(tx, clusterID); err != nil {
 			return err
 		}
@@ -59,7 +59,7 @@ func (s *Store) InitializeClusterSeedAdmission(ctx context.Context, clusterID, k
 // own authorization and durable publication protocol.
 func (s *Store) ClusterTransportAdmissions(ctx context.Context, clusterID string) ([]ClusterAdmission, error) {
 	var result []ClusterAdmission
-	err := s.clusterTransaction(ctx, func(tx *gorm.DB) error {
+	err := s.membershipTransaction(ctx, func(tx *gorm.DB) error {
 		if err := requireClusterIdentity(tx, clusterID); err != nil {
 			return err
 		}

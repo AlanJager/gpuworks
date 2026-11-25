@@ -248,13 +248,13 @@ func TestHasPermissionUsesExactlyOneClass(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The group class applies to a member even when others hold more bits.
-	if HasPermission(info, MountOwner{UID: os.Geteuid() + 1, GID: os.Getegid()}, 0o1) {
+	if hasPermission(info, MountOwner{UID: os.Geteuid() + 1, GID: os.Getegid()}, 0o1) {
 		t.Fatal("group member granted search through the other class")
 	}
-	if !HasPermission(info, runtimeIn(false), 0o1) {
+	if !hasPermission(info, runtimeIn(false), 0o1) {
 		t.Fatal("other identity denied search granted to others")
 	}
-	if !HasPermission(info, MountOwner{UID: os.Geteuid(), GID: os.Getegid() + 1}, 0o7) {
+	if !hasPermission(info, MountOwner{UID: os.Geteuid(), GID: os.Getegid() + 1}, 0o7) {
 		t.Fatal("owner denied its own bits")
 	}
 }

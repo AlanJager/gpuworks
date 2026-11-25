@@ -426,7 +426,11 @@ placement:
 ```
 
 - 必须定义 `resolve(gpu)`。`gpu` 是结构体：`count`、`vendor`、`names`、
-  `memories_gib`、`min_memory_gib`、`indexes`、`automatic`。
+  `memories_gib`、`min_memory_gib`、`indexes`、`automatic`、`nnodes`。
+- `gpu` 描述的是**一个节点**分给本实例的卡。多机实例按 rank 逐节点调用 resolver，每次只看到
+  该节点的卡：两个节点各出一张卡时，每个 rank 的 `gpu.count` 都是 1。`gpu.nnodes` 是整个实例
+  跨的节点数（单机为 1）。约束针对整个实例的档位要一并判断它，例如只能单卡运行的档位写
+  `if gpu.count != 1 or gpu.nnodes != 1: return reject(...)`，只写 `gpu.count != 1` 拦不住跨节点的多卡。
 - 预声明内建只有两个：`accept(gpu_memory_mib_per_device, variables?, prefer?)` 与
   `reject(reason)`。`gpu_memory_mib_per_device` 是**准入要求**（1..16777216 MiB，
   上限只为防 int64 溢出），不是分配请求。
@@ -438,7 +442,7 @@ placement:
   `accept(..., prefer=gpu.count)`，空闲 8 卡节点上拿 8 卡，只剩 4 张空闲卡时仍拿 4 卡。
   `prefer` 只影响自动选卡数：用户指定了并行度或 GPU 序号时候选数已被钉死，`prefer`
   不改变它；非 0 的 `prefer` 会在调度解释里以 `placement_preference` 原因出现。
-  `prefer=gpu.count` 属于允许的有界算术（`gpu.count`、`gpu.min_memory_gib` 及字面量）。
+  `prefer=gpu.count` 属于允许的有界算术（`gpu.count`、`gpu.nnodes`、`gpu.min_memory_gib` 及字面量）。
 - 求值是确定性、零 I/O 的：禁 `load`/import，`print` 为空操作；限额：源码
   ≤ 32 KiB、≤ 100k 步、≤ 30s 墙钟（只是兜底，确定性上限靠步数）、结果变量 ≤ 64 个 /
   字符串总量 ≤ 4096 字节。
@@ -724,7 +728,7 @@ dirs:
 | `overlap_schedule_disabled` | — | `--disable-overlap-schedule` | 必须说明 |
 | `prefill_batch_small` | `--max-num-batched-tokens` < 2048 | `--chunked-prefill-size` < 2048 | 只提示 |
 | `kv_memory_reduced` | `--gpu-memory-utilization` < 0.8 | `--mem-fraction-static` < 0.7 | 只提示 |
-| `graph_capture_narrow` | `cudagraph_mode: FULL_DECODE_ONLY`、`cudagraph_capture_sizes` 最大值 < 16 | `--cuda-graph-max-bs` < 16 | 只提示 |
+| `graph_capture_narrow` | `cudagraph_mode: FULL_DECODE_ONLY`、`cudagraph_capture_sizes` 最大值 < 16 | `--cuda-graph-max-bs`、`--cuda-graph-max-bs-decode` < 16，`--cuda-graph-backend-prefill disabled` | 只提示 |
 | `kernel_fallback` | `--attention-backend TRITON_ATTN`，环境变量 `VLLM_USE_DEEP_GEMM=0` 等关掉快速内核的开关 | — | 只提示 |
 
 登记表读 `args`、`env`，以及 `entrypoint`、`pre_start_argv`、`manual_command` 里按 shell 引号规则切开的参数：引号里带空格的 JSON 值算一个值，`sh -c '…'` 里的命令逐词读。每个输入单独读，写在两个输入里的 `--compilation-config` 不合并。vLLM 的下划线写法（`--max_num_seqs`）等同连字符写法，报出的 `param` 是连字符形式。`--compilation-config` 的 `backend: eager` 只是 torch.compile 的后端，不关图回放，不算 `graph_disabled`。

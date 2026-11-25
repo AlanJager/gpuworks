@@ -417,6 +417,12 @@ func (a *apiHandlers) slurmEnroll(w http.ResponseWriter, r *http.Request) {
 		errors.As(err, &taken)
 		writeProductError(w, http.StatusForbidden, ErrorSlurmEnrollRefused, err.Error(), map[string]any{"reason": proto.SlurmEnrollNodeTaken, "entry": taken.Entry})
 		return
+	case errors.Is(err, store.ErrNodeEnrollmentRefused):
+		// The agent does not fall back to a saved identity on this reason
+		// and asks again, at most once a minute: the node joins once the
+		// fleet has room.
+		writeProductError(w, http.StatusForbidden, ErrorSlurmEnrollRefused, err.Error(), enrollRefusalParams(err))
+		return
 	case err != nil:
 		writeErr(w, http.StatusBadRequest, err)
 		return

@@ -59,15 +59,16 @@ func OpenReplicated(ctx context.Context, normal, scheduling *sql.DB, b *bus.Bus,
 		watchDatabase(db)
 		return db, nil
 	}
-	db, err := bind(&replicatedWriterPool{DB: normal})
+	guard := &writerGuard{}
+	db, err := bind(&replicatedWriterPool{DB: normal, queued: true, guard: guard})
 	if err != nil {
 		return nil, err
 	}
-	local, err := bind(scheduling)
+	local, err := bind(&replicatedWriterPool{DB: scheduling, guard: guard})
 	if err != nil {
 		return nil, err
 	}
-	return &Store{db: db, schedulingDB: local, Bus: b, backend: backend}, nil
+	return &Store{db: db, schedulingDB: local, Bus: b, backend: backend, writerGuard: guard}, nil
 }
 
 // InitializeSchema applies migrations and default configuration. It never
