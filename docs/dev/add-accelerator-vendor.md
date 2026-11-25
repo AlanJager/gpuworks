@@ -18,7 +18,7 @@
 
 登记是两行，不能合成一行：定义在 server 与 agent 共用的包里，驱动只在 agent 里。
 
-控制台里的厂商名与图标目前写在前端（`ui/src/vendors.ts`、`ui/src/components/vendorAssets.ts`），支持矩阵（`docs/reference/support-matrix.md`）是手写的；这两处在定义之外，接入时也要补。
+控制台的厂商顺序、名称与框架归属来自 server 下发的厂商字典（`GET /api/v1/accelerator-vendors`），支持矩阵里「定义里声明的支持范围」一表由定义生成，两者都不用手改；改完定义后重新生成表和控制台测试夹具（见第三步）。仍要手工补的是图标（`ui/src/components/vendorAssets.ts` 与 `ui/public/vendor-logos/`；没有图标时控制台画一个带首字母的圆标，颜色和字母可以在 `VendorLogo.tsx` 里指定）和 `common.json` 里 `vendor.<id>` 的译名。别的页面各自的厂商译名（`deploy.json`、`inferenceTemplates.json`）没有时回退到 server 给的名字，可以不补。
 
 ## 第一步：厂商定义
 
@@ -81,6 +81,15 @@ func (p *ExampleProber) Probe(ctx context.Context) ([]proto.GPUInfo, error) {
 
 指标名用 `internal/platformmetrics` 里登记过的。
 
+驱动按需实现的可选接口。实现了框架就会用，没实现就是没有这项能力；后两个还要定义里有对应的声明才生效。这里列的是接入时最常用的几个，`internal/agent/gpu` 里还有别的按类型断言使用的接口（拓扑、NVLink、加速端口）。
+
+| 接口 | 作用 | 定义里还要有 |
+|---|---|---|
+| `DriverAwareInjector` | 授予方式随运行时不同 | 无 |
+| `ComputeProcessLister` | 卡上有哪些进程，用于判断平台之外的占用 | 无 |
+| `HostRuntimeChecker` | 在主机上让厂商运行时实际用一张卡（逐卡运行时检查） | `checks` 里列 `CheckRuntime`。不列的话检查照样跑、失败照样把卡标成不可用，但结果不上报，也不能手动复查 |
+| `ContainerRuntimeGrader` | 在镜像里跑运行时检查时，怎么判定输出 | `smokeFramework` 与 `smokeScript`，以及 `checks` 里的 `CheckRuntime`。不写就不会在镜像里跑 |
+
 ### 设备授予
 
 `RuntimeInjection` 说「这个 workload 要哪些设备」，不写任何容器命令行选项：
@@ -117,6 +126,8 @@ return RuntimeInjection{
 | `accelerator` 的 `TestVendorRuntimeAdmission` | 加一行：这个厂商在哪些运行时上被接受。它决定调度前拒绝什么，所以写出来 |
 | `agent/gpu` 的 `TestDefaultProbersPreserveExistingVendorOrder`、`TestMixedVendorAutoKeepsExistingProberPriority` | 加进期望的探测顺序。NVIDIA 排在所有带兼容版 `nvidia-smi` 的厂商之后 |
 | `server/deploy` 的 `TestEngineProfileGoldens` | `GPUWORKS_UPDATE_PROFILE_GOLDEN=1 go test -run TestEngineProfileGoldens ./internal/server/deploy/` |
+| `accelerator` 的 `TestSupportMatrixTableIsWrittenFromTheDefinitions` | `GPUWORKS_UPDATE_SUPPORT_MATRIX=1 go test -run TestSupportMatrixTableIsWrittenFromTheDefinitions ./internal/accelerator/` |
+| `server/api` 的 `TestAcceleratorVendorsWireJSONIsTheConsoleFixture` | `GPUWORKS_UPDATE_VENDOR_FIXTURE=1 go test -run TestAcceleratorVendorsWireJSONIsTheConsoleFixture ./internal/server/api/` |
 
 ## 第四步：提交前
 
@@ -142,7 +153,7 @@ go test -race ./internal/accelerator/... ./internal/agent/gpu/...
 
 | # | 要求 | 怎么核对 |
 |---|---|---|
-| 1 | 只动了自己的文件 | `git diff --stat <base>` 里的生产文件只有：新厂商的定义与驱动文件、`vendor.go` 里一个厂商常量、`vendor_spec.go` 一行、`gpu.go` 一行、前端的厂商名与图标；有新指标时再加 `internal/platformmetrics` 里的登记，列了 `kube` 时再加 `kube.go` 里的扩展资源名。测试、golden 和文档（含支持矩阵）不算在内。出现运行时驱动、调度器或别家的文件，要求拆成单独的合并请求 |
+| 1 | 只动了自己的文件 | `git diff --stat <base>` 里的生产文件只有：新厂商的定义与驱动文件、`vendor.go` 里一个厂商常量、`vendor_spec.go` 一行、`gpu.go` 一行、前端的图标与译名、生成的支持矩阵表与控制台夹具；有新指标时再加 `internal/platformmetrics` 里的登记，列了 `kube` 时再加 `kube.go` 里的扩展资源名。测试、golden 和其余文档不算在内。出现运行时驱动、调度器或别家的文件，要求拆成单独的合并请求 |
 | 2 | 定义自洽 | `go test -run TestVendorDefinitionsAreConsistent ./internal/accelerator/` 通过，且这个测试文件没有被改动 |
 | 3 | 预算没有变大 | `make check-architecture` 通过，`git diff <base> -- scripts/arch-constraints.txt` 里没有上调的数字 |
 | 4 | 驱动不写容器命令行选项 | 表后的命令 4 没有输出 |

@@ -8,6 +8,7 @@ import { Badge } from "../../components/ui/badge";
 import { Tooltip } from "../../components/ui/tooltip";
 import { compactModelMetadata } from "../inferenceTemplateFlat";
 import { inputModalitiesOf, inputModalityLabelKey } from "../../modelInference";
+import { useVendorDictionary } from "../../hooks/useVendorDictionary";
 import { compareVendors } from "../../vendors";
 
 // One spelling per value, shared by a column's filter options, its filter test
@@ -52,6 +53,7 @@ export function TemplateCatalogTable({ models, catalogQuery, onRefresh }: {
   models: InferenceTemplate[]; catalogQuery: string; onRefresh: () => void;
 }) {
   const { t } = useTranslation("inferenceTemplates");
+  useVendorDictionary();
   const vendors = [...new Set(models.flatMap(modelVendors))].sort(compareVendors);
   const quantizations = [...new Set(models.flatMap(model => model.specs.map(specQuantization)))];
   const columns: ResourceColumn<InferenceTemplate>[] = [

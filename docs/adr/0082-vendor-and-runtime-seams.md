@@ -37,8 +37,8 @@
 
 - `InferVendor` 从型号名、架构名里找产品线标记的规则（`accelerator/infer.go`），以及 Kubernetes 扩展资源名到厂商的映射（`accelerator/kube.go`）。两者都是一个函数里按固定顺序试的规则，顺序本身是行为。
 - engine 里按驱动名的判断：dGPU 注入器（`agent/engine/partition_hygon.go`、`partition_ascend.go`）、`engine.go` 里 kube 的宿主机根目录、`runtime_mounts.go` 里 docker 的挂载根目录；以及海光 dGPU 后端手写的 `--tmpfs`。预算记着它们的数量。
-- 控制台里的厂商名与图标仍写在前端。
-- 支持矩阵（`docs/reference/support-matrix.md`）仍是手写的，没有从定义生成，也没有按「厂商 × 运行时」记录验证程度。
+- 控制台的图标与译名仍写在前端；厂商的顺序、名称与框架归属由 server 的厂商字典下发。
+- 支持矩阵（`docs/reference/support-matrix.md`）里声明的支持范围由定义生成；按「厂商 × 运行时」的验证程度仍是手写的。
 
 ## 后果
 
