@@ -214,7 +214,7 @@ grep -E 'closed business admission|candidate material proof (failed|succeeded)' 
 | 代码 `member_revoked`；日志 `closed business admission caller=proof_failed`，随后 `candidate material proof failed while business admission is closed`，其中 `err_class=admission_rejected` | 数据库拒绝了这个成员的接纳：它已被撤销。这一版里只有从备份恢复会撤销成员：恢复后的数据库里，其余成员都已被撤销 | 这个成员不再属于恢复后的集群。停掉它；要让这台主机回到集群，按从备份恢复的步骤让它重新加入 |
 | 代码 `cluster_identity_conflict`；日志同上，其中 `err_class=identity_conflict` | 这个成员连到的数据库属于另一个集群，或数据库的协议版本与这个程序的不同 | 核对该成员的集群身份文件和数据库地址是否指向本集群；各成员的程序版本是否一致 |
 | 代码 `proof_missing`，日志里没有 `closed business admission` | 成员刚启动，还没有完成第一次资格确认 | 等几秒；一直不变再看同一条日志里的 `failure_stage` |
-| 多个成员同时拒绝：响应头先有一次 `proof_expired`，之后一直是 `proof_missing`；日志 `closed business admission caller=proof_expired` | 这些成员的资格确认完成不了，手里的确认用完了。一种原因是数据库成员里有一个成员已被撤销但还在线 | 看这些成员日志里 `candidate material proof failed` 一行的 `failure_stage` 定位原因。其余成员要等被撤销的成员离开数据库的成员集合才恢复，只停掉它不够。这一版没有移除单个成员的命令 |
+| 多个成员同时拒绝：响应头先有一次 `proof_expired`，之后一直是 `proof_missing`；日志 `closed business admission caller=proof_expired` | 这些成员的资格确认完成不了，手里的确认用完了 | 看这些成员日志里 `candidate material proof failed` 一行的 `failure_stage` 和 `err_class` 定位原因。“成员已被撤销但仍在数据库的成员集合里”不是原因：这一版里撤销只发生在从备份恢复时，恢复出来的是只有一个成员的集群，其余成员重新加入 |
 
 
 ## 节点掉线后的自愈与 recovery
