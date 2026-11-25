@@ -9,9 +9,22 @@
 // before the test binds it ("bind: address already in use").
 //
 // The addresses here come from below the ephemeral range, where the kernel
-// never assigns a port by itself. Another process can still bind one by
-// number; tests in another container that use this package draw at random
-// from the same twenty thousand ports and are not coordinated with.
+// never assigns a port by itself: 10000 up to the start of the ephemeral
+// range, and no further than 29999, where the test harness's engine port
+// ranges begin.
+//
+// What that does and does not give:
+//
+//   - A port is checked by binding it and releasing it again, so this is
+//     still check-then-use. Between the check and the test's own bind, only
+//     a process that asks for that port by number can take it.
+//   - A port is handed out once per process. `go test` runs each package as
+//     its own process, and CI runs several jobs on one host network, each in
+//     its own container; none of them know of each other. To keep them apart,
+//     a process starts at a random place in the pool and hands out the ports
+//     that follow, so each uses one short run of ports. Two processes hand
+//     out the same port only when their runs overlap and the second checks
+//     the port before the first has bound it.
 package testport
 
 import (
@@ -30,11 +43,11 @@ import (
 const (
 	poolStart   = 10000
 	poolEndMost = 30000
-	attempts    = 200
 )
 
 var (
 	mu    sync.Mutex
+	next  = -1 // the next candidate, as an offset into the pool
 	given = map[int]struct{}{}
 )
 
@@ -49,11 +62,15 @@ func Address(t testing.TB) string {
 // process hands out only once.
 func Port(t testing.TB, ip string) int {
 	t.Helper()
-	end := poolEnd()
+	size := poolEnd() - poolStart
 	mu.Lock()
 	defer mu.Unlock()
-	for range attempts {
-		port := poolStart + rand.IntN(end-poolStart)
+	if next < 0 {
+		next = rand.IntN(size)
+	}
+	for range size {
+		port := poolStart + next
+		next = (next + 1) % size
 		if _, taken := given[port]; taken {
 			continue
 		}
@@ -67,7 +84,7 @@ func Port(t testing.TB, ip string) int {
 		given[port] = struct{}{}
 		return port
 	}
-	t.Fatalf("testport: no free port on %s in %d-%d after %d attempts", ip, poolStart, end-1, attempts)
+	t.Fatalf("testport: no free port on %s in %d-%d", ip, poolStart, poolStart+size-1)
 	return 0
 }
 
