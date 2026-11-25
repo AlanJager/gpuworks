@@ -363,7 +363,15 @@ ui-check:
       fi
     - python3 -m venv "$CI_PROJECT_DIR/.cache/ui-check-python"
     - export UI_BROWSER_PYTHON="$CI_PROJECT_DIR/.cache/ui-check-python/bin/python"
-    - '"$UI_BROWSER_PYTHON" -m pip install -r ui/tests/browser/requirements.txt'
+    # The Playwright wheel is ~48 MB and public PyPI kept cutting it off
+    # mid-download on the runners. Take it from the mirror docs-pdf uses and
+    # keep it in the runner's shared pip cache, so a cached wheel is not fetched
+    # again.
+    - |
+      "$UI_BROWSER_PYTHON" -m pip install --disable-pip-version-check \
+        --index-url "${GPUWORKS_PYPI_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}" \
+        --timeout 30 --retries 2 --cache-dir /host-go-cache/tools/pip \
+        -r ui/tests/browser/requirements.txt
     - ./scripts/ui_check_ci.sh
   artifacts:
     when: always
