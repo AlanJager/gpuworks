@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -37,12 +38,16 @@ func verifyEnrollmentState(ctx context.Context, st *store.Store, bundle *enrollm
 }
 
 func prepareEnrollmentServer(bundle *enrollmentBundle, st *store.Store, signer *auth.TokenSigner, log *slog.Logger, catalog *packages.Store) (*enrollmentServer, error) {
-	return prepareEnrollmentServerWithOwner(bundle, st, signer, log, catalog, nil)
+	return prepareEnrollmentServerWithOwner(bundle, st, signer, log, catalog, nil, nil)
 }
+
+// enrollmentObservation puts the member observation routes of a listener
+// that has no closed listener behind it in front of its prepared routes.
+type enrollmentObservation func(prepared http.Handler, requests *materialRequestTracker) (http.Handler, error)
 
 // prepareEnrollmentServerWithOwner borrows the running closed listener's
 // material owner when preparing routes for a later live handler transfer.
-func prepareEnrollmentServerWithOwner(bundle *enrollmentBundle, st *store.Store, signer *auth.TokenSigner, log *slog.Logger, catalog *packages.Store, owner *enrollmentServer) (*enrollmentServer, error) {
+func prepareEnrollmentServerWithOwner(bundle *enrollmentBundle, st *store.Store, signer *auth.TokenSigner, log *slog.Logger, catalog *packages.Store, owner *enrollmentServer, observation enrollmentObservation) (*enrollmentServer, error) {
 	if bundle == nil {
 		return nil, nil
 	}
@@ -84,10 +89,15 @@ func prepareEnrollmentServerWithOwner(bundle *enrollmentBundle, st *store.Store,
 			return nil, err
 		}
 	}
-	if receiver != nil && requests == nil {
+	if (receiver != nil || observation != nil) && requests == nil {
 		requests = newMaterialRequestTracker()
 	}
 	handler = enrollmentMaterialHandlerWithTrackedReceiver(bundle, st, handler, catalog, receiver, requests)
+	if observation != nil {
+		if handler, err = observation(handler, requests); err != nil {
+			return nil, err
+		}
+	}
 	server, err := newEnrollmentServer(bundle.info.ListenAddress, accessLogHandler(log, handler), bundle.tls, log)
 	if err != nil {
 		return nil, err

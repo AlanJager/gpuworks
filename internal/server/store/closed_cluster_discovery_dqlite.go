@@ -17,15 +17,7 @@ import (
 // SQL cleanup, so Close cannot release its runtime lease before this returns.
 // It neither issues grants nor proves current quorum, closure or a spare role.
 func (s *LegacyJoinedRaftSession) ReadQuorumDiscoveryForCluster(parent context.Context, expected ClusterIdentity, requesterKey string) (requester ClusterAdmission, members []ClusterTransportMember, result error) {
-	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
-	defer cancel()
-	defer func() {
-		result = errors.Join(result, ctx.Err())
-		if result != nil {
-			requester, members = ClusterAdmission{}, nil
-		}
-	}()
-	if err := ctx.Err(); err != nil {
+	if err := parent.Err(); err != nil {
 		return ClusterAdmission{}, nil, err
 	}
 	if s == nil || !validClusterDigest(expected.ClusterID, 16) || !validClusterDigest(expected.CAFingerprint, 32) || expected.Protocol != ClusterProtocolVersion {
@@ -39,6 +31,22 @@ func (s *LegacyJoinedRaftSession) ReadQuorumDiscoveryForCluster(parent context.C
 	if db == nil || s.release == nil || db.ID != s.id || db.Address != s.address || s.id == 0 {
 		return ClusterAdmission{}, nil, errors.New("native session is unavailable")
 	}
+	return readQuorumDiscovery(parent, db, expected, requesterKey)
+}
+
+// readQuorumDiscovery is the discovery read over one database handle: the
+// live membership and, in one read-only snapshot, the admission of the
+// requester and the members' transport records. An established member's
+// session and the process that created the cluster both answer from it.
+func readQuorumDiscovery(parent context.Context, db *cluster.Database, expected ClusterIdentity, requesterKey string) (requester ClusterAdmission, members []ClusterTransportMember, result error) {
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
+	defer func() {
+		result = errors.Join(result, ctx.Err())
+		if result != nil {
+			requester, members = ClusterAdmission{}, nil
+		}
+	}()
 	clusterID, pin := db.TransportIdentity()
 	if clusterID != expected.ClusterID || pin != expected.CAFingerprint {
 		return ClusterAdmission{}, nil, ErrClusterIdentityConflict
@@ -52,7 +60,7 @@ func (s *LegacyJoinedRaftSession) ReadQuorumDiscoveryForCluster(parent context.C
 	// former leader. Each failed read fully cleans up before trying another;
 	// only this fixed SELECT snapshot is retried, never authorization writes.
 	for attempt := 0; attempt < 5; attempt++ {
-		requester, members, result = readClosedDiscoverySQL(ctx, db.SQL, expected, cluster.Member{ID: s.id, Address: s.address}, db.TransportMemberKey(), requesterKey, native)
+		requester, members, result = readClosedDiscoverySQL(ctx, db.SQL, expected, cluster.Member{ID: db.ID, Address: db.Address}, db.TransportMemberKey(), requesterKey, native)
 		if !errors.Is(result, driver.ErrBadConn) || ctx.Err() != nil {
 			return requester, members, result
 		}

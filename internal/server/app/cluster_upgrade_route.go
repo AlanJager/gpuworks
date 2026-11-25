@@ -61,6 +61,9 @@ func clusterUpgradeHandler(bundle *enrollmentBundle, session joinedRaftSession, 
 			AppliedExtensions: status.AppliedExtensions, KnownExtensions: status.KnownExtensions,
 			AppliedByExtension: status.AppliedExtensionMarkers(),
 		}
+		if founding, ok := session.(interface{ FoundingProcess() bool }); ok {
+			response.FoundingProcess = founding.FoundingProcess()
+		}
 		if agents != nil {
 			if held, known := agents(); known {
 				response.AgentConnections = &held
