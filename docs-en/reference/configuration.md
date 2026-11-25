@@ -7,7 +7,7 @@ nohup command contain only `gpuworks serve --config <dir>/server.yaml`). It resi
 so that restoring the database to another machine does not carry over the old machine's addresses.
 
 **Normal installations do not configure the server through environment variables.** The operator-facing exceptions are
-`GPUWORKS_ADMIN_PASSWORD`, which supplies the initial password when the admin account is first created, and `GPUWORKS_USAGE_REPORT=off`, which disables usage reporting. Older installations also have the compatibility exception described below.
+`GPUWORKS_ADMIN_PASSWORD`, which supplies the initial password when the admin account is first created, `GPUWORKS_ALLOW_DEGRADED_AGENT_STARTUP` for emergency startup, and `GPUWORKS_USAGE_REPORT=off`, which disables usage reporting. Older installations also have the compatibility exception described below.
 
 The exception is
 older installations that predate `server.yaml`: their units passed configuration through three Environment entries, `GPUWORKS_ADDR`, `GPUWORKS_DATA_DIR`, and
@@ -343,13 +343,14 @@ If values saved by older versions lack new keys, those keys use factory defaults
 
 ## Environment Variables
 
-Environment variables serve only the agent and installation scripts; the server does not use them as a configuration source (except for `GPUWORKS_ADMIN_PASSWORD`, the `GPUWORKS_USAGE_REPORT=off` reporting override, and the older-installation bridge variables described above). Variables fall into five categories: variables read by the server, agent variables for operators, general variables read by other tools, test-only variables, and internal implementation details.
+The server reads the environment variables listed below. Use `server.yaml` for its regular configuration. Variables fall into five categories: variables read by the server, agent variables for operators, general variables read by other tools, test-only variables, and internal implementation details.
 
 ### Variables Read by the Server
 
 | Variable | Default | Purpose | Source or Related Command |
 |---|---|---|---|
 | `GPUWORKS_ADMIN_PASSWORD` | None | Initial password when the admin account is first created; `gpuworks install` also uses it in the order `--password` > this variable > interactive input > random. Read only when creating the account | `gpuworks serve`, `gpuworks install` |
+| `GPUWORKS_ALLOW_DEGRADED_AGENT_STARTUP` | `false` | Emergency startup. An agent preparation failure normally stops the server before database migration. Set to `true` in the server process environment to start with the available platforms. The error log gives the affected agent, cause, recovery path and expected SHA256. Place the complete executable from the same build at `<data>/dl/<agent-name>` using an atomic rename. Downloads and verified upgrades recover on the next request without restarting. If the release manifest itself is unreadable, provide the matching operator manifest for verified upgrades. Remove the switch and restart after recovery. | `gpuworks serve` |
 | `GPUWORKS_ADDR`, `GPUWORKS_DATA_DIR`, `GPUWORKS_TRUSTED_PROXIES` | None | Retained only for old units predating `server.yaml`: take effect only when neither the command line nor `server.yaml` provides the corresponding value; no longer used after `install` takes over | `gpuworks serve` |
 | `GPUWORKS_DQLITE_BIN` | `gpuworks-dqlite` beside the server executable | Read only in a Linux build with the `dqlite` tag: path of the database helper. A cluster installation puts the helper beside the server, so it does not need to be set. The cluster's storage tier is neither an environment variable nor a `server.yaml` key: it is settled at installation and recorded in the member's `cluster-enrollment/config.json`; see [Storage tiers](../explanation/control-plane-cluster.md#storage-tiers) | [Control-plane cluster behaviour and limits](../explanation/control-plane-cluster.md) |
 
@@ -420,7 +421,7 @@ The following names appear in the code but are not user-configurable settings. D
 - `__GPUWORKS_AGENT_PROCESS_OK__`, `__GPUWORKS_AGENT_PROCESS_WARN__`: Marker strings in the output of verification commands after SSH installation on a cloud provider; they are not environment variables.
 
 <!-- translation-source-sha256: ab89d916f53e3adc2e328c60371f3d5c40187b54bc830f11e32f97e91a18943f # Configuration Reference -->
-<!-- translation-source-sha256: fe7442c29a8be0a2665274ea1a557e80579244ffcd3fbadea0a4a47c5bc37cdb ## Server Configuration File server.yaml -->
+<!-- translation-source-sha256: 29c8bab8a97a5cebd2c17b88fd4a6747ea9c561e3efd98d464b5136db61922c8 ## Server Configuration File server.yaml -->
 <!-- translation-source-sha256: d7dd67b789f8b241cbd8b3967bf492083928fcc82017f21736fd516cd2d4a32f ### Management Sessions -->
 <!-- translation-source-sha256: b4b7537ec834f28badc079be352e1fbbd35c58bfe41c8f0d8b432a738119d30e ### Peer Relay Resource Limits -->
 <!-- translation-source-sha256: 0f9cebe5ca9c73fa634534ea356eeaa3ac27791558b3b42a9065ce31a744e7bc ### Listen Rules -->
@@ -432,8 +433,8 @@ The following names appear in the code but are not user-configurable settings. D
 <!-- translation-source-sha256: 1290325d6e81db318ea2c530721200a00935ff53cb7e96f7389d775c5b4d5f8c ### Outbound HTTP Proxy Policy -->
 <!-- translation-source-sha256: 211f27db95ac706484c7a7e5c28ddbbd60014773881d2ff1d10ff0e1b7457389 ## Image Catalog and Image Pulls -->
 <!-- translation-source-sha256: 4700eefb151c9a99fec158543dee215422bdfcc3888626c4bf4ddf25b9b1fbdc ## Deployment Policy -->
-<!-- translation-source-sha256: 3892ea863909dec5e9899a22cdc752e695f91d7dcc2d0ac4e7ea2d238ba47651 ## Environment Variables -->
-<!-- translation-source-sha256: 6bdcaaa9ff0370ab6a8f8108875833921c297dba119f650e005b7752c744c9f0 ### Variables Read by the Server -->
+<!-- translation-source-sha256: dd1c8bdea1a1f23efe84c9a19f0895de256ca1f7e281acec08d9a61a2360d2f5 ## Environment Variables -->
+<!-- translation-source-sha256: dc0e19553fae3ed8665f11f3ad1c9e8cc98f2fcfd27d721f9e64741dcc36b834 ### Variables Read by the Server -->
 <!-- translation-source-sha256: 4f2f126bbf1cb3b480ad22f8383f9c389cb71bd49839b4d77d338b2ae1208a76 ### Agent Environment Variables -->
 <!-- translation-source-sha256: e83b889545bc781db014647c1a2ef31619ef878e35a88640148bcdad938b8807 ### Other General-Purpose Variables Read -->
 <!-- translation-source-sha256: eb148b0c641c2132abcda95d460feb5369ebeaf448231429ca82ef7abf4cfef1 ### Variables for Testing and Development Only -->
