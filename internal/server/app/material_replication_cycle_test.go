@@ -20,7 +20,7 @@ func TestMaterialPeriodicCycleCanceledBeforeWorkKeepsAuthoritySeparate(t *testin
 				proofs.Add(1)
 				return true, nil
 			}, materialReproofInterval)
-			eligibility.setOnInvalidated(func() { invalidated.Add(1) })
+			eligibility.setOnInvalidated(func(admissionCloseCause) { invalidated.Add(1) })
 			if ready, err := eligibility.Reprove(t.Context()); !ready || err != nil {
 				t.Fatal(ready, err)
 			}

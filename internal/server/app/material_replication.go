@@ -167,7 +167,7 @@ func replicateRequiredMaterialsWithYield(ctx context.Context, dataDir string, st
 		if err != nil {
 			err = explainMemberReachability(ctx, err, member.Address)
 		}
-		if unavailableMaterialPeer(err) {
+		if peerUnreachable(err) {
 			if log != nil {
 				log.Warn("cluster member is unreachable", "member", member.ID, "database", member.Address, "err", err)
 			}
@@ -272,7 +272,7 @@ func ensureRemoteMaterialReplica(ctx context.Context, st *store.Store, client *h
 		if probeErr == nil {
 			return false, nil
 		}
-		if unavailableMaterialPeer(probeErr) {
+		if peerUnreachable(probeErr) {
 			// The peer answered nothing about the bytes it holds. Sending them
 			// again would report a change that did not happen.
 			return false, probeErr
@@ -450,7 +450,7 @@ func (a *App) runMaterialReplication(ctx context.Context, interval time.Duration
 			if err == nil {
 				for _, member := range members {
 					if member.ID == sourceID && member.EnrollmentOrigin != bundle.info.PublicURL {
-						a.invalidateCandidateMaterialEligibility()
+						a.invalidateCandidateMaterialEligibility(closeOwnOriginChanged)
 						err = registerOwnMaterialOrigin(workCtx, bundle, sourceKey)
 						if err == nil {
 							sourceID, sourceKey, expected, members, err = materialSenderMembers(workCtx, a.store, bundle)
@@ -475,7 +475,7 @@ func (a *App) runMaterialReplication(ctx context.Context, interval time.Duration
 					}
 					if restartErr == nil {
 						if len(lastObservedMembers) > 0 && !sameMembers && !observedMembersOnlyShrink(lastObservedMembers, members) && localMaterialMemberAbsent(sourceID, bundle.info.PublicURL, members) {
-							a.invalidateCandidateMaterialEligibility()
+							a.invalidateCandidateMaterialEligibility(closeMemberAbsent)
 						}
 						lastInstalledDigest = pointer.Digest
 						lastFull = time.Now()
@@ -493,7 +493,7 @@ func (a *App) runMaterialReplication(ctx context.Context, interval time.Duration
 				// this process itself is gone from the list; that also covers a
 				// list that merely shrank around this member.
 				if !sameMembers && localMaterialMemberAbsent(sourceID, bundle.info.PublicURL, members) {
-					a.invalidateCandidateMaterialEligibility()
+					a.invalidateCandidateMaterialEligibility(closeMemberAbsent)
 				}
 				// Observation is independent of repair success. These members
 				// schedule work only; grants and final checks still bind each run.
@@ -541,7 +541,7 @@ func (a *App) runMaterialReplication(ctx context.Context, interval time.Duration
 					err = probePublishedMaterialManifest(workCtx, a.store, bundle, sourceID, sourceKey, expected, members)
 					if err != nil {
 						if materialReplicationFailureInvalidates(err) {
-							a.invalidateCandidateMaterialEligibility()
+							a.invalidateCandidateMaterialEligibility(closeMaterialProbe)
 						}
 						err = fullRun()
 					} else {

@@ -106,7 +106,7 @@ func TestMaterialEligibilityFailedRefreshKeepsUnexpiredProof(t *testing.T) {
 	if got, err := eligibility.Reprove(t.Context()); err != nil || !got {
 		t.Fatalf("recovery proof: ready=%t err=%v", got, err)
 	}
-	eligibility.Invalidate()
+	eligibility.Invalidate(closeMaterialPass)
 	if eligibility.Eligible() {
 		t.Fatal("explicit invalidation retained eligibility")
 	}
@@ -127,7 +127,7 @@ func TestMaterialEligibilityInvalidationBlocksLateSuccess(t *testing.T) {
 	done := make(chan bool, 1)
 	go func() { ready, _ := eligibility.Reprove(t.Context()); done <- ready }()
 	<-started
-	eligibility.Invalidate()
+	eligibility.Invalidate(closeMaterialPass)
 	if eligibility.Eligible() {
 		t.Fatal("invalidation did not close in-flight proof")
 	}
@@ -213,7 +213,7 @@ func TestMaterialEligibilityGrantTimeoutKeepsUnexpiredProof(t *testing.T) {
 		clock.Advance(storeGrantTimeout())
 		return false, context.DeadlineExceeded
 	}, time.Second)
-	eligibility.setOnInvalidated(func() { invalidated.Add(1) })
+	eligibility.setOnInvalidated(func(admissionCloseCause) { invalidated.Add(1) })
 	if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready || !eligibility.Eligible() {
 		t.Fatalf("initial proof: ready=%t err=%v", ready, err)
 	}
@@ -245,7 +245,7 @@ func TestMaterialEligibilityPeerIdleTimeoutKeepsAdmissionAcrossExpiredWindow(t *
 		<-release
 		return false, context.DeadlineExceeded
 	}, time.Second)
-	eligibility.setOnInvalidated(func() { invalidated.Add(1) })
+	eligibility.setOnInvalidated(func(admissionCloseCause) { invalidated.Add(1) })
 	if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready || !eligibility.Eligible() {
 		t.Fatalf("initial proof: ready=%t err=%v", ready, err)
 	}

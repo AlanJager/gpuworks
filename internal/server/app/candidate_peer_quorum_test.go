@@ -286,7 +286,7 @@ func TestCandidatePeerQuorumHedgeFallsBackOnlyForUnavailablePeer(t *testing.T) {
 				} else {
 					err = verifyCandidateRemoteMaterialSets(ctx, second.client, second.server.URL, sp, sm, 8)
 				}
-				if unavailableMaterialPeer(err) {
+				if peerUnreachable(err) {
 					return false, nil
 				}
 				return err == nil, err
@@ -336,7 +336,7 @@ func TestCandidatePeerQuorumHedgesAuthenticatedPeerWithoutHeaders(t *testing.T) 
 					}
 					err = verifyCandidateRemoteMaterialSets(workCtx, second.client, second.server.URL, sp, sm, 8)
 				}
-				if unavailableMaterialPeer(err) {
+				if peerUnreachable(err) {
 					return false, nil
 				}
 				return err == nil, err

@@ -19,7 +19,7 @@ import (
 // A grant error keeps a member open only when it says nothing about the
 // member. A file the member cannot open or write is a finding, although its
 // system call error number satisfies net.Error.
-func TestClusterGrantUndecidedIsNotFooledByFileErrors(t *testing.T) {
+func TestGrantUndecidedIsNotFooledByFileErrors(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		err  error
@@ -39,7 +39,7 @@ func TestClusterGrantUndecidedIsNotFooledByFileErrors(t *testing.T) {
 		{"unclassified", errors.New("something else"), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := ClusterGrantUndecided(tc.err); got != tc.want {
+			if got := GrantUndecided.Unanswered(tc.err); got != tc.want {
 				t.Fatalf("undecided=%t want %t", got, tc.want)
 			}
 		})

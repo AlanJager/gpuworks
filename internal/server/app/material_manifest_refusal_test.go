@@ -76,7 +76,7 @@ func TestManifestReceiverLabelsOnlyChecksThatReachedNoVerdict(t *testing.T) {
 			// The sender: a labelled refusal is an unavailable peer, never a
 			// verified copy and never a verdict that closes its business.
 			refusal := fmt.Errorf("check member 2: %w", newMaterialReceiverStatus(response, "manifest receiver rejected current bytes or identity: HTTP 503"))
-			if got, want := unavailableMaterialPeer(refusal), tc.label != ""; got != want {
+			if got, want := peerUnreachable(refusal), tc.label != ""; got != want {
 				t.Fatalf("sender takes the peer as unavailable = %v, want %v", got, want)
 			}
 			if got, want := materialReplicationFailureInvalidates(refusal), tc.label == ""; got != want {
@@ -101,7 +101,7 @@ func TestManifestInterruptedLabelIsAnUnavailablePeerOnlyOn503(t *testing.T) {
 		response := statusResponse(tc.status)
 		response.Header.Set(materialRefusalHeader, tc.label)
 		err := fmt.Errorf("check member 2: %w", newMaterialReceiverStatus(response, "manifest receiver rejected current bytes or identity"))
-		if got := unavailableMaterialPeer(err); got != tc.unavailable {
+		if got := peerUnreachable(err); got != tc.unavailable {
 			t.Errorf("HTTP %d label %q: unavailable peer = %v, want %v", tc.status, tc.label, got, tc.unavailable)
 		}
 	}
@@ -173,7 +173,7 @@ func TestRestartCheckDoesNotCloseOnAnInterruptedPeerCheck(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			invalidated := 0
 			gate := newMaterialEligibility(time.Now, func(context.Context) (bool, error) { return true, nil }, materialReproofInterval)
-			gate.setOnInvalidated(func() { invalidated++ })
+			gate.setOnInvalidated(func(admissionCloseCause) { invalidated++ })
 			if ready, err := gate.Reprove(t.Context()); !ready || err != nil {
 				t.Fatal(ready, err)
 			}

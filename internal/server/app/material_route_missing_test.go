@@ -45,7 +45,7 @@ func TestMaterialRouteMissingNamesThePageAndRefusedDatabase(t *testing.T) {
 	if explained == nil || !errors.Is(explained, err) || !strings.Contains(explained.Error(), "connection refused") || !strings.Contains(explained.Error(), openAddr) {
 		t.Fatalf("refused database annotation = %v", explained)
 	}
-	if unavailableMaterialPeer(explained) {
+	if peerUnreachable(explained) {
 		t.Fatal("HTTP 404 with a refused database port was treated as an unreachable peer")
 	}
 }

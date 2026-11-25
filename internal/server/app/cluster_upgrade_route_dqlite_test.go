@@ -151,7 +151,7 @@ func TestHeldAgentConnectionsFollowTheBusinessGeneration(t *testing.T) {
 	if _, known := member.heldAgentConnections(); known {
 		t.Fatal("a generation that has not started its sessions vouched for a count")
 	}
-	forward := newMemberForward(nil, nil, nil, nil)
+	forward := newMemberForward(nil, nil, nil, nil, nil)
 	forward.agents = &memberAgentRelay{forward: forward, relay: hub.NewAgentRelay(nil, nil, nil)}
 	generation.business.ha = &memberRuntime{forward: forward}
 	generation.started = true

@@ -212,7 +212,7 @@ func TestClosedMemberRefusesBusinessAndReadinessButAnswersHealth(t *testing.T) {
 		if rec := request(gate, http.MethodPut, "/api/v1/settings/acceptance.key"); rec.Code != http.StatusOK || rec.Body.String() != "business" {
 			t.Fatalf("proven member business = %d %q", rec.Code, rec.Body.String())
 		}
-		eligibility.Invalidate()
+		eligibility.Invalidate(closeMaterialPass)
 		refused(t, gate)
 	})
 	t.Run("generation withdrawn", func(t *testing.T) {
@@ -227,6 +227,6 @@ func TestClosedMemberRefusesBusinessAndReadinessButAnswersHealth(t *testing.T) {
 		refused(t, gate)
 	})
 	t.Run("member without a store", func(t *testing.T) {
-		refused(t, memberServiceHandler(business, &App{}))
+		refused(t, memberServiceHandler(business, &App{}, nil))
 	})
 }

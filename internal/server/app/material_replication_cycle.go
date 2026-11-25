@@ -21,7 +21,7 @@ func (a *App) replicateMaterialCycle(ctx context.Context, bundle *enrollmentBund
 		if canceled := ctx.Err(); canceled != nil {
 			if materialCycleHasLiveCause(err) {
 				if materialReplicationFailureInvalidates(err) {
-					a.invalidateCandidateMaterialEligibility()
+					a.invalidateCandidateMaterialEligibility(closeMaterialCheck)
 				}
 				return errors.Join(err, canceled)
 			}
@@ -36,7 +36,7 @@ func (a *App) replicateMaterialCycle(ctx context.Context, bundle *enrollmentBund
 		if materialReplicationFailureInvalidates(err) {
 			// Repairing the bytes cannot erase this failure or revive the
 			// previous proof. A new readiness proof must establish authority.
-			a.invalidateCandidateMaterialEligibility()
+			a.invalidateCandidateMaterialEligibility(closeMaterialCheck)
 			rejected = err
 		}
 	}
@@ -46,7 +46,7 @@ func (a *App) replicateMaterialCycle(ctx context.Context, bundle *enrollmentBund
 		}
 		return err
 	}
-	err := replicateRequiredMaterialsWithYield(ctx, a.cfg.DataDir, a.store, bundle, installedDigest, forceInstall, a.invalidateCandidateMaterialEligibility, a.log, a.yieldWarmMaterialBatch)
+	err := replicateRequiredMaterialsWithYield(ctx, a.cfg.DataDir, a.store, bundle, installedDigest, forceInstall, func() { a.invalidateCandidateMaterialEligibility(closeMaterialInstalled) }, a.log, a.yieldWarmMaterialBatch)
 	if rejected != nil {
 		return errors.Join(rejected, err)
 	}

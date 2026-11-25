@@ -69,15 +69,15 @@ func TestReadinessRejectionDiagnosticsPreserveAdmission(t *testing.T) {
 					return
 				}
 				if tc.name == "epoch" {
-					e.Invalidate()
+					e.Invalidate(closeMaterialPass)
 				}
 				if tc.name == "headroom" {
 					age.Store(int64(materialEligibilityWindow - store.ClusterMembershipGrantTimeout + time.Nanosecond))
 				}
 			})
-			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}))
+			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}, nil))
 			if tc.name == "entry-proof" {
-				e.Invalidate()
+				e.Invalidate(closeMaterialPass)
 			} else if tc.name == "entry-generation" {
 				gate.setBusinessHandler(nil)
 			}
@@ -109,7 +109,7 @@ func TestReadinessRejectionDiagnosticsPreserveAdmission(t *testing.T) {
 				reference := newBusinessHandlerGate()
 				reference.requireMaterialEligibility()
 				reference.setMaterialEligibility(e)
-				reference.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}))
+				reference.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}, nil))
 				beforeReads := reads.Load()
 				original := httptest.NewRecorder()
 				reference.ServeHTTP(original, req.Clone(req.Context()))

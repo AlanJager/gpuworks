@@ -38,8 +38,7 @@ const (
 	refusalOther              = "other"                     // a reason this list does not name
 )
 
-// businessRefusalCodes is every value the header can carry; markRefusal
-// writes nothing else.
+// businessRefusalCodes is the one list of the values the header can carry.
 var businessRefusalCodes = []string{
 	refusalNoGeneration, refusalGenerationChanged, refusalClusterUpgrade, refusalNoHandler,
 	refusalSessionsUnroutable, refusalTargetNotCurrent,
