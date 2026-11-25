@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/cluster/identity"
 	"gpuworks.ai/gpuworks/internal/server/cluster/storagetier"
+	"gpuworks.ai/gpuworks/internal/server/diagnostics"
 	"gpuworks.ai/gpuworks/internal/server/enrollment"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -119,9 +121,18 @@ func TestASingleMemberAnswersTheMemberQuestions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: diagnostics part: %v", start, err)
 		}
-		read, readErr := io.Copy(io.Discard, part.Body)
-		if closeErr := part.Body.Close(); readErr != nil || closeErr != nil || read == 0 {
-			t.Fatalf("%s: diagnostics part of %d bytes: read %v, close %v", start, read, readErr, closeErr)
+		// The part names this member (an identity that could not be read
+		// is ID 0 with no address) and carries its status report.
+		files := partArchive(t, part.Body)
+		if err := part.Body.Close(); err != nil {
+			t.Fatal(err)
+		}
+		var named diagnostics.MemberFacts
+		if err := json.Unmarshal([]byte(files[diagnostics.MemberFactsFile]), &named); err != nil || named.ID == 0 || named.Address != database {
+			t.Fatalf("%s: diagnostics part names member %d at %q (%v), want this member at %s; files %d", start, named.ID, named.Address, err, database, len(files))
+		}
+		if !strings.Contains(files[diagnostics.MemberStatusFile], database) {
+			t.Fatalf("%s: the part's status report does not show this member:\n%s", start, files[diagnostics.MemberStatusFile])
 		}
 		// A collection given up after it began frees the member's part for
 		// the next one: the asker is not left with "busy".
