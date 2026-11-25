@@ -457,6 +457,55 @@ test("the console upgrades the server after confirming and waits for the new ver
   }
 });
 
+test("a release that cannot open this server's database is named in the confirmation", async () => {
+  const server = { ...selfUpgradable, current: "b5137981c", update_available: false, unpublished_build: true,
+    current_build: { version: "b5137981c", kind: "development" as const, build_channel: "nightly" } };
+  const s = stubServerUpgrade([statusFixture({ server }), statusFixture({ server: { ...selfUpgradable, current: "f90e474e", update_available: false } })], ["f90e474e"]);
+  const versions = apiModule.api.serverVersions;
+  apiModule.api.serverVersions = async channel => ({ channel, platform: "linux/arm64", versions: [
+    { version: "newer-head", built_at: "2026-10-12", sha256: "head" },
+    { version: "f90e474e", built_at: "2026-10-11", sha256: "selected", downgrades_schema: true },
+  ] });
+  void versions;
+  try {
+    renderCard();
+    await userEvent.click(await readyServerUpgrade());
+    const drawer = await screen.findByRole("dialog");
+    await userEvent.click(await within(drawer).findByRole("radio", { name: "f90e474e" }));
+    await userEvent.click(within(drawer).getByRole("button", { name: picker.upgradeTo.replace("{{version}}", "f90e474e") }));
+    const dialog = await screen.findByRole("dialog", { name: picker.confirmTitle.replace("{{version}}", "f90e474e") });
+    assert.ok(within(dialog).getByText(picker.schemaWarning));
+  } finally {
+    s.restore();
+  }
+});
+
+// GWKS-519: a branch build made after the channel's newest release is not one of its releases.
+// The server says so; the page then neither calls it up to date nor locks the picker, and
+// warns before a channel release replaces it.
+test("a build the channel did not publish is not called up to date and can be replaced by a channel release", async () => {
+  const server = { ...selfUpgradable, current: "b5137981c", update_available: false, unpublished_build: true,
+    current_build: { version: "b5137981c", kind: "development" as const, build_channel: "nightly" } };
+  const s = stubServerUpgrade([statusFixture({ server }), statusFixture({ server: { ...selfUpgradable, current: "f90e474e", update_available: false } })], ["f90e474e"]);
+  try {
+    renderCard();
+    await waitFor(() => assert.ok(within(row(u.server)).getByText(u.unpublishedBuild)));
+    assert.equal(within(row(u.server)).queryByText(u.upToDate), null);
+    await userEvent.click(await readyServerUpgrade());
+    const drawer = await screen.findByRole("dialog");
+    await userEvent.click(await within(drawer).findByRole("radio", { name: "f90e474e" }));
+    await userEvent.click(within(drawer).getByRole("button", { name: picker.upgradeTo.replace("{{version}}", "f90e474e") }));
+    const dialog = await screen.findByRole("dialog", { name: picker.confirmTitle.replace("{{version}}", "f90e474e") });
+    assert.ok(within(dialog).getByText(picker.unpublishedWarning));
+    assert.equal(within(dialog).queryByText(picker.crossChannelWarning), null);
+    assert.deepEqual(s.calls, [], "nothing happens before the confirmation");
+    await userEvent.click(within(dialog).getByRole("button", { name: picker.confirm }));
+    await waitFor(() => assert.deepEqual(s.calls, ["upgradeServer"]));
+  } finally {
+    s.restore();
+  }
+});
+
 test("a current server keeps the picker locked for an earlier release on another channel", async () => {
   const server = { ...selfUpgradable, current: selfUpgradable.latest, update_available: false,
     current_build: { version: selfUpgradable.latest, kind: "prerelease" as const, build_channel: "nightly" } };
