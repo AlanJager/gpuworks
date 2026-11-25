@@ -124,6 +124,28 @@ func TestNativeRevokedMemberClosesAtItsNextProof(t *testing.T) {
 	}
 	t.Logf("closed %v after the revocation; the proof's window is %v", closedAfter.Round(time.Millisecond), materialEligibilityWindow)
 
+	// What a client sees over a real listener, with the member's handler
+	// behind the gate as the member serves it, and what the member handler
+	// answers by itself for the same state: one code.
+	behind := &App{store: f.stores[1], memberState: memberState{materialEligibility: member.eligibility}}
+	inner := memberServiceHandler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }), behind, member.refusals)
+	member.gate.setBusinessHandler(inner)
+	listener := httptest.NewServer(member.gate)
+	defer listener.Close()
+	response, err := http.Get(listener.URL + "/api/v1/nodes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusServiceUnavailable || response.Header.Get(businessRefusalHeader) != "member_revoked" {
+		t.Fatalf("a client of the revoked member: %d, refusal %q", response.StatusCode, response.Header.Get(businessRefusalHeader))
+	}
+	rec = httptest.NewRecorder()
+	inner.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/nodes", nil))
+	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get(businessRefusalHeader) != "member_revoked" {
+		t.Fatalf("the member handler for the same state: %d, refusal %q", rec.Code, rec.Header().Get(businessRefusalHeader))
+	}
+
 	// A member that has not proved yet answers differently: an entry layer
 	// and an operator can tell "revoked" from "starting".
 	starting := f.refusalMember(t, 0, time.Now, nil)

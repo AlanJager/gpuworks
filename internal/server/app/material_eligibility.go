@@ -79,10 +79,10 @@ type materialEligibility struct {
 	// Stop was seen since the last successful proof. From then on an attempt
 	// that brings no answer extends nothing; only a successful proof clears it.
 	answered bool
-	// revoked is set when a proof ended on the database's refusal of this
-	// member and cleared by the next successful proof. While it stands the
-	// closed member answers "revoked", not "no proof yet".
-	revoked       bool
+	// refusal is the refusal code of the database's refusal of this member
+	// that a proof ended on, cleared by the next successful proof. While it
+	// stands the closed member answers with it, not "no proof yet".
+	refusal       string
 	expiry        *time.Timer
 	epoch         uint64
 	cancel        context.CancelFunc
@@ -162,6 +162,17 @@ func (e *materialEligibility) Eligible() bool {
 	return e.EligibleFor(0)
 }
 
+// refusedAs is the refusal code of the database's refusal a proof last ended
+// on, or empty when the last proof was not refused.
+func (e *materialEligibility) refusedAs() string {
+	if e == nil {
+		return ""
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.refusal
+}
+
 // EligibleFor additionally requires enough remaining proof lifetime for the
 // caller's next bounded operation. Insufficient headroom does not expire the
 // proof or change ordinary business admission.
@@ -182,8 +193,8 @@ func (e *materialEligibility) eligibleForResult(minRemaining time.Duration) (boo
 			reason = "stopped"
 		} else if !e.deadline.IsZero() {
 			reason = "run_canceled"
-		} else if e.revoked {
-			reason = refusalMemberRevoked
+		} else if e.refusal != "" {
+			reason = e.refusal
 		}
 		e.mu.Unlock()
 		return false, reason, 0
@@ -407,7 +418,7 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	notifyInvalidated := invalidated && e.epoch == epoch
 	switch {
 	case proved:
-		e.provedAt, e.answered, e.revoked = started, false, false
+		e.provedAt, e.answered, e.refusal = started, false, ""
 		e.admitUntil(attemptDeadline)
 	case keepEarlier:
 		e.answered = e.answered || !noAnswer
@@ -428,7 +439,12 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 		if e.epoch == epoch {
 			e.closeAdmission()
 		}
-		e.revoked = e.revoked || refused
+		if refused {
+			e.refusal = refusalMemberRevoked
+			if store.Causes(err, store.CauseIdentityConflict) != 0 {
+				e.refusal = refusalIdentityConflict
+			}
+		}
 		ready = false
 	}
 	onInvalidated, onOutcome := e.onInvalidated, e.onOutcome

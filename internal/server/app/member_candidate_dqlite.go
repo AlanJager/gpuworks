@@ -78,26 +78,26 @@ func (a *App) CandidateMemberReady(ctx context.Context) (bool, error) {
 }
 
 // seedAdmissionFailure reads the answer to a seed member's direct read of
-// its own admission. The database's refusal of this member is returned with
-// the member's key. Any other failure of the read is returned as the cause
-// without a key, so that a read the database did not answer (no leader, the
-// read's own time limit) is classified as no answer and not as "not ready",
-// which is a verdict the worker latches. A row that is there but does not
-// admit the member is "not ready".
+// its own admission. The database's refusal of this member comes back with
+// the member's key. Any other error is the cause without a key, so that a
+// read the database did not answer is classified as no answer and not as
+// "not ready", which the worker latches.
 func seedAdmissionFailure(admission store.ClusterAdmission, err error, key string) (refusedKey string, cause error, failed bool) {
 	switch {
 	case store.RefusesMember(err, key):
 		return key, err, true
 	case err != nil:
 		return "", err, true
-	case admission.InvitationHash != "" || admission.RevokedAt != nil:
+	case admission.InvitationHash != "":
+		// Admitted by an invitation that is not yet claimed as a member.
 		return "", nil, true
 	}
 	return "", nil, false
 }
 
 // ownEnrollmentVerdict is how the proof fails on the member's own enrollment
-// check, through the proof's one exit.
+// check. It passes the same filter as the proof's body; here that changes
+// nothing, since the refusal was already matched to this key.
 func ownEnrollmentVerdict(ctx context.Context, key string, cause error) (bool, error) {
 	ready, err := materialProofFailure(ctx, key, cause)
 	return thisMembersVerdict(key, ready, err)

@@ -36,11 +36,11 @@ func TestRevokedMemberTroubleshootingNamesWhatTheServerGives(t *testing.T) {
 		}
 		text := string(raw)
 		for _, want := range []string{
-			"`" + refusalMemberRevoked + "`", "`" + refusalProofMissing + "`", "`" + refusalProofExpired + "`",
+			"`" + refusalMemberRevoked + "`", "`" + refusalIdentityConflict + "`", "`" + refusalProofMissing + "`", "`" + refusalProofExpired + "`",
 			businessRefusalHeader,
 			"closed business admission caller=" + string(closeProofFailed),
 			"candidate material proof failed while business admission is closed",
-			"err_class=admission_rejected", "`identity_conflict`", "`failure_stage`",
+			"err_class=admission_rejected", "err_class=identity_conflict", "`failure_stage`", "caller=" + string(closeProofExpired),
 		} {
 			if !strings.Contains(text, want) {
 				t.Errorf("%s does not name %s", page, want)

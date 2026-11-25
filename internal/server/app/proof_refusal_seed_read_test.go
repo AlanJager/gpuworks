@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"testing"
 	"time"
 
@@ -41,6 +42,7 @@ func TestSeedAdmissionReadWithoutAnAnswerKeepsTheSeedOpen(t *testing.T) {
 		{"a refusal of another key", store.ClusterAdmission{}, &store.ClusterAdmissionRefusal{Key: "other"}, "", true, false},
 		{"an error nothing classifies", store.ClusterAdmission{}, errors.New("no such table"), "", true, false},
 		{"still an invitation", store.ClusterAdmission{KeyFingerprint: key, InvitationHash: "h"}, nil, "", true, false},
+		{"end of stream, a finding like at every proof stage", store.ClusterAdmission{}, io.EOF, "", true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			refusedKey, cause, failed := seedAdmissionFailure(tc.admission, tc.err, key)
@@ -58,6 +60,36 @@ func TestSeedAdmissionReadWithoutAnAnswerKeepsTheSeedOpen(t *testing.T) {
 				t.Fatalf("the proof's answer refuses the member=%t: %v", refused, err)
 			}
 		})
+	}
+
+	// The code a closed member answers with says which refusal it was, and
+	// a successful proof clears it.
+	for _, tc := range []struct {
+		refusal error
+		code    string
+	}{
+		{&store.ClusterAdmissionRefusal{Key: key}, refusalMemberRevoked},
+		{fmt.Errorf("grant: %w", store.ErrClusterIdentityConflict), refusalIdentityConflict},
+	} {
+		var answer error
+		eligibility := newMaterialEligibility(time.Now, func(context.Context) (bool, error) { return answer == nil, answer }, time.Second)
+		t.Cleanup(eligibility.Stop)
+		if _, reason, _ := eligibility.eligibleForResult(0); reason != "proof_missing" {
+			t.Fatalf("a member without a proof answers %q", reason)
+		}
+		answer = tc.refusal
+		eligibility.Reprove(t.Context())
+		if open, reason, _ := eligibility.eligibleForResult(0); open || reason != tc.code || refusalCodeOf(reason) != tc.code {
+			t.Fatalf("after %v the member answers open=%t %q, want %q", tc.refusal, open, reason, tc.code)
+		}
+		answer = nil
+		if ready, err := eligibility.Reprove(t.Context()); !ready || err != nil || !eligibility.Eligible() {
+			t.Fatalf("a proof after the refusal: %t %v", ready, err)
+		}
+		eligibility.Invalidate(closeMaterialPass)
+		if _, reason, _ := eligibility.eligibleForResult(0); reason != "proof_missing" {
+			t.Fatalf("after a successful proof and an invalidation the member answers %q", reason)
+		}
 	}
 
 	// Through the worker: a proof that starts while the last confirmation is

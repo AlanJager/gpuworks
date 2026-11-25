@@ -101,7 +101,8 @@ const (
 // member with this key: the cluster identity the member holds is not the
 // database's, or the admission the database refused is this member's. A
 // refusal of another member's key, one that names no key, and a cluster that
-// is not serving say nothing against this member.
+// is not serving say nothing against this member. Of several keyed refusals
+// in one error only the first is read; a grant returns one.
 func RefusesMember(err error, key string) bool {
 	if key == "" {
 		return false
