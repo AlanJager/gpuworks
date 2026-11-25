@@ -71,7 +71,7 @@ fi
 # fresh checkout, as on CI, has none: embed just the host's. cross-agents
 # replaces the whole embedded set, so it runs only when this one is missing.
 host_platform="$(go env GOOS)/$(go env GOARCH)"
-if [ ! -f "internal/server/agentbin/dl/gpuworks-agent-$(go env GOOS)-$(go env GOARCH).zst" ]; then
+if [ ! -f "internal/server/agentbin/dl/pack/gpuworks-agent-$(go env GOOS)-$(go env GOARCH).zst" ]; then
   echo "ui-check: embedding the $host_platform agent"
   make cross-agents PLATFORMS="$host_platform" > "$work/agent-build.log" 2>&1 || { tail -30 "$work/agent-build.log" >&2; exit 2; }
 fi

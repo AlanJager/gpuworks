@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -110,6 +111,13 @@ func New(cfg Config, log *slog.Logger) (*App, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return nil, err
 	}
+	// Validate release artifacts before opening stores: a failed upgrade must
+	// leave even ancillary databases readable by the previous server.
+	agents, err := agentbin.Prepare(cfg.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("prepare embedded agents: %w", err)
+	}
+	cfg.agents = agents
 	// Derive the DB path from the (possibly overridden) data dir when unset.
 	if cfg.DBPath == "" {
 		cfg.DBPath = filepath.Join(cfg.DataDir, "gpuworks.db")
@@ -276,10 +284,10 @@ func assembleBusiness(cfg Config, log *slog.Logger, b *bus.Bus, st *store.Store,
 
 	dlDir := filepath.Join(cfg.DataDir, "dl")
 	_ = os.MkdirAll(dlDir, 0o755)
-	readAgent := func(name string) ([]byte, error) { return agentbin.Read(dlDir, name) }
+	readAgent := func(name string) ([]byte, error) { return cfg.agents.Read(dlDir, name) }
 	provSvc.SetAgentBinaryReader(readAgent)
 	h.SetAgentBinaryReader(readAgent)
-	a.agentUpgrades, err = newAgentUpgrades(st, h, cfg.DataDir, log)
+	a.agentUpgrades, err = newAgentUpgrades(st, h, cfg.DataDir, cfg.agents, log)
 	if err != nil {
 		return nil, err
 	}
@@ -314,7 +322,7 @@ func assembleBusiness(cfg Config, log *slog.Logger, b *bus.Bus, st *store.Store,
 		InstallSh:      a.installHandler(),
 		RecentRejects:  func() []dto.AgentReject { return agentRejectDTOs(h.RecentRejects()) },
 		AgentUpgrades:  api.AgentUpgradeHooks{Service: agentUpgradeAPI{service: a.agentUpgrades}, Errors: h.UpgradeErrors},
-		UIHandler:      withDL(dlDir, offlinepkg.NewServer(filepath.Join(cfg.DataDir, "offline"), version.String(), readAgent), webui.HandlerFS(cfg.Extensions.ui()), a.agentUpgrades.DownloadBinary),
+		UIHandler:      withDL(cfg.agents.Handler(dlDir), offlinepkg.NewServer(filepath.Join(cfg.DataDir, "offline"), version.String(), readAgent), webui.HandlerFS(cfg.Extensions.ui()), a.agentUpgrades.DownloadBinary),
 		Online:         h.Online,
 		Orders:         ctrl.Orders(),
 		KickNode:       h.Kick,

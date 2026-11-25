@@ -30,37 +30,36 @@ type ManifestBinary struct {
 
 // ReadVerified reads from the same source as Read, but requires its release
 // manifest to name the requested target and the actual bytes being returned.
-func ReadVerified(overrideDir, name, targetVersion string) ([]byte, error) {
-	source, entry, err := manifestEntry(overrideDir, name, targetVersion)
+func (f Files) ReadVerified(overrideDir, name, targetVersion string) ([]byte, error) {
+	source, entry, err := f.manifestEntry(overrideDir, name, targetVersion)
 	if err != nil {
 		return nil, err
 	}
-	raw, err := Read(source, name)
+	raw, err := f.Read(source, name)
 	if err != nil {
 		return nil, err
 	}
-	sum := sha256.Sum256(raw)
-	if int64(len(raw)) != entry.Size || !strings.EqualFold(hex.EncodeToString(sum[:]), entry.SHA256) {
+	if !matchesBytes(raw, entry) {
 		return nil, fmt.Errorf("agent binary %s does not match its build manifest", name)
 	}
 	return raw, nil
 }
 
 // Available checks release metadata and file presence without expanding or hashing the binary.
-func Available(dir, name, target string) bool {
-	source, entry, err := manifestEntry(dir, name, target)
+func (f Files) Available(dir, name, target string) bool {
+	source, entry, err := f.manifestEntry(dir, name, target)
 	if err != nil {
 		return false
 	}
 	if source == "" {
-		return Has(name)
+		return f.Has(name)
 	}
 	info, err := os.Stat(filepath.Join(source, name))
 	return err == nil && info.Mode().IsRegular() && info.Size() == entry.Size
 }
 
-func manifestEntry(overrideDir, name, targetVersion string) (string, ManifestBinary, error) {
-	if !validName(name) || !strings.HasPrefix(name, "gpuworks-agent-") {
+func (f Files) manifestEntry(overrideDir, name, targetVersion string) (string, ManifestBinary, error) {
+	if !validAgentName(name) {
 		return "", ManifestBinary{}, fs.ErrNotExist
 	}
 	targetVersion = strings.TrimSpace(targetVersion)
@@ -82,7 +81,7 @@ func manifestEntry(overrideDir, name, targetVersion string) (string, ManifestBin
 	if source != "" {
 		manifestRaw, err = os.ReadFile(filepath.Join(source, ManifestName))
 	} else {
-		manifestRaw, err = fs.ReadFile(binaries, "dl/"+ManifestName)
+		manifestRaw, err = fs.ReadFile(f.tree, "dl/"+ManifestName)
 	}
 	if err != nil {
 		return "", ManifestBinary{}, fmt.Errorf("read agent build manifest: %w", err)
@@ -94,15 +93,25 @@ func manifestEntry(overrideDir, name, targetVersion string) (string, ManifestBin
 	if manifest.Version != targetVersion {
 		return "", ManifestBinary{}, fmt.Errorf("agent build manifest version %q does not match target %q", manifest.Version, targetVersion)
 	}
-	entry, ok := manifest.Binaries[name]
-	if !ok || entry.Size <= 0 || entry.Size > 1<<30 {
-		return "", ManifestBinary{}, fmt.Errorf("agent build manifest has no valid entry for %s", name)
+	entry, err := manifest.entry(name)
+	return source, entry, err
+}
+
+// entry validates the same public file facts for extraction and upgrades.
+func (m Manifest) entry(name string) (ManifestBinary, error) {
+	entry, ok := m.Binaries[name]
+	if !ok || !validAgentName(name) || entry.Size <= 0 || entry.Size > 1<<30 {
+		return ManifestBinary{}, fmt.Errorf("agent manifest requires a valid agent name and size for %q", name)
 	}
 	want, err := hex.DecodeString(entry.SHA256)
 	if err != nil || len(want) != sha256.Size {
-		return "", ManifestBinary{}, fmt.Errorf("agent build manifest has no valid SHA256 for %s", name)
+		return ManifestBinary{}, fmt.Errorf("agent build manifest has no valid SHA256 for %s", name)
 	}
-	return source, entry, nil
+	return entry, nil
+}
+
+func validAgentName(name string) bool {
+	return validName(name) && strings.HasPrefix(name, "gpuworks-agent-")
 }
 
 // WriteManifest records only the explicitly built files: scanning the output
@@ -115,7 +124,7 @@ func WriteManifest(version, output string, files []string) error {
 	manifest := Manifest{Version: version, Binaries: make(map[string]ManifestBinary, len(files))}
 	for _, file := range files {
 		name := filepath.Base(file)
-		if !validName(name) || !strings.HasPrefix(name, "gpuworks-agent-") {
+		if !validAgentName(name) {
 			return fmt.Errorf("invalid agent binary name %q", name)
 		}
 		if _, exists := manifest.Binaries[name]; exists {
