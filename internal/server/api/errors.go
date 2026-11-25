@@ -220,20 +220,8 @@ const (
 	ErrorLocalModelMetadataRefresh        = "LOCAL_MODEL_METADATA_REFRESH"
 	ErrorModelMetadataUnavailable         = "MODEL_METADATA_UNAVAILABLE"
 	// ErrorModelMetadataUnreachable: the management node reached none of
-	// {hosts}, the addresses the site rules give it for {source}; {status}
-	// is present when an address answered with an error status that says
-	// nothing about the repository.
-	ErrorModelMetadataUnreachable = "MODEL_METADATA_UNREACHABLE"
-	// ErrorModelRepoNotFound: {host} answered {status} for the repository
-	// {repo} of {source}: it has none by that id.
-	ErrorModelRepoNotFound = "MODEL_REPO_NOT_FOUND"
-	// ErrorModelRevisionNotFound: {host} has the repository {repo} and
-	// answered {status} for its files at {revision}.
-	ErrorModelRevisionNotFound = "MODEL_REVISION_NOT_FOUND"
-	// ErrorModelRepoAccessDenied: {host} answered {status} (401 or 403) for
-	// {repo}: private or gated, or, on Hugging Face asked without a token,
-	// not there at all.
-	ErrorModelRepoAccessDenied             = "MODEL_REPO_ACCESS_DENIED"
+	// {hosts} for {source}; {status} when one answered another error status.
+	ErrorModelMetadataUnreachable          = "MODEL_METADATA_UNREACHABLE"
 	ErrorModelMetadataForbidden            = messages.ErrorModelMetadataForbidden
 	ErrorModelSourceUnavailable            = messages.ErrorModelSourceUnavailable
 	ErrorPreflightMinimumNodes             = messages.ErrorPreflightMinimumNodes

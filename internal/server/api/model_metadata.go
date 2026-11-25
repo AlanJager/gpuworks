@@ -20,6 +20,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/deployment"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/modelmeta"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
@@ -67,7 +68,7 @@ func (a *apiHandlers) metadataNotice(meta *modelmeta.Meta, model *store.Model) *
 		status = meta.Answer.Status
 		if code := sourceAnswerCode(meta.Answer.Outcome); code != "" {
 			params := map[string]any{"source": source, "repo": model.SourceID, "host": hostOf(meta.Answer.Endpoint), "status": status}
-			if code == ErrorModelRevisionNotFound {
+			if code == messages.ErrorModelRevisionNotFound {
 				params["revision"] = model.Revision
 			}
 			return deployment.ProductMessage(productError(code, fmt.Sprintf("%s answered %d for %s", params["host"], status, model.SourceID), params))
@@ -95,11 +96,11 @@ func (a *apiHandlers) metadataNotice(meta *modelmeta.Meta, model *store.Model) *
 func sourceAnswerCode(outcome modelmeta.Outcome) string {
 	switch outcome {
 	case modelmeta.OutcomeRepoNotFound:
-		return ErrorModelRepoNotFound
+		return messages.ErrorModelRepoNotFound
 	case modelmeta.OutcomeRevisionNotFound:
-		return ErrorModelRevisionNotFound
+		return messages.ErrorModelRevisionNotFound
 	case modelmeta.OutcomeDenied:
-		return ErrorModelRepoAccessDenied
+		return messages.ErrorModelRepoAccessDenied
 	}
 	return ""
 }
@@ -109,9 +110,9 @@ func sourceAnswerCode(outcome modelmeta.Outcome) string {
 // take "correct the repository" for "wait for the network".
 func sourceAnswerStatus(code string) int {
 	switch code {
-	case ErrorModelRepoNotFound, ErrorModelRevisionNotFound:
+	case messages.ErrorModelRepoNotFound, messages.ErrorModelRevisionNotFound:
 		return http.StatusNotFound
-	case ErrorModelRepoAccessDenied:
+	case messages.ErrorModelRepoAccessDenied:
 		return http.StatusForbidden
 	}
 	return http.StatusBadGateway

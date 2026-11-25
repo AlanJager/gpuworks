@@ -247,6 +247,7 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 			r.Get("/inference-templates/schema", a.inferenceTemplateSchema)
 			r.Get("/inference-templates/summary", a.summarizeInferenceTemplates)
 			r.Get("/inference-templates/weight-models", a.listTemplateWeightModels)
+			r.Get("/inference-templates/weight-source-probe", a.probeTemplateWeightSource)
 			r.With(a.managementAdmin).Get("/inference-templates/export/{digest}", a.exportInferenceTemplatePackage)
 			r.Get("/inference-templates/model/*", a.getInferenceTemplate)
 			r.Get("/inference-templates/yaml", a.inferenceTemplateYAML)

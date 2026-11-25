@@ -177,6 +177,7 @@ GET /api/v1/inference-templates/organizations
 GET /api/v1/inference-templates/schema
 GET /api/v1/inference-templates/summary
 GET /api/v1/inference-templates/weight-models
+GET /api/v1/inference-templates/weight-source-probe
 GET /api/v1/inference-templates/yaml
 GET /api/v1/instances
 GET /api/v1/instances/{uuid}

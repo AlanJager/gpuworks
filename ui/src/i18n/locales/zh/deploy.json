@@ -290,6 +290,13 @@
     "saveInferenceTemplate": "另存为推理模板",
     "deploy": "部署"
   },
+  "sourceTest": {
+    "testing": "正在测试来源…",
+    "served": "{{host}} 可以获取该模型。",
+    "present": "模型文件已就位，无需下载。",
+    "failed": "来源测试未完成：{{detail}}",
+    "again": "重新测试"
+  },
   "weightSourceModal": {
     "localDescription": "此模板引用已注册的本地权重，不包含模型文件。请选择要部署的已注册模型。",
     "localMissing": "此模板引用已注册的本地权重，不包含模型文件。请在模型仓库中注册已有模型目录，然后重新选择此模板。",

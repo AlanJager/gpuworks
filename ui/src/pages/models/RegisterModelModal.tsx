@@ -7,6 +7,7 @@ import {
   type Model,
   type URLModelPreview,
 } from "../../api";
+import { Button as ForceButton } from "../../components/ui/button";
 import { Notice } from "../../ui-kit/Notice";
 import { message as feedback } from "../../ui-kit/feedback";
 import { APIError, apiErrorText, productMessageText } from "../../apiError";
@@ -191,7 +192,7 @@ export function RegisterModal({ open, onClose, onDone, manualSeed }: RegisterMod
       </>}
       <Form.Item label={t("column.name")} name="name"><Input placeholder={t("register.displayNamePlaceholder")} /></Form.Item>
       {refusal && <Notice tone="danger" title={apiErrorText((key, options) => i18n.t(key, { ns: "common", ...options }), refusal)}
-        action={<Button size="small" disabled={submitting} onClick={() => void submit(true)}>{t("register.force")}</Button>} />}
+        action={<ForceButton variant="secondary" size="sm" disabled={submitting} onClick={() => void submit(true)}>{t("register.force")}</ForceButton>} />}
       {registrationError && <Notice tone="danger" title={t("catalog.registerFailed")}>{registrationError} {t("catalog.savedName")}</Notice>}
       {submitting && !fromCatalog && !manualSeed?.offline && (source === "huggingface" || source === "modelscope") && (
         <Alert type="info" showIcon message={t("register.fetchingMetadata", { source: source === "huggingface" ? "Hugging Face" : "ModelScope" })} />
