@@ -62,6 +62,12 @@ type Params struct {
 	ContainerdSocket string
 	// StateDir is the agent's directory on the host; empty is DefaultStateDir.
 	StateDir string
+	// MountRoot is the node directory that holds the mount points of shared
+	// storages. The agent mounts it from the node with propagation in both
+	// directions: the agent creates a mount point there and the node has it,
+	// the node mounts an export on it and the agent reads it. Empty, or a
+	// directory inside StateDir (already shared), renders no volume.
+	MountRoot string
 	// APIServer is the API server address the agents use instead of the
 	// cluster's "kubernetes" Service: for nodes where nothing serves Service
 	// addresses (no kube-proxy or replacement, as on KubeEdge or OpenYurt
@@ -137,6 +143,16 @@ func (p Params) stateDir() string {
 		return DefaultStateDir
 	}
 	return p.StateDir
+}
+
+// mountRoot is MountRoot when it needs a volume of its own.
+func (p Params) mountRoot() string {
+	root := path.Clean(p.MountRoot)
+	state := path.Clean(p.stateDir())
+	if p.MountRoot == "" || root == state || strings.HasPrefix(root, state+"/") || strings.HasPrefix(state, root+"/") {
+		return ""
+	}
+	return root
 }
 
 var (
@@ -260,7 +276,7 @@ func Render(p Params) (string, error) {
 	err := manifest.Execute(&buf, map[string]any{
 		"APIHost": apiHost, "APIPort": apiPort,
 		"P": p, "Selector": selector, "PoolIDs": poolIDs, "Agent": AgentName, "Secret": EnrollSecret,
-		"Priority": PriorityClass(p.Namespace), "StateDir": p.stateDir(), "PodResources": PodResourcesDir,
+		"Priority": PriorityClass(p.Namespace), "StateDir": p.stateDir(), "MountRoot": p.mountRoot(), "PodResources": PodResourcesDir,
 		"DevicePlugins": DevicePluginDir, "Env": env,
 	})
 	return buf.String(), err
@@ -480,6 +496,11 @@ spec:
             - name: state
               mountPath: {{q .StateDir}}
               mountPropagation: Bidirectional
+{{- if .MountRoot}}
+            - name: storage-mounts
+              mountPath: {{q .MountRoot}}
+              mountPropagation: Bidirectional
+{{- end}}
             - name: pod-resources
               mountPath: {{.PodResources}}
               readOnly: true
@@ -490,6 +511,12 @@ spec:
           hostPath:
             path: {{q .StateDir}}
             type: DirectoryOrCreate
+{{- if .MountRoot}}
+        - name: storage-mounts
+          hostPath:
+            path: {{q .MountRoot}}
+            type: DirectoryOrCreate
+{{- end}}
         - name: pod-resources
           hostPath:
             path: {{.PodResources}}
