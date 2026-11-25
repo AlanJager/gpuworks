@@ -62,18 +62,20 @@ func checkJoinedStoreMaterialReadiness(ctx context.Context, st *store.Store, bun
 	if err != nil {
 		return materialReadinessFailure(ctx, err)
 	}
+	// From here on a failure may be the database's refusal of this member.
+	fail := func(cause ...error) (bool, error) { return materialProofFailure(ctx, localKey, cause...) }
 	root, err := filepath.EvalSymlinks(cfg.DataDir)
 	if err != nil {
-		return materialReadinessFailure(ctx, err)
+		return fail(err)
 	}
 	receiver, err := newMaterialReceiver(filepath.Join(root, "material-replicas"), memberID)
 	if err != nil {
-		return materialReadinessFailure(ctx, err)
+		return fail(err)
 	}
 	expected := store.ClusterIdentity{ClusterID: bundle.info.ClusterID, CAFingerprint: bundle.info.CAFingerprint, Protocol: bundle.info.Protocol}
 	manifests, err := st.CountMaterialManifests(ctx)
 	if err != nil || manifests == 0 {
-		return materialReadinessFailure(ctx, err)
+		return fail(err)
 	}
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
@@ -87,7 +89,7 @@ func checkJoinedStoreMaterialReadiness(ctx context.Context, st *store.Store, bun
 		if err != nil {
 			// One failed grant already committed its cost; the next regular
 			// proof re-reads keys instead of queuing more writer commits here.
-			return materialReadinessFailure(ctx, err)
+			return fail(err)
 		}
 		if len(members) >= 2 {
 			break
@@ -111,7 +113,7 @@ func checkJoinedStoreMaterialReadiness(ctx context.Context, st *store.Store, bun
 	}
 	pointers, err := joinedMaterialPointers(ctx, st, expected, members, memberID)
 	if err != nil || len(pointers) == 0 {
-		return materialReadinessFailure(ctx, err)
+		return fail(err)
 	}
 	// The single opening grant above brackets every source byte check below.
 	// A pointer first published after its key read is outside that bracket:
@@ -128,17 +130,17 @@ func checkJoinedStoreMaterialReadiness(ctx context.Context, st *store.Store, bun
 			continue
 		}
 		if _, ok := covered[source.KeyFingerprint]; !ok {
-			return materialReadinessFailure(ctx)
+			return fail()
 		}
 		manifest, err := verifyCandidateReceivedMaterialManifestBytes(ctx, st, receiver, expected, pointer)
 		if err != nil {
-			return materialReadinessFailure(ctx, err)
+			return fail(err)
 		}
 		consumerStarted := candidateProofStart(ctx)
 		consumerErr := checkCandidateMaterialConsumerReferences(ctx, st, receiver, manifest)
 		candidateProofObserve(ctx, proofConsumerReferences, consumerStarted, 0)
 		if consumerErr != nil {
-			return materialReadinessFailure(ctx, consumerErr)
+			return fail(consumerErr)
 		}
 		manifestsBySource[source.ID] = manifest
 		sources = append(sources, source)
@@ -147,7 +149,7 @@ func checkJoinedStoreMaterialReadiness(ctx context.Context, st *store.Store, bun
 	installedErr := checkCandidateInstalledMaterialSets(ctx, receiver, manifestsBySource)
 	candidateProofObserve(ctx, proofInstalledPaths, installedStarted, 0)
 	if installedErr != nil {
-		return materialReadinessFailure(ctx, installedErr)
+		return fail(installedErr)
 	}
 	peers := make([]store.ClusterTransportMember, 0, len(members)-1)
 	for _, member := range members {
@@ -183,30 +185,33 @@ func checkJoinedStoreMaterialReadiness(ctx context.Context, st *store.Store, bun
 		return materialPeerVote(err)
 	}); err != nil {
 		recordCandidateProofFailure(ctx, "remote_quorum", err)
-		return materialReadinessFailure(ctx, err)
+		return fail(err)
 	}
 	for _, source := range sources {
 		pointer := pointers[source.ID]
 		manifest, err := verifyCandidateReceivedMaterialManifestBytes(ctx, st, receiver, expected, pointer)
 		if err != nil {
-			return materialReadinessFailure(ctx, err)
+			return fail(err)
 		}
 		if err := checkCandidateMaterialConsumerReferences(ctx, st, receiver, manifest); err != nil {
-			return materialReadinessFailure(ctx, err)
+			return fail(err)
 		}
 	}
 	// The closing grant re-increments the same key set in one transaction and
 	// re-observes live membership before the final pointer recheck.
 	_, current, err := grantMaterialProofMembershipKeys(ctx, st, expected, grantKeys)
+	if store.RefusesMember(err, localKey) {
+		return false, err
+	}
 	if interrupted, interruptErr := materialMembershipInterrupted(ctx, err, members, current); interrupted || err != nil || !slices.Equal(members, current) {
 		if interrupted {
 			return false, interruptErr
 		}
-		return materialReadinessFailure(ctx, err)
+		return fail(err)
 	}
 	latest, err := joinedMaterialPointers(ctx, st, expected, current, memberID)
 	if err != nil || !maps.Equal(pointers, latest) {
-		return materialReadinessFailure(ctx, err)
+		return fail(err)
 	}
 	return true, nil
 }
@@ -289,6 +294,21 @@ func materialMembershipInterrupted(ctx context.Context, err error, previous, cur
 		return true, context.DeadlineExceeded
 	}
 	return false, nil
+}
+
+// materialProofFailure is how a stage of the proof fails. The database's
+// refusal of this member is returned as it is, also when the proof's context
+// has ended meanwhile: the database answered, and an expired context must
+// not turn its answer into none. A refusal of another member's key, which
+// the same grant can return, is not this member's and fails like any other
+// cause.
+func materialProofFailure(ctx context.Context, localKey string, cause ...error) (bool, error) {
+	for _, err := range cause {
+		if store.RefusesMember(err, localKey) {
+			return false, err
+		}
+	}
+	return materialReadinessFailure(ctx, cause...)
 }
 
 // A live parent used to erase a lost leader into a definitive false result.

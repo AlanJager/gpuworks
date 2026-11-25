@@ -4,10 +4,13 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
+
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // newCandidateMaterialEligibility is the closed member's request-path
@@ -57,7 +60,7 @@ func (a *App) CandidateMemberReady(ctx context.Context) (bool, error) {
 	}
 	bundle, memberID, key, cause := a.candidateEnrollmentWithCause(ctx)
 	if bundle == nil {
-		return materialReadinessFailure(ctx, cause)
+		return materialProofFailure(ctx, key, cause)
 	}
 	// Membership is established by the material checker against a fresh live
 	// snapshot. The route supplies only the local member ID, never authority.
@@ -67,7 +70,7 @@ func (a *App) CandidateMemberReady(ctx context.Context) (bool, error) {
 	}
 	current, currentID, currentKey, cause := a.candidateEnrollmentWithCause(ctx)
 	if current == nil {
-		return materialReadinessFailure(ctx, cause)
+		return materialProofFailure(ctx, currentKey, cause)
 	}
 	if currentID != memberID || currentKey != key || current.info != bundle.info {
 		return materialReadinessFailure(ctx)
@@ -96,7 +99,9 @@ func (a *App) candidateEnrollment(ctx context.Context) (*enrollmentBundle, uint6
 
 // candidateEnrollmentWithCause also returns a cluster identity read failure.
 // One that fails while the database is between leaders says nothing about
-// this member; the proof reports it as an interruption, not a negative.
+// this member; the proof reports it as an interruption, not a negative. When
+// the database refuses this member's own admission, the cause is that
+// refusal and the key is the member's.
 func (a *App) candidateEnrollmentWithCause(ctx context.Context) (*enrollmentBundle, uint64, string, error) {
 	started := candidateProofStart(ctx)
 	defer candidateProofObserve(ctx, proofEnrollment, started, 0)
@@ -127,7 +132,15 @@ func (a *App) candidateEnrollmentWithCause(ctx context.Context) (*enrollmentBund
 		}
 	case os.IsNotExist(err):
 		admission, err := a.store.ClusterAdmissionForVerifiedKey(ctx, bundle.info.ClusterID, key)
-		if err != nil || admission.InvitationHash != "" || admission.RevokedAt != nil {
+		if store.Causes(err, store.CauseMemberRefused) != 0 || (err == nil && admission.RevokedAt != nil) {
+			// This member's own admission, read directly: the same
+			// verdict the proof's grant would return for its key.
+			if errors.Is(err, store.ErrClusterIdentityConflict) {
+				return nil, 0, key, err
+			}
+			return nil, 0, key, &store.ClusterAdmissionRefusal{Key: key}
+		}
+		if err != nil || admission.InvitationHash != "" {
 			return nil, 0, "", nil
 		}
 	default:

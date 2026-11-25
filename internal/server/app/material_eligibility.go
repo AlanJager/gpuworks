@@ -4,7 +4,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -378,10 +377,9 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	//     window; past it, the attempt's own start, or for a proof that
 	//     outlived its window one more window, bounds admission, never beyond
 	//     the unconfirmed limit. Otherwise one blip closes every member.
-	//   - a refusal by the database: closes at once, also inside a live window.
-	//     The proof this member runs reports a refusal as "not ready", so it
-	//     arrives as the next kind; only a prove function that returns the
-	//     refusal itself reaches this one.
+	//   - a refusal of this member by the database: closes at once, also
+	//     inside a live window and also when it arrives after the window.
+	//     The proof returns only a refusal of this member's own key.
 	//   - any other answer ("not ready", an error nothing classifies): a read
 	//     cut by a leadership change looks the same, so the earlier result
 	//     keeps its own window, but the answer is latched:
@@ -389,7 +387,7 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	// Cancellation and an invalidation close at once. Only a successful proof
 	// reopens what an answer or an invalidation closed.
 	noAnswer := lateSuccess || (!verdict && store.ProofUnanswered.Unanswered(err))
-	refused := errors.Is(err, store.ErrClusterAdmissionRejected) || errors.Is(err, store.ErrClusterIdentityConflict)
+	refused := store.Causes(err, store.CauseMemberRefused) != 0
 	live := proofCtx.Err() == nil && !pastWindow && e.epoch == epoch && !e.stopped
 	unexpired := !e.deadline.IsZero() && now.Before(e.deadline)
 	outlived := noAnswer && (e.outlivedWindow(ctx, proofCtx, epoch) || (pastWindow && e.undisturbed(ctx, proofCtx, epoch))) && e.confirmedRecently(now)
