@@ -3,7 +3,6 @@
 package app
 
 import (
-	"context"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -30,9 +29,7 @@ func closedQuorumDiscoveryHandler(bundle *enrollmentBundle, session joinedRaftSe
 	if err != nil {
 		return nil, err
 	}
-	reader, supported := session.(interface {
-		ReadQuorumDiscoveryForCluster(context.Context, store.ClusterIdentity, string) (store.ClusterAdmission, []store.ClusterTransportMember, error)
-	})
+	reader, supported := session.(quorumDiscoveryReader)
 	expected := store.ClusterIdentity{ClusterID: bundle.info.ClusterID, CAFingerprint: bundle.info.CAFingerprint, Protocol: bundle.info.Protocol}
 	return requests.wrap(func(w http.ResponseWriter, r *http.Request) {
 		if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {

@@ -101,6 +101,7 @@ func openRuntimeDatabaseMode(ctx context.Context, path string, b *bus.Bus, exist
 			return nil, errors.Join(ErrClusterIdentityConflict, identityErr)
 		}
 		bindNativeClusterIdentity(st, db, ClusterIdentity{ClusterID: clusterID, CAFingerprint: pin, Protocol: ClusterProtocolVersion}, ctx)
+		bindSingleMemberDatabase(st, db, path+".dqlite")
 	}
 	if existing {
 		var err error
