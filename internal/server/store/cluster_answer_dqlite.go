@@ -274,10 +274,11 @@ type AnswerPolicy struct {
 	also func(error) bool
 }
 
-// Also returns the policy that takes for no answer, besides its own causes,
-// an error recognises accepts: a cause the store cannot name. It is asked
-// wherever the policy's own causes are, under the same join rule, and is not
-// subject to Requires; a verdict still wins.
+// Also returns a copy of the policy that takes one more cause for no answer:
+// any error for which recognises returns true. It is for a cause the store
+// cannot name. recognises is asked wherever the policy's own causes are,
+// under the same join rule; Requires does not apply to it, and a verdict
+// still wins.
 func (p AnswerPolicy) Also(recognises func(error) bool) AnswerPolicy {
 	p.also = recognises
 	return p
