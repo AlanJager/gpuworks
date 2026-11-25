@@ -237,7 +237,7 @@ func TestBusinessRequestAdmittedBeforeAdmissionEndsFinishes(t *testing.T) {
 			case "expired":
 				clock.Add(materialEligibilityWindow.Nanoseconds())
 			case "invalidated":
-				eligibility.Invalidate()
+				eligibility.Invalidate(closeMaterialPass)
 			case "withdrawn":
 				gate.setBusinessHandler(nil)
 			}

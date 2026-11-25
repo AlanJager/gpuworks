@@ -31,7 +31,7 @@ func TestMaterialEligibilityCancelsProofBeforeInvalidationCallback(t *testing.T)
 			if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready {
 				t.Fatalf("initial proof: ready=%t err=%v", ready, err)
 			}
-			eligibility.setOnInvalidated(func() {
+			eligibility.setOnInvalidated(func(admissionCloseCause) {
 				select {
 				case callbackEntered <- struct{}{}:
 				default:
@@ -70,7 +70,7 @@ func TestMaterialEligibilityCancelsProofBeforeInvalidationCallback(t *testing.T)
 					return
 				}
 				if action == "Invalidate" {
-					eligibility.Invalidate()
+					eligibility.Invalidate(closeMaterialPass)
 				} else {
 					eligibility.Stop()
 				}

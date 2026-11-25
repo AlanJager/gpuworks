@@ -323,7 +323,7 @@ func TestTheDiagnosticsPartFindsTheBusinessLeaderLine(t *testing.T) {
 		t.Fatal(err)
 	}
 	var leader atomic.Uint64
-	forward := newMemberForward(slog.New(slog.NewTextHandler(file, nil)), func(context.Context) (uint64, error) { return leader.Load(), nil },
+	forward := newMemberForward(slog.New(slog.NewTextHandler(file, nil)), nil, func(context.Context) (uint64, error) { return leader.Load(), nil },
 		func() int { return 0 }, func() {})
 	forward.SetMemberIdentity(7, []byte("key"))
 	for _, id := range []uint64{7, 9} {

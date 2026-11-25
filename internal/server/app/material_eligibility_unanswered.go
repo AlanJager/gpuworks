@@ -4,12 +4,8 @@ package app
 
 import (
 	"context"
-	"database/sql/driver"
 	"errors"
-	"io"
 	"time"
-
-	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // Admission without an answer: what an attempt that brought no answer may
@@ -20,37 +16,6 @@ import (
 // e.mu held.
 func (e *materialEligibility) confirmedRecently(now time.Time) bool {
 	return !e.answered && !e.provedAt.IsZero() && now.Before(e.provedAt.Add(materialUnconfirmedLimit))
-}
-
-// materialProofUnanswered reports a proof error whose every cause is an
-// expired deadline, a database with no leader to ask, a leader not read in
-// time, or a connection lost under the question. Nothing was compared, so it
-// is no answer about this member.
-func materialProofUnanswered(err error) bool {
-	if err == nil {
-		return false
-	}
-	if joined, ok := err.(interface{ Unwrap() []error }); ok {
-		causes := joined.Unwrap()
-		for _, cause := range causes {
-			if !materialProofUnanswered(cause) {
-				return false
-			}
-		}
-		return len(causes) > 0
-	}
-	// A connection the driver dropped or the peer closed under a leadership
-	// change delivered no answer either. These are compared as the sentinels
-	// they are: a file's error carries a system call number that also passes
-	// for a network error, and a file that cannot be read is a finding.
-	if err == context.DeadlineExceeded || err == store.ErrClusterMembershipObservationTimeout || store.ReplicatedLeaderUnavailable(err) ||
-		err == driver.ErrBadConn || err == io.EOF || err == io.ErrUnexpectedEOF {
-		return true
-	}
-	if wrapped, ok := err.(interface{ Unwrap() error }); ok {
-		return materialProofUnanswered(wrapped.Unwrap())
-	}
-	return false
 }
 
 // closeAdmission ends admission on an answer, an invalidation or Stop.

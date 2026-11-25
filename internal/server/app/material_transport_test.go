@@ -321,7 +321,7 @@ func TestMaterialTransferUsesRealMemberTLSAndPersistsOnReceiver(t *testing.T) {
 	}
 	eligibility := newMaterialEligibility(time.Now, func(context.Context) (bool, error) { return true, nil }, time.Hour)
 	closed := &App{ha: &memberRuntime{}, memberState: memberState{joinedClosed: true, materialEligibility: eligibility}}
-	receiver.onChange = closed.invalidateCandidateMaterialEligibility
+	receiver.onChange = func() { closed.invalidateCandidateMaterialEligibility(closeMaterialReceived) }
 	if ready, err := eligibility.Reprove(t.Context()); err != nil || !ready {
 		t.Fatalf("initial material proof: ready=%v err=%v", ready, err)
 	}

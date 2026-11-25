@@ -47,7 +47,7 @@ func TestStatusReadinessRejectsProofAboutToExpire(t *testing.T) {
 			var proofs atomic.Int32
 			eligibility := newMaterialEligibility(func() time.Time { return base.Add(time.Duration(age.Load())) }, func(context.Context) (bool, error) { proofs.Add(1); return true, nil }, time.Second)
 			var invalidations atomic.Int32
-			eligibility.setOnInvalidated(func() { invalidations.Add(1) })
+			eligibility.setOnInvalidated(func(admissionCloseCause) { invalidations.Add(1) })
 			if ready, err := eligibility.Reprove(t.Context()); !ready || err != nil {
 				t.Fatalf("prove: %t %v", ready, err)
 			}
@@ -72,7 +72,7 @@ func TestStatusReadinessRejectsProofAboutToExpire(t *testing.T) {
 					age.Store(int64(tc.age))
 				}
 			})
-			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}))
+			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: eligibility}}, nil))
 			rec := httptest.NewRecorder()
 			gate.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/readyz", nil))
 			if rec.Code != tc.status {

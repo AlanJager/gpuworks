@@ -40,7 +40,7 @@ func TestBusinessHandlerGateClosesWhenMaterialProofExpires(t *testing.T) {
 		t.Fatalf("renewed material proof: ready=%t err=%v", ready, err)
 	}
 	request("/api/v1/nodes", http.StatusAccepted)
-	eligibility.Invalidate()
+	eligibility.Invalidate(closeMaterialPass)
 	request("/api/v1/nodes", http.StatusServiceUnavailable)
 }
 
@@ -77,7 +77,7 @@ func TestClosedAppMaterialWorkerGatesInstalledBusinessHandler(t *testing.T) {
 		}
 	}
 	request(http.StatusAccepted)
-	eligibility.Invalidate()
+	eligibility.Invalidate(closeMaterialPass)
 	request(http.StatusServiceUnavailable)
 }
 

@@ -4,14 +4,11 @@ package store
 
 import (
 	"context"
-	"database/sql/driver"
 	"errors"
-	"io"
 	"net"
 	"slices"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"gorm.io/gorm"
@@ -139,7 +136,7 @@ func (s *Store) observeAndGrantClusterMembership(ctx context.Context, bound Clus
 		// increases, so a grant that did commit before its interruption is
 		// harmless. An interrupted observation is repeated only inside the
 		// bounded window, which keeps a partitioned member's refusal short.
-		if !clusterMembershipAttemptInterrupted(err) || ctx.Err() != nil {
+		if !GrantInterrupted.Unanswered(err) || ctx.Err() != nil {
 			return 0, nil, err
 		}
 		if (phase == "live_before" || phase == "live_after") && !errors.Is(err, errClusterMembershipChanged) {
@@ -217,78 +214,6 @@ func (s *Store) attemptClusterMembershipGrant(ctx context.Context, bound Cluster
 		return 0, nil, err
 	}
 	return granted, members, nil
-}
-
-// clusterMembershipAttemptInterrupted reports the typed failures of a grant
-// attempt that a database leadership change produces and a later attempt can
-// outlive: no elected leader, a connection the driver or the network dropped,
-// or a membership view that moved during the attempt. Every definitive
-// refusal wins even when such an error is joined to it, and an unknown error
-// is never repeated.
-func clusterMembershipAttemptInterrupted(err error) bool {
-	if clusterMembershipAttemptDefinitive(err) {
-		return false
-	}
-	return errors.Is(err, errClusterMembershipChanged) ||
-		ReplicatedLeaderUnavailable(err) ||
-		errors.Is(err, driver.ErrBadConn) ||
-		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
-		errors.Is(err, ErrClusterMembershipObservationTimeout) ||
-		connectionError(err)
-}
-
-// connectionError reports an error of the network layer or an expired
-// deadline. A bare system call error number also satisfies net.Error, and a
-// file that cannot be opened or written carries one: that is a finding about
-// this member's disk, not an interruption.
-func connectionError(err error) bool {
-	var network net.Error
-	if !errors.As(err, &network) {
-		return false
-	}
-	_, bare := network.(syscall.Errno)
-	return !bare
-}
-
-// clusterMembershipAttemptDefinitive reports the outcomes no repeat or wait
-// may excuse: success, the caller's cancellation, and every refusal that is a
-// verdict on this member or on the cluster's state.
-func clusterMembershipAttemptDefinitive(err error) bool {
-	return err == nil ||
-		errors.Is(err, context.Canceled) ||
-		errors.Is(err, ErrClusterAdmissionRejected) ||
-		errors.Is(err, ErrClusterIdentityConflict) ||
-		errors.Is(err, ErrMaintenanceNotServing) ||
-		errors.Is(err, ErrMaintenancePhaseChanged) ||
-		errors.Is(err, ErrBusinessWritesClosed)
-}
-
-// ClusterGrantWaitedOutWriter reports a grant that never ran because the
-// database's one writer stayed taken for the node's whole busy timeout. The
-// busy timeout equals the grant's own budget, so the attempt ends with the
-// database's busy answer at the moment its deadline is reached. It is false
-// for every definitive refusal, also when the busy answer is joined to it.
-func ClusterGrantWaitedOutWriter(err error) bool {
-	return !clusterMembershipAttemptDefinitive(err) && ReplicatedWriterBusy(err)
-}
-
-// ClusterGrantInterrupted reports a grant error that says only that the
-// database leader could not be reached or changed during the attempt, as
-// clusterMembershipAttemptInterrupted decides it. It is false for every
-// definitive refusal, also when an interruption is joined to it, and for an
-// error nothing classifies.
-func ClusterGrantInterrupted(err error) bool { return clusterMembershipAttemptInterrupted(err) }
-
-// ClusterGrantUndecided reports a grant error that carries no verdict on this
-// member: the attempt was interrupted, waited out the writer, ran out of time,
-// or the database answered with a failure response. A failure response is not
-// told apart from the leftover bytes a leadership transfer leaves in one (see
-// ReplicatedReadInterrupted), so none of them is read as a refusal. It is
-// false for every definitive refusal, also when one of these is joined to it,
-// and for an error nothing classifies.
-func ClusterGrantUndecided(err error) bool {
-	return clusterMembershipAttemptInterrupted(err) ||
-		(!clusterMembershipAttemptDefinitive(err) && ReplicatedReadInterrupted(err))
 }
 
 // ErrClusterMembershipObservationTimeout marks a live observation that used
@@ -390,7 +315,7 @@ func (s *Store) grantTransportAdmissionsThroughInterruption(ctx context.Context,
 	started, window := time.Now().UTC(), clusterMembershipRetryWindow()
 	for attempt := 1; ; attempt++ {
 		revision, admissions, err := s.GrantClusterTransportAdmissions(ctx, expected, key)
-		if err == nil || !clusterMembershipAttemptInterrupted(err) || ctx.Err() != nil ||
+		if err == nil || !GrantInterrupted.Unanswered(err) || ctx.Err() != nil ||
 			time.Since(started) >= window {
 			return revision, admissions, err
 		}

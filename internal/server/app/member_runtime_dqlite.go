@@ -39,6 +39,9 @@ type memberRuntime struct {
 	holdScheduling bool
 	// business is the App whose requests this runtime admits.
 	business *App
+	// refusals is the member's record of the business requests it refused.
+	// One record serves the closed member and every generation after it.
+	refusals *businessRefusals
 	// forward hands business requests to the member that leads, and serves
 	// what the other members hand over (member_forward.go).
 	forward *memberForward
@@ -60,7 +63,7 @@ func newClosedMemberRuntime(member closedMember) (*memberRuntime, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &memberRuntime{member: member, bundle: bundle}, nil
+	return &memberRuntime{member: member, bundle: bundle, refusals: newBusinessRefusals()}, nil
 }
 
 // newSingleMemberRuntime is the runtime of a single member whose business is
@@ -70,7 +73,7 @@ func newSingleMemberRuntime(cfg Config, bundle *enrollmentBundle) (*memberRuntim
 	if err != nil {
 		return nil, err
 	}
-	return &memberRuntime{bundle: bundle, holdScheduling: hold}, nil
+	return &memberRuntime{bundle: bundle, holdScheduling: hold, refusals: newBusinessRefusals()}, nil
 }
 
 func (r *memberRuntime) generation() bool { return r.borrowed }
@@ -113,20 +116,20 @@ func (r *memberRuntime) runClosed(ctx context.Context, a *App) (bool, error) {
 }
 
 func (r *memberRuntime) handler(next http.Handler) http.Handler {
-	next = memberBusinessRefusals.serving(next)
-	if a := r.business; a != nil && a.log != nil {
-		memberBusinessRefusals.log.Store(a.log)
+	next = r.refusals.serving(next)
+	if a := r.business; a != nil && a.log != nil && r.refusals != nil {
+		r.refusals.log.Store(a.log)
 	}
 	if a := r.business; a != nil && a.store != nil && a.hub != nil {
-		r.forward = newMemberForward(a.log, a.store.ObservedActionLeader, a.hub.SessionCount, a.hub.DropSessions)
+		r.forward = newMemberForward(a.log, r.refusals, a.store.ObservedActionLeader, a.hub.SessionCount, a.hub.DropSessions)
 		// Admission comes first on either end: a member whose business is
 		// not ready neither serves nor forwards.
-		r.forward.local = memberServiceHandler(next, a)
+		r.forward.local = memberServiceHandler(next, a, r.refusals)
 		r.forward.agents = newMemberAgentRelay(r.forward, a.hub)
 		r.forward.answers = a.memberAnswerer
-		return memberServiceHandler(r.forward.wrap(next), a)
+		return memberServiceHandler(r.forward.wrap(next), a, r.refusals)
 	}
-	return memberServiceHandler(next, r.business)
+	return memberServiceHandler(next, r.business, r.refusals)
 }
 
 // start runs what a single member keeps beside business. A generation is
@@ -247,7 +250,7 @@ func (a *App) assembleBusinessGeneration(bundle *enrollmentBundle, holdSchedulin
 	if err != nil {
 		return nil, err
 	}
-	generation := &memberRuntime{bundle: bundle, owner: a.enrollment, borrowed: true, holdScheduling: holdScheduling}
+	generation := &memberRuntime{bundle: bundle, owner: a.enrollment, borrowed: true, holdScheduling: holdScheduling, refusals: closed.refusals}
 	staged, err := assembleBusiness(member.cfg, a.log, a.bus, a.store, master, generation)
 	if err != nil {
 		// A failed assembly has closed what it opened; the member's store

@@ -91,7 +91,7 @@ func TestNativeFollowingRenewalUsesRealProof(t *testing.T) {
 			}, materialReproofInterval)
 			// Use the real gate's synchronous retirement boundary. Default tests
 			// separately prove failed-proof/fast-success generation fencing.
-			e.setOnInvalidated(func() { gate.setBusinessHandler(nil) })
+			e.setOnInvalidated(func(admissionCloseCause) { gate.setBusinessHandler(nil) })
 			if ready, err := e.Reprove(ctx); !ready || err != nil {
 				t.Fatalf("initial real candidate proof: %v %v", ready, err)
 			}
@@ -139,7 +139,7 @@ func TestNativeFollowingRenewalUsesRealProof(t *testing.T) {
 			})
 			gate.requireMaterialEligibility()
 			gate.setMaterialEligibility(e)
-			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}))
+			gate.setBusinessHandler(memberServiceHandler(api.Router(api.Deps{Store: st, AuthSigner: signer}), &App{store: st, memberState: memberState{materialEligibility: e}}, nil))
 			request, stopRequest := context.WithCancel(ctx)
 			rec := httptest.NewRecorder()
 			done := make(chan struct{})

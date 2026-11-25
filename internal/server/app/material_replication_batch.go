@@ -121,7 +121,7 @@ func replicateMaterialInventoryToPeerWithYield(ctx context.Context, st *store.St
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if unavailableMaterialPeer(err) {
+		if peerUnreachable(err) {
 			// No verdict on the bytes: an upload here would count as a change.
 			return fmt.Errorf("probe material on member %d: %w", member.ID, err)
 		}

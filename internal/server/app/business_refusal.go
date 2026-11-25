@@ -6,42 +6,30 @@ import (
 	"log/slog"
 	"math/bits"
 	"net/http"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
-var businessRefusalCodeSet = func() map[string]bool {
-	set := make(map[string]bool, len(businessRefusalCodes))
-	for _, code := range businessRefusalCodes {
-		set[code] = true
-	}
-	return set
-}()
-
-// gateReasons translates the reasons the gate and the material proof give in
-// their own words (the readiness log line keeps those) to refusal codes.
-var gateReasons = map[string]string{
-	"no_business_generation": refusalNoGeneration,
-	"generation_changed":     refusalGenerationChanged,
-	"proof_missing":          refusalProofMissing,
-	"expired":                refusalProofExpired,
-	"stopped":                refusalProofStopped,
-	"run_canceled":           refusalProofRunCanceled,
-	"proof_canceled":         refusalProofCanceled,
-	"headroom":               refusalProofHeadroom,
-	"epoch_changed":          refusalProofEpochChanged,
-	"proof_owner_changed":    refusalProofOwnerChanged,
-	"renewal_unavailable":    refusalRenewalUnavailable,
-	"request_canceled":       refusalRequestCanceled,
-	"request_deadline":       refusalRequestDeadline,
+// gateWordCodes is the refusal code of each reason the gate and the material
+// proof name differently in the readiness log line; their other reasons are
+// the codes themselves.
+var gateWordCodes = map[string]string{
+	"expired":       refusalProofExpired,
+	"stopped":       refusalProofStopped,
+	"run_canceled":  refusalProofRunCanceled,
+	"headroom":      refusalProofHeadroom,
+	"epoch_changed": refusalProofEpochChanged,
 }
 
-func gateRefusalCode(reason string) string {
-	if code, ok := gateReasons[reason]; ok {
+// refusalCodeOf is the refusal code of a reason given as a code or in the
+// gate's own word; a reason neither list has is "other".
+func refusalCodeOf(reason string) string {
+	if code, ok := gateWordCodes[reason]; ok {
 		return code
 	}
-	if businessRefusalCodeSet[reason] {
+	if slices.Contains(businessRefusalCodes, reason) {
 		return reason
 	}
 	return refusalOther
@@ -74,9 +62,11 @@ type businessRefusals struct {
 	pending  bool      // a recovery line is scheduled
 }
 
-// memberBusinessRefusals is this process's record: a server process is one
-// member.
-var memberBusinessRefusals = &businessRefusals{}
+// newBusinessRefusals is a member's record. A member keeps one for as long
+// as its process runs, across the generations of its business, and hands it
+// to whatever answers business requests: the gate, the member handler and
+// the forwarder. A nil record names reasons and counts nothing.
+func newBusinessRefusals() *businessRefusals { return &businessRefusals{} }
 
 func (b *businessRefusals) logger() *slog.Logger {
 	if log := b.log.Load(); log != nil {
@@ -94,6 +84,9 @@ func (b *businessRefusals) every() time.Duration {
 
 // record counts one refusal.
 func (b *businessRefusals) record(reason string) {
+	if b == nil {
+		return
+	}
 	b.mu.Lock()
 	if b.total == nil {
 		b.total, b.run = map[string]uint64{}, map[string]uint64{}
@@ -114,7 +107,7 @@ func (b *businessRefusals) record(reason string) {
 
 // served notes that business is served again after a refusal.
 func (b *businessRefusals) served() {
-	if !b.open.Load() || !b.open.CompareAndSwap(true, false) {
+	if b == nil || !b.open.Load() || !b.open.CompareAndSwap(true, false) {
 		return
 	}
 	b.mu.Lock()
@@ -160,6 +153,9 @@ func (b *businessRefusals) reportLocked() {
 
 // snapshot is the count per reason since the process started.
 func (b *businessRefusals) snapshot() map[string]uint64 {
+	if b == nil {
+		return nil
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	out := make(map[string]uint64, len(b.total))
@@ -182,22 +178,22 @@ func (b *businessRefusals) serving(next http.Handler) http.Handler {
 	})
 }
 
-// markRefusal names the reason on the response and counts it. A probe asks
-// about the member and is not business: it gets the header and no count.
-func markRefusal(w http.ResponseWriter, r *http.Request, reason string) {
-	if !businessRefusalCodeSet[reason] {
+// mark names the reason on the response and counts it. A probe asks about
+// the member and is not business: it gets the header and no count.
+func (b *businessRefusals) mark(w http.ResponseWriter, r *http.Request, reason string) {
+	if !slices.Contains(businessRefusalCodes, reason) {
 		reason = refusalOther
 	}
 	w.Header().Set(businessRefusalHeader, reason)
 	if r != nil && memberProbe(r) {
 		return
 	}
-	memberBusinessRefusals.record(reason)
+	b.record(reason)
 }
 
-// refuseMemberBusiness answers as a closed member does and says why.
-func refuseMemberBusiness(w http.ResponseWriter, r *http.Request, reason string) {
-	markRefusal(w, r, reason)
+// refuse answers as a closed member does and says why.
+func (b *businessRefusals) refuse(w http.ResponseWriter, r *http.Request, reason string) {
+	b.mark(w, r, reason)
 	answerNotReady(w)
 }
 

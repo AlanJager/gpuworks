@@ -40,7 +40,7 @@ func TestMaterialStartupFailurePreservesErrorAndAuthority(t *testing.T) {
 			}
 			invalidated := 0
 			gate := newMaterialEligibility(time.Now, func(context.Context) (bool, error) { return true, nil }, materialReproofInterval)
-			gate.setOnInvalidated(func() {
+			gate.setOnInvalidated(func(admissionCloseCause) {
 				invalidated++
 				if mode == "callback-cancel" {
 					cancel()

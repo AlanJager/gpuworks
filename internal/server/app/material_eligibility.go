@@ -85,7 +85,7 @@ type materialEligibility struct {
 	runCtx        context.Context
 	running       bool
 	stopped       bool
-	onInvalidated func()
+	onInvalidated func(admissionCloseCause)
 	// onOutcome is told, after a proof was decided and any invalidation it
 	// caused was delivered, whether it was accepted as a fresh confirmation.
 	onOutcome func(proved bool)
@@ -119,7 +119,7 @@ func (e *materialEligibility) setIdleRest(rest time.Duration) {
 	e.idleRest = rest
 }
 
-func (e *materialEligibility) setOnInvalidated(fn func()) {
+func (e *materialEligibility) setOnInvalidated(fn func(admissionCloseCause)) {
 	e.mu.Lock()
 	e.onInvalidated = fn
 	e.mu.Unlock()
@@ -190,7 +190,7 @@ func (e *materialEligibility) eligibleForResult(minRemaining time.Duration) (boo
 		onInvalidated := e.onInvalidated
 		e.mu.Unlock()
 		if onInvalidated != nil {
-			onInvalidated()
+			onInvalidated(closeProofCanceled)
 		}
 		return false, "proof_canceled", 0
 	}
@@ -215,7 +215,7 @@ func (e *materialEligibility) eligibleForResult(minRemaining time.Duration) (boo
 		onInvalidated := e.onInvalidated
 		e.mu.Unlock()
 		if onInvalidated != nil {
-			onInvalidated()
+			onInvalidated(closeProofExpired)
 		}
 		return false, "expired", remaining
 	}
@@ -267,8 +267,9 @@ func (e *materialEligibility) waitForActiveProof(ctx context.Context, maxWait ti
 }
 
 // Invalidate closes eligibility immediately and cancels a proof in progress.
-// A late success from that proof cannot reopen the gate.
-func (e *materialEligibility) Invalidate() {
+// A late success from that proof cannot reopen the gate. cause is why, as
+// the caller knows it.
+func (e *materialEligibility) Invalidate(cause admissionCloseCause) {
 	if e == nil {
 		return
 	}
@@ -282,7 +283,7 @@ func (e *materialEligibility) Invalidate() {
 		cancel()
 	}
 	if onInvalidated != nil {
-		onInvalidated()
+		onInvalidated(cause)
 	}
 }
 
@@ -294,18 +295,18 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 	if err := ctx.Err(); err != nil {
-		e.Invalidate()
+		e.Invalidate(closeProofRunCanceled)
 		return false, err
 	}
 	select {
 	case <-ctx.Done():
-		e.Invalidate()
+		e.Invalidate(closeProofRunCanceled)
 		return false, ctx.Err()
 	case <-e.proofSlot:
 	}
 	defer func() { e.proofSlot <- struct{}{} }()
 	if err := ctx.Err(); err != nil {
-		e.Invalidate()
+		e.Invalidate(closeProofRunCanceled)
 		return false, err
 	}
 	e.mu.Lock()
@@ -343,7 +344,7 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 		onInvalidated := e.onInvalidated
 		e.mu.Unlock()
 		if onInvalidated != nil {
-			onInvalidated()
+			onInvalidated(closeProofContextEnd)
 		}
 	})
 
@@ -378,13 +379,16 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 	//     outlived its window one more window, bounds admission, never beyond
 	//     the unconfirmed limit. Otherwise one blip closes every member.
 	//   - a refusal by the database: closes at once, also inside a live window.
+	//     The proof this member runs reports a refusal as "not ready", so it
+	//     arrives as the next kind; only a prove function that returns the
+	//     refusal itself reaches this one.
 	//   - any other answer ("not ready", an error nothing classifies): a read
 	//     cut by a leadership change looks the same, so the earlier result
 	//     keeps its own window, but the answer is latched:
 	//     no later attempt without an answer extends admission.
 	// Cancellation and an invalidation close at once. Only a successful proof
 	// reopens what an answer or an invalidation closed.
-	noAnswer := lateSuccess || (!verdict && materialProofUnanswered(err))
+	noAnswer := lateSuccess || (!verdict && store.ProofUnanswered.Unanswered(err))
 	refused := errors.Is(err, store.ErrClusterAdmissionRejected) || errors.Is(err, store.ErrClusterIdentityConflict)
 	live := proofCtx.Err() == nil && !pastWindow && e.epoch == epoch && !e.stopped
 	unexpired := !e.deadline.IsZero() && now.Before(e.deadline)
@@ -427,7 +431,7 @@ func (e *materialEligibility) Reprove(ctx context.Context) (bool, error) {
 		<-callbackDone
 	}
 	if notifyInvalidated && onInvalidated != nil {
-		onInvalidated()
+		onInvalidated(closeProofFailed)
 	}
 	if onOutcome != nil {
 		onOutcome(proved)
@@ -515,6 +519,6 @@ func (e *materialEligibility) Stop() {
 		cancel()
 	}
 	if onInvalidated != nil {
-		onInvalidated()
+		onInvalidated(closeProofStopped)
 	}
 }

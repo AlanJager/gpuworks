@@ -26,7 +26,7 @@ func assertMaterialHandshakeBlackhole(t *testing.T, client *http.Client, digest 
 		}
 	}()
 	err = probeRemoteMaterialReplica(t.Context(), client, "https://"+blackhole.Addr().String(), digest, size, 7)
-	if !unavailableMaterialPeer(err) {
+	if !peerUnreachable(err) {
 		t.Fatalf("TLS handshake blackhole did not release material peer: %v", err)
 	}
 }
@@ -45,7 +45,7 @@ func assertMaterialBodyStall(t *testing.T, client *http.Client, serverTLS *tls.C
 	server.StartTLS()
 	defer server.Close()
 	err := verifyRemoteMaterialReplica(t.Context(), client, server.URL, digest, size, 7)
-	if err == nil || unavailableMaterialPeer(err) {
+	if err == nil || peerUnreachable(err) {
 		t.Fatalf("partial authenticated material response was treated as a copy or unavailable peer: %v", err)
 	}
 }

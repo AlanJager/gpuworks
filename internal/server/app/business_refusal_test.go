@@ -19,14 +19,6 @@ func newTestRefusals(every time.Duration) (*businessRefusals, *bytes.Buffer) {
 	return b, out
 }
 
-// useRefusals gives a test its own record in place of the process's.
-func useRefusals(t *testing.T, b *businessRefusals) {
-	t.Helper()
-	previous := memberBusinessRefusals
-	memberBusinessRefusals = b
-	t.Cleanup(func() { memberBusinessRefusals = previous })
-}
-
 // Within a run a reason is logged at its first, second, fourth refusal and so
 // on; a served request ends the run with one line; the next run starts its
 // warnings again, however many refusals the process has seen before.
@@ -133,31 +125,39 @@ func TestFlappingBusinessLeavesOneRecoveryLinePerInterval(t *testing.T) {
 // neither.
 func TestGateAndMemberHandlerRefusalsNameTheirReason(t *testing.T) {
 	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	upgrading := newBusinessHandlerGate()
-	upgrading.clusterUpgrade.Store(true)
+	gate := func(b *businessRefusals) http.Handler {
+		gate := newBusinessHandlerGate()
+		gate.refusals = b
+		return gate
+	}
+	upgrading := func(b *businessRefusals) http.Handler {
+		gate := newBusinessHandlerGate()
+		gate.refusals = b
+		gate.clusterUpgrade.Store(true)
+		return gate
+	}
 	cases := []struct {
 		name    string
-		handler http.Handler
+		handler func(*businessRefusals) http.Handler
 		path    string
 		status  int
 		reason  string
 		counted bool
 		body    string
 	}{
-		{"gate without a generation", newBusinessHandlerGate(), "/api/v1/nodes", 503, refusalNoGeneration, true, "member business service is not ready"},
-		{"gate without a generation, readiness probe", newBusinessHandlerGate(), "/api/v1/readyz", 503, refusalNoGeneration, false, "member business service is not ready"},
+		{"gate without a generation", gate, "/api/v1/nodes", 503, refusalNoGeneration, true, "member business service is not ready"},
+		{"gate without a generation, readiness probe", gate, "/api/v1/readyz", 503, refusalNoGeneration, false, "member business service is not ready"},
 		{"gate closed for a cluster upgrade", upgrading, "/api/v1/nodes", 503, refusalClusterUpgrade, true, "CLUSTER_UPGRADE_IN_PROGRESS"},
-		{"gate liveness", newBusinessHandlerGate(), "/healthz", 200, "", false, ""},
-		{"member handler without business", memberServiceHandler(nil, nil), "/api/v1/nodes", 503, refusalNoHandler, true, "member business service is not ready"},
-		{"member handler without a member", memberServiceHandler(ok, nil), "/api/v1/nodes", 503, refusalNoHandler, true, "member business service is not ready"},
-		{"member handler liveness", memberServiceHandler(ok, nil), "/healthz", 200, "", false, ""},
+		{"gate liveness", gate, "/healthz", 200, "", false, ""},
+		{"member handler without business", func(b *businessRefusals) http.Handler { return memberServiceHandler(nil, nil, b) }, "/api/v1/nodes", 503, refusalNoHandler, true, "member business service is not ready"},
+		{"member handler without a member", func(b *businessRefusals) http.Handler { return memberServiceHandler(ok, nil, b) }, "/api/v1/nodes", 503, refusalNoHandler, true, "member business service is not ready"},
+		{"member handler liveness", func(b *businessRefusals) http.Handler { return memberServiceHandler(ok, nil, b) }, "/healthz", 200, "", false, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			b, _ := newTestRefusals(time.Nanosecond)
-			useRefusals(t, b)
 			rec := httptest.NewRecorder()
-			tc.handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tc.path, nil))
+			tc.handler(b).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tc.path, nil))
 			if rec.Code != tc.status || !strings.Contains(rec.Body.String(), tc.body) {
 				t.Fatalf("answered %d %q", rec.Code, rec.Body.String())
 			}
@@ -186,6 +186,11 @@ func TestRefusalHeaderCarriesOnlyListedCodes(t *testing.T) {
 		}
 		seen[code] = true
 	}
+	for word, code := range gateWordCodes {
+		if seen[word] || !seen[code] {
+			t.Fatalf("the gate's word %q is itself a code, or its code %q is not listed", word, code)
+		}
+	}
 	want := map[string]string{
 		"no_business_generation": "no_business_generation", "generation_changed": "generation_changed",
 		"proof_missing": "proof_missing", "expired": "proof_expired", "stopped": "proof_stopped",
@@ -194,8 +199,10 @@ func TestRefusalHeaderCarriesOnlyListedCodes(t *testing.T) {
 		"renewal_unavailable": "renewal_unavailable", "request_canceled": "request_canceled", "request_deadline": "request_deadline",
 		"10.0.0.7:9002 refused": "other", "": "other",
 	}
-	if len(want) != len(gateReasons)+2 {
-		t.Fatalf("this test names %d gate reasons, the table has %d", len(want)-2, len(gateReasons))
+	for word := range gateWordCodes {
+		if _, named := want[word]; !named {
+			t.Fatalf("this test does not name the gate's word %q", word)
+		}
 	}
 	gate := newBusinessHandlerGate()
 	for reason, code := range want {
@@ -203,7 +210,7 @@ func TestRefusalHeaderCarriesOnlyListedCodes(t *testing.T) {
 			t.Fatalf("%q maps to %q, which is not in the list", reason, code)
 		}
 		b, _ := newTestRefusals(time.Nanosecond)
-		useRefusals(t, b)
+		gate.refusals = b
 		rec := httptest.NewRecorder()
 		gate.refuse(rec, httptest.NewRequest(http.MethodGet, "/api/v1/readyz", nil), reason)
 		if got := rec.Header().Get(businessRefusalHeader); got != code || rec.Code != http.StatusServiceUnavailable {
@@ -214,7 +221,7 @@ func TestRefusalHeaderCarriesOnlyListedCodes(t *testing.T) {
 		}
 	}
 	rec := httptest.NewRecorder()
-	markRefusal(rec, httptest.NewRequest(http.MethodGet, "/api/v1/readyz", nil), "member 3 at 10.0.0.7")
+	(*businessRefusals)(nil).mark(rec, httptest.NewRequest(http.MethodGet, "/api/v1/readyz", nil), "member 3 at 10.0.0.7")
 	if got := rec.Header().Get(businessRefusalHeader); got != refusalOther {
 		t.Fatalf("an unlisted reason reached the header as %q", got)
 	}
@@ -243,17 +250,50 @@ func TestServedBusinessEndsARunOfRefusals(t *testing.T) {
 	}
 }
 
-// The reason the member handler refuses with is empty exactly when the
-// member is business-ready, for every combination of the three facts.
-func TestBusinessRefusalReasonAgreesWithMemberService(t *testing.T) {
-	if got := (*App)(nil).businessRefusalReason(); got != refusalNoHandler {
-		t.Fatalf("no member: %q", got)
+// One evaluation says whether a member is business-ready and, when it is
+// not, the first fact it is missing: the code is empty exactly when the
+// member is ready, for every combination of the facts.
+func TestMemberServiceNamesTheMissingFact(t *testing.T) {
+	if got := (*App)(nil).memberService(t.Context(), false); got.BusinessReady || got.BusinessRefusal != refusalNoHandler {
+		t.Fatalf("no member: %+v", got)
 	}
-	for _, facts := range [][3]bool{{true, true, true}, {false, true, true}, {true, false, true}, {true, true, false}, {false, false, false}} {
-		ready := EvaluateMemberService(true, facts[0], false, facts[1], facts[2]).BusinessReady
-		reason := memberRefusalReason(true, facts[0], facts[1], facts[2])
-		if ready != (reason == "") {
-			t.Fatalf("facts %v: business ready %t, refusal reason %q", facts, ready, reason)
+	for _, tc := range []struct {
+		live, materials, sessions, target bool
+		refusal                           string
+	}{
+		{true, true, true, true, ""},
+		{false, true, true, true, refusalNoHandler},
+		{true, false, true, true, refusalProofNotEligible},
+		{true, true, false, true, refusalSessionsUnroutable},
+		{true, true, true, false, refusalTargetNotCurrent},
+		{true, false, false, false, refusalProofNotEligible},
+		{false, false, false, false, refusalNoHandler},
+	} {
+		got := EvaluateMemberService(tc.live, tc.materials, false, tc.sessions, tc.target)
+		if got.BusinessRefusal != tc.refusal || got.BusinessReady != (tc.refusal == "") {
+			t.Fatalf("facts %+v: %+v", tc, got)
 		}
+	}
+}
+
+// The record a member's runtime holds is the one its gate and its member
+// handler count in: nothing is kept anywhere else in the process.
+func TestMemberRuntimeHandsItsRecordToWhateverRefuses(t *testing.T) {
+	b, _ := newTestRefusals(time.Nanosecond)
+	runtime := &memberRuntime{member: closedMember{cfg: Config{}}, refusals: b}
+	closed := newWaitingClosedMemberApp(runtime, nil)
+	closed.businessHTTP.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/nodes", nil))
+	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	runtime.handler(ok).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/nodes", nil))
+	counts := b.snapshot()
+	// A waiting member's gate requires a material proof and has none.
+	if len(counts) != 2 || counts[refusalProofMissing] != 1 || counts[refusalNoHandler] != 1 {
+		t.Fatalf("counts = %v, want one %s from the gate and one %s from the member handler", counts, refusalProofMissing, refusalNoHandler)
+	}
+	// A runtime without a record still names the reason and counts nothing.
+	rec := httptest.NewRecorder()
+	(&memberRuntime{}).handler(ok).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/nodes", nil))
+	if got := rec.Header().Get(businessRefusalHeader); got != refusalNoHandler || rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("without a record: %d, refusal %q", rec.Code, got)
 	}
 }

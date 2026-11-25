@@ -49,7 +49,7 @@ func TestClosedMaterialStartupLabelsOnlyItsUnavailableRefusals(t *testing.T) {
 					t.Fatalf("%s %s: refusal label %q, want %q", request.method, request.path, got, wantLabel)
 				}
 				refusal := fmt.Errorf("replicate material to member 2: %w", materialStatusError(response, body))
-				if got, want := unavailableMaterialPeer(refusal), wantLabel != ""; got != want {
+				if got, want := peerUnreachable(refusal), wantLabel != ""; got != want {
 					t.Fatalf("%s %s: unavailable peer = %v, want %v", request.method, request.path, got, want)
 				}
 				if got, want := materialReplicationFailureInvalidates(refusal), wantLabel == ""; got != want {
@@ -78,7 +78,7 @@ func TestMaterialNotStartedLabelIsAnUnavailablePeerOnlyOn503(t *testing.T) {
 			response.Header.Set(materialRefusalHeader, tc.label)
 		}
 		err := fmt.Errorf("probe material member 2: %w", newMaterialReceiverStatus(response, "manifest receiver rejected current bytes or identity"))
-		if got := unavailableMaterialPeer(err); got != tc.unavailable {
+		if got := peerUnreachable(err); got != tc.unavailable {
 			t.Errorf("HTTP %d label %q: unavailable peer = %v, want %v", tc.status, tc.label, got, tc.unavailable)
 		}
 	}
