@@ -13,7 +13,7 @@
   不需要按厂商各建一个条目（见下一节）。NVIDIA 节点的 NVIDIA 容器运行时可用：或者是 containerd 的
   默认运行时（托管 Kubernetes 如 DOKS、Nebius、ACK 都是），或者有名为 `nvidia` 的 RuntimeClass（k3s 会自动创建）；
   其他厂商只要求节点上装好厂商驱动，不需要厂商的容器运行时，也不需要厂商的 device plugin。
-- 要挂 NFS 存储的节点装有 `mount.nfs`（nfs-utils / nfs-common）：agent 在节点的挂载命名空间里用它挂载。
+- 要挂 NFS 存储的节点装有 `mount.nfs`（nfs-utils / nfs-common）：agent 在节点的挂载命名空间里用它挂载。挂载点要在默认挂载目录 `/mnt/gpuworks` 或 agent 的状态目录下：agent 的 Pod 只与节点共用这两个目录，在别处创建的挂载点节点上没有。挂载点在别处时该节点报「agent 与节点不共用这个目录」，不会挂载；这时在节点上自行挂载，并为这些节点选**使用已有挂载**。从不共用 `/mnt/gpuworks` 的版本升级后，要重新应用一次 manifest（`kubectl apply` 或「应用到集群」），NFS 存储才能在这些节点上挂载。
 - 能在集群里执行 `kubectl apply`，并允许一个 `privileged` 的 namespace（manifest 会给 namespace 打上
   Pod Security Admission 的 `privileged` 标签；Kyverno、Gatekeeper 一类的策略需另外放行）。
 

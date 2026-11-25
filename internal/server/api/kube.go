@@ -126,7 +126,8 @@ func kubeManifestParams(c store.KubeCluster, pools []store.KubeClusterPool) (kub
 		ClusterName: c.Name, Namespace: c.Namespace, ServerURL: c.ServerURL, Token: c.Token,
 		AgentImage: kubeAgentImage(c), NodeSelector: sel,
 		ImagePullSecret: c.ImagePullSecret, ContainerdSocket: c.ContainerdSocket, StateDir: c.StateDir, APIServer: c.APIServer,
-		Priority: c.Priority, AllowPreemption: c.AllowPreemption,
+		MountRoot: store.DefaultStorageDirs().MountRoot,
+		Priority:  c.Priority, AllowPreemption: c.AllowPreemption,
 	}, nil
 }
 
