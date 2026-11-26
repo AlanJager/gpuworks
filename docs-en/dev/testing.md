@@ -19,14 +19,16 @@ fixture boundaries, and browser gates that still need to be integrated.
 | L3 (container) | Local Docker/udocker/nerdctl | Container networking, mounts, runtime CLIs, and fake engines |
 | L4 (cloud GPU) | Explicitly selected physical machines or cloud resources | Acceptance testing for GPUs/drivers/vendor runtimes, real downloads, and inference |
 
+These are full acceptance and coverage-report entry points for GitLab CI and on-demand local reproduction. Select focused checks for routine local commits using the project rules.
+
 ```bash
 make test
 make test-integration
 make test-coverage-report
 ```
 
-Before committing, also run `go test -race` for relevant packages, perform compile-only checks (compile without executing) for test suites with explicit build tags, and run
-`make vet` and `git diff --check`. Only ordinary tests may use `t.Skip` when external capabilities are unavailable;
+Locally, select `go test -race`/`go vet` for affected packages and compile-only checks (compile without executing) for affected tagged suites, and run
+`git diff --check`. GitLab performs full acceptance for the exact commit; `CLAUDE.md` defines responsibilities and exceptions. Only ordinary tests may use `t.Skip` when external capabilities are unavailable;
 with `GPUWORKS_TEST_STRICT=1`, missing critical dependencies must cause a failure.
 
 Server and agent logs from `internal/testenv` are discarded by default. `GPUWORKS_TESTENV_LOG=<path>` writes all of them to a file;
@@ -479,7 +481,7 @@ This guide documents testing methods. Put one-off run logs, screenshots, image d
 `artifacts/archive/` when the work is closed out). Current documentation only links to this evidence.
 
 <!-- translation-source-sha256: cf050f579f9e11e63a486c32979a02668bea0ac21fb42e608532ae0ac54cee5b # Testing Guide -->
-<!-- translation-source-sha256: d36f98ad07ab7667a2c11d0c783e088482c87fbca9e924a84390acaf7f677283 ## L1–L4 -->
+<!-- translation-source-sha256: 26078b66551cc29dbae5a46b4be7cfaaadda082359face78bd056080c38e6ce9 ## L1–L4 -->
 <!-- translation-source-sha256: 3ba7708a8ba2ce5ae01ae06e412b83f612d7b50a50e05845477e247314880811 ## Fake Engine Generation Protocol -->
 <!-- translation-source-sha256: 782c3d1b8c729bbd9121868e4807b20bd105e0d998b8fc0fedc574be44091028 ## Load Tests (Outside the Default Suite) -->
 <!-- translation-source-sha256: ea10648bbbf6c3fb314970aa99ad10cc447107683d3819ee90acefd36a9545c7 ### Two Configurations, One Shared Driver -->

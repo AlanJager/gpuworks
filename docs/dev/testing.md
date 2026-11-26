@@ -19,14 +19,16 @@ fixture 边界及尚待接入的浏览器门禁见该规范。
 | L3（container） | 本地 Docker/udocker/nerdctl | 容器网络、挂载、runtime CLI 与 fake engine |
 | L4（cloud GPU） | 显式真机或云资源 | GPU/驱动/厂商 runtime、真实下载和推理验收 |
 
+以下为完整验收和覆盖率报告入口，供 GitLab CI 与按需本地复现使用；常规本地提交按项目规约选择定向检查。
+
 ```bash
 make test
 make test-integration
 make test-coverage-report
 ```
 
-提交前还要对相关包运行 `go test -race`、对带显式 build tag 的测试集做 compile-only（只编译、不执行）、运行
-`make vet` 和 `git diff --check`。缺少外部能力时普通测试才可 `t.Skip`；
+本地按改动选择相关包的 `go test -race`/`go vet`、受影响带标签测试集的 compile-only（只编译、不执行），并运行
+`git diff --check`；GitLab 负责精确提交的全量验收，职责与例外以 `CLAUDE.md` 为准。缺少外部能力时普通测试才可 `t.Skip`；
 `GPUWORKS_TEST_STRICT=1` 下关键依赖缺失应失败。
 
 `internal/testenv` 起的 server/agent 日志默认丢弃。`GPUWORKS_TESTENV_LOG=<path>` 全量写入文件；

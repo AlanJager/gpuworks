@@ -86,26 +86,27 @@ cd ui && npm install && npm run dev
 
 ## 构建与测试
 
+本地提交前按[项目测试规约](CLAUDE.md#测试与验收规约)做定向检查，GitLab 对提交的精确 SHA 做全量验收。以下为完整验收及按需本地复现入口：
+
 ```bash
 make test              # 前端构建 + 各项静态检查 + go test + 前端测试
 make vet               # go vet
 make test-integration  # 用假 agent/runtime 跑产品级测试
 ```
 
-`make test` **不包含**分层测试。改动涉及调度、部署、agent 运行时或容器行为时，必须显式再跑
-分层套件 —— 在这些区域里，分层测试不是可选项：
+`make test` **不包含**分层测试。改动涉及调度、部署、agent 运行时或容器行为时，GitLab 验收还必须包含
+分层套件；本地按故障复现需要选择相关场景：
 
 ```bash
 make test-l2         # 多进程：真实 server/agent 二进制，假 GPU
 make test-l3         # 容器级，需要本地 Docker daemon
 ```
 
-推送之前，完整的一轮是：
+本地 Go 改动的定向检查示例（UI、文档及带标签路径按项目规约选择对应检查）：
 
 ```bash
-make test
 go test -race -timeout 40m ./<你改动的包>/...
-go vet ./...
+go vet ./<你改动的包>/...
 git diff --check
 ```
 
@@ -117,7 +118,7 @@ git diff --check
   验证通过。
 - Lint 配置在 [.golangci.yml](.golangci.yml)（`govet`、`errcheck`、`staticcheck`、`unused`、
   `ineffassign`、`misspell`、`gofmt`、`goimports`、`revive`、`bodyclose`、`nilerr`）。
-  提交前运行 `make lint`，CI 执行同一目标。该目标使用仓库的 Go 版本将
+  CI 运行完整 `make lint`；本地需要复现完整 lint 结果时执行同一目标。该目标使用仓库的 Go 版本将
   golangci-lint v1.64.8 编译到 `bin/tools`，执行完整规则并展示全部诊断。
   首次运行会下载开发工具；缺少内嵌 UI 时会先构建 UI。
 - `goimports` 配了 `local-prefixes: gpuworks.ai/gpuworks`，本地包单独成组。
