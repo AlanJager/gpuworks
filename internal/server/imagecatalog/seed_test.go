@@ -211,7 +211,7 @@ func TestSyncSeedKeepsOperatorSwitches(t *testing.T) {
 	if _, err := SyncSeed(st); err != nil {
 		t.Fatal(err)
 	}
-	version, err := st.ImageByRef("gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4")
+	version, err := st.ImageByRef("gpuworks/gpuworks-runner:cuda13.0-vllm0.34.0-r1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -286,6 +286,17 @@ func TestBuiltinSeedIsRunnerMatrix(t *testing.T) {
 			t.Fatalf("seed series %s carries common args/env", series.Name)
 		}
 		for _, image := range series.Versions {
+			if strings.HasPrefix(image.ImageRef, "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:") {
+				if image.RegistryDigest == "" {
+					t.Fatalf("prebuilt artifact %s has no registry digest", image.ImageRef)
+				}
+				for _, source := range image.RegistrySources {
+					if source != "quay.io/gpuworks/gpuworks-runner:"+image.Name {
+						t.Fatalf("unexpected mirror %s for %s", source, image.Name)
+					}
+				}
+				continue
+			}
 			if !strings.HasPrefix(image.ImageRef, "gpuworks/gpuworks-runner:") || len(image.RegistrySources) != 2 || strings.Contains(strings.Join(image.RegistrySources, " "), "registry.zstack.ai") {
 				t.Fatalf("seed %s is not a runner tag with its mirrors: %+v", image.ImageRef, image.RegistrySources)
 			}

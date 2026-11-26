@@ -20,6 +20,9 @@ var seedJSON []byte
 // ErrManifestInvalid marks a manifest that does not parse or validate.
 var ErrManifestInvalid = errors.New("image manifest is invalid")
 
+// ErrLegacyProjection identifies a lossy system catalog published for older servers.
+var ErrLegacyProjection = errors.New("image catalog is the schema 3 projection for older servers")
+
 // ErrConflict marks an import refused because a community or custom row owns
 // a catalog series name or image ref.
 var ErrConflict = manifest.ErrConflict
@@ -53,6 +56,9 @@ func ImportManifest(st *store.Store, body []byte) (manifest.Result, error) {
 	m, err := manifest.Parse(body)
 	if err != nil {
 		return manifest.Result{}, fmt.Errorf("%w: %v", ErrManifestInvalid, err)
+	}
+	if m.IsLegacyProjection() {
+		return manifest.Result{}, ErrLegacyProjection
 	}
 	return manifest.ImportOfficial(m, manifestSink{store: st}, manifest.ImportOptions{})
 }

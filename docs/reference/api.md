@@ -683,6 +683,7 @@ const importBody = {
 - 发布源均不可达：502 `UPDATE_SOURCES_UNAVAILABLE`；有索引但没有与索引一致的目录文件：502 `UPDATE_DOWNLOAD_FAILED`。
 - 通道未发布目录：404 `UPDATE_NOT_PUBLISHED`。
 - 内容非法：400 `IMAGE_MANIFEST_INVALID`；与社区/自定义行同名或同 ref 冲突：400 `IMAGE_IMPORT_CONFLICT`。
+- 上传旧版服务的兼容目录时返回 400 `IMAGE_MANIFEST_LEGACY_PROJECTION`。响应中的 `params.path` 为 `image_catalog_v4.path`，请下载签名渠道索引中该字段指向的文件再上传。
 
 版本行的 `rolling_tag`、`deprecated`、`deprecated_since` 描述滚动 tag 与弃用状态；
 `reference_count` 统计引用该 ref 的部署、未结束实例与模型数。

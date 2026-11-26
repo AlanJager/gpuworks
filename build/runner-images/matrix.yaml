@@ -92,6 +92,78 @@ defaults:
   platforms: [linux/amd64, linux/arm64]
 
 items:
+  # Additional releases are available at the registry pinned in artifact.
+  - id: cuda13.0-strata0.1.38
+    revision: r5
+    backend: cuda
+    builder: prebuilt
+    registry_sources: [quay.io/gpuworks/gpuworks-runner:cuda13.0-strata0.1.38-r5]
+    artifact: swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner@sha256:19216f47d43e59068266bb4d6d0150f3dea74f202a97e2e3142eeca8240bde9d
+    platforms: [linux/amd64]
+    manual_only: true
+  - id: cann8.5-vllm0.18.0
+    revision: r1
+    backend: cann
+    builder: prebuilt
+    registry_sources: []
+    artifact: swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner@sha256:8ae1bc11a5f3eaf7b4496ff2d990888fad803e667e2a09e5fe455ce62f350790
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann9.0-sglang0.5.18
+    revision: r1
+    backend: cann
+    builder: prebuilt
+    registry_sources: []
+    artifact: swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner@sha256:99af2200978257cb39df253ae981a4166e17ea3b63c87114aa69dc3646dece15
+    platforms: [linux/amd64, linux/arm64]
+  - id: cann9.1-vllm0.23.0
+    revision: r1
+    backend: cann
+    builder: prebuilt
+    registry_sources: []
+    artifact: swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner@sha256:7e9182487d316d539de555e106456d0513bac3f9deea389722c4bbee5ffc6565
+    platforms: [linux/amd64, linux/arm64]
+  - id: cuda12.8-sglang0.5.9
+    revision: r1
+    backend: cuda
+    builder: prebuilt
+    registry_sources: []
+    artifact: swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner@sha256:98fe7b9b9948bacc7a43285d2256ff0d926316fecf66ff03cf8ceb0f35a613e1
+    platforms: [linux/amd64, linux/arm64]
+  - id: cuda12.8-vllm0.17.1
+    revision: r1
+    backend: cuda
+    builder: prebuilt
+    registry_sources: []
+    artifact: swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner@sha256:633490c11e1457cf24d04e43a089d9fe551d8578f722ce479e49d1728a0c0e01
+    platforms: [linux/amd64, linux/arm64]
+  - id: cuda12.9-sglang0.5.19
+    revision: r1
+    backend: cuda
+    builder: prebuilt
+    registry_sources: []
+    artifact: swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner@sha256:2ec2bc0152d3bc0bf7ea4055b6bab3bf0a9cf87cf65ba18dae420bf00e0bd8e6
+    platforms: [linux/amd64, linux/arm64]
+  - id: hggc13.0-sglang0.5.23
+    revision: r1
+    backend: hggc
+    builder: prebuilt
+    registry_sources: []
+    artifact: swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner@sha256:7ec12ff4e3072c50a935ddb68d1fd7b95b658c94115bc3676908f4ced03712a3
+    platforms: [linux/amd64]
+  - id: hggc13.0-vllm0.34.0
+    revision: r1
+    backend: hggc
+    builder: prebuilt
+    registry_sources: []
+    artifact: swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner@sha256:7101f82edb338dbb5657d8368b3e9e6b2fc517c2bd5ec278c62531c97bb94c5f
+    platforms: [linux/amd64]
+  - id: xre5.37.1.0-sglang0.5.18
+    revision: r2
+    backend: xre
+    builder: prebuilt
+    registry_sources: []
+    artifact: swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner@sha256:566e916cfe993b9f6eb004d3bb9f74915bb7bebe231404a6579ba8c5ecdbc843
+    platforms: [linux/amd64]
 
   # Kunlun P800: promote the digest-pinned artifact without rebuilding its layers.
   # build.sh, verify.sh --all and push.sh --tags-from matrix skip prebuilt entries.
@@ -307,18 +379,14 @@ items:
   # FLASH_ATTN_V100 注意力后端，console script 与模块名仍是 vllm，`vllm serve` 用法不变。
   # 它的发行包名是 1cat-vllm，版本号是它自己的（1.5.1），引擎版本在 id 里写作 1cat1.5.1。
   #
-  # 为什么 catalog: false：镜像目录的自动选择只看引擎、框架、架构（ADR 0019，不看 GPU 型号），
-  # 把它列进去，V100 以外的节点在更老的框架档上可能被它误选，V100 节点又选不到它。
-  # V100 由推理模板的 spec 以 `gpus: {vendor: nvidia, cc: '7.0'}` + `image:` 引用它，
-  # 镜像不在目录里，spec 自己在 image_sources 里列出 SWR / quay / registry.zstack.ai 副本
-  # （seed 的 TestBuiltinTemplateSystemImagesResolveToImageCatalogRows 守护）。
+  # 实测过的 1.5.1 供模板和用户手选。普通 CUDA 部署不能自动选入 Volta 专用镜像。
 
   - id: cuda12.8-v100-vllm1cat1.5.1
     revision: r1
     backend: cuda
     engine: vllm-v100
     platforms: [linux/amd64]
-    catalog: false
+    manual_only: true
     base: nvidia/cuda:12.8.1-devel-ubuntu24.04
     base_note: >-
       官方 devel 镜像。要 devel 而不是 runtime：1Cat-vLLM 的 TileLang 内核在首次推理时
@@ -351,10 +419,7 @@ items:
     backend: cuda
     engine: systemone
     platforms: [linux/amd64]
-    # 镜像目录按引擎、框架、架构自动选镜像（ADR 0019）：本档会是 cuda 上唯一的 callable 行，
-    # 列进去可能被别的 NVIDIA callable 部署误选。照 V100 档的做法不进目录，由推理模板的 spec
-    # 在 image_sources 里列出副本。
-    catalog: false
+    manual_only: true
     base: docker.io/library/ubuntu:24.04
     base_note: >-
       纯 Ubuntu 24.04：torch 的 cu128 wheel 自带 CUDA 运行时（nvidia-* pip 包），驱动库由容器运行时注入，

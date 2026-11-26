@@ -60,7 +60,7 @@ func TestGenerateMapsMatrixItems(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generated manifest does not parse: %v", err)
 	}
-	if m.SchemaVersion != 3 || !strings.HasPrefix(m.CatalogVersion, "2026-10-08.") || len(m.CatalogVersion) != len("2026-10-08.")+8 {
+	if m.SchemaVersion != manifest.RunnerSchema || !strings.HasPrefix(m.CatalogVersion, "2026-10-08.") || len(m.CatalogVersion) != len("2026-10-08.")+8 {
 		t.Fatalf("schema/catalog version = %d %q", m.SchemaVersion, m.CatalogVersion)
 	}
 	versions := map[string]manifest.ManifestVersion{}
@@ -72,16 +72,19 @@ func TestGenerateMapsMatrixItems(t *testing.T) {
 			t.Fatalf("series %q = %+v", series.Name, series)
 		}
 		for _, version := range series.Versions {
+			if !releaseTagPattern.MatchString(version.Name) || !strings.HasSuffix(version.ImageRef, ":"+version.Name) {
+				t.Errorf("invalid runner ref %s (tag %s)", version.ImageRef, version.Name)
+			}
 			versions[version.Name] = version
 			seriesOf[version.Name] = series
 		}
 	}
-	wantSeries := "MLX Audio · Metal,MLX-VLM · Metal,SGLang · CANN,SGLang · CUDA,SGLang · DTK,SGLang · HGGC,llama.cpp · Metal,vLLM Omni · CANN,vLLM Omni · CUDA,vLLM · CANN,vLLM · CUDA,vLLM · DTK,vLLM · HGGC,vLLM · Metal,vLLM · ROCm,vLLM · XRE"
+	wantSeries := "MLX Audio · Metal,MLX-VLM · Metal,SGLang · CANN,SGLang · CUDA,SGLang · DTK,SGLang · HGGC,SGLang · XRE,Strata · CUDA,System One · CUDA,llama.cpp · Metal,vLLM Omni · CANN,vLLM Omni · CUDA,vLLM · CANN,vLLM · CUDA,vLLM · DTK,vLLM · HGGC,vLLM · Metal,vLLM · ROCm,vLLM · XRE"
 	if strings.Join(names, ",") != wantSeries {
 		t.Fatalf("series = %v", names)
 	}
-	if len(versions) != 47 {
-		t.Fatalf("versions = %d, want 47", len(versions))
+	if len(versions) != 55 {
+		t.Fatalf("versions = %d, want 55", len(versions))
 	}
 	// Out of the catalog: sglang 0.5.23 serves MiniCPM-V 4.6 models with a
 	// crash (GWKS-505). The build and the published tags stay; the catalog
@@ -124,7 +127,7 @@ func TestGenerateMapsMatrixItems(t *testing.T) {
 	if strings.Join(omni.RegistrySources, " ") != strings.Join(wantSources, " ") {
 		t.Fatalf("registry sources = %v", omni.RegistrySources)
 	}
-	if dtk := versions["dtk26.04-vllm0.18.1-r2"]; dtk.Arch != "amd64" || dtk.FrameworkVersion != "26.04" || seriesOf[dtk.Name].Framework != "dtk" {
+	if dtk := versions["dtk26.04-vllm0.21.0-r4"]; dtk.Arch != "amd64" || dtk.FrameworkVersion != "26.04" || seriesOf[dtk.Name].Framework != "dtk" {
 		t.Fatalf("dtk version = %+v", dtk)
 	}
 	if cuda := versions["cuda12.9-vllm0.31.0-r2"]; cuda.EngineVersion != "0.31.0" || cuda.FrameworkVersion != "12.9" || seriesOf[cuda.Name].Name != "vLLM · CUDA" {
@@ -382,8 +385,8 @@ func TestGenerateLeavesUnlistedItemsOutOfTheCatalog(t *testing.T) {
 	}
 }
 
-// The checked-in matrix declares the V100 line and keeps it out of the seed.
-func TestMatrixDeclaresTheVoltaImageUnlisted(t *testing.T) {
+// Templates on Volta keep their tested image without recommending it to other cards.
+func TestMatrixVoltaTemplateRequiresExplicitSelection(t *testing.T) {
 	data, err := os.ReadFile(matrixPath)
 	if err != nil {
 		t.Fatal(err)
@@ -401,8 +404,8 @@ func TestMatrixDeclaresTheVoltaImageUnlisted(t *testing.T) {
 	if found == nil {
 		t.Fatal("the matrix has no V100 item")
 	}
-	if found.Catalog == nil || *found.Catalog {
-		t.Fatalf("the V100 item must stay unlisted until it has run on hardware: %+v", found.Catalog)
+	if !found.ManualOnly {
+		t.Fatalf("the V100 image must require explicit selection: %+v", found)
 	}
 	if found.Args["ENGINE_VERSION"] != "1cat1.5.1" || found.Args["ONECAT_VERSION"] != "1.5.1" || len(found.Args["ONECAT_WHEEL_SHA256"]) != 64 {
 		t.Fatalf("args = %v", found.Args)
@@ -411,9 +414,18 @@ func TestMatrixDeclaresTheVoltaImageUnlisted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bytes.Contains(seed, []byte("v100")) {
-		t.Fatal("the seed lists the V100 image")
+	m, err := manifest.Parse(seed)
+	if err != nil {
+		t.Fatal(err)
 	}
+	for _, series := range m.Series {
+		for _, v := range series.Versions {
+			if v.Name == "cuda12.8-v100-vllm1cat1.5.1-r1" && v.AutoSelect == "manual" {
+				return
+			}
+		}
+	}
+	t.Fatal("missing explicitly selectable V100 image")
 }
 
 // A built item's tag is its id and revision, so the revision has to be the

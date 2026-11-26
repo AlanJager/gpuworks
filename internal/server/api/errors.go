@@ -253,6 +253,7 @@ const (
 	ErrorImageImportInvalid                = "IMAGE_IMPORT_INVALID"
 	ErrorImageImportUnsupported            = "IMAGE_IMPORT_UNSUPPORTED"
 	ErrorImageImportConflict               = "IMAGE_IMPORT_CONFLICT"
+	ErrorImageManifestLegacyProjection     = "IMAGE_MANIFEST_LEGACY_PROJECTION"
 	ErrorImageManifestInvalid              = "IMAGE_MANIFEST_INVALID"
 	ErrorUpdateSourcesUnavailable          = "UPDATE_SOURCES_UNAVAILABLE"
 	ErrorUpdateDownloadFailed              = "UPDATE_DOWNLOAD_FAILED"
