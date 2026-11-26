@@ -141,6 +141,8 @@ var routeDocs = map[string]string{
 
 	"/api/v1/inference-templates/weight-models": "某个 spec 声明的权重来源对应的已登记模型（`template_id`、`spec_source`、`spec_name` 必填，缺一 400 `TEMPLATE_WEIGHT_MODELS_QUERY_INVALID`，spec 不存在 404）：`models` 为服务任一来源的模型（按 repo id 不区分大小写匹配，完整仓库可服务子目录请求，新的在前，各一次，行格式同分页列表；按 rank 拆分的来源只列 rank 0 的制品，且 revision 已知时须与来源写的一致）；`sources` 按声明顺序列出各来源，`reuse_model_id` 是选择该来源时复用的同 provider 最新模型",
 
+	"/api/v1/inference-templates/weight-source-probe": "部署表单在登记前测试某个 spec 声明的一个权重来源（`template_id`、`spec_source`、`spec_name`、`provider`、`repo_id` 必填，缺一 400 `WEIGHT_SOURCE_PROBE_QUERY_INVALID`；`revision`、`subfolder` 按声明原样带上，spec 没有声明这个来源时 400 `WEIGHT_SOURCE_NOT_DECLARED`，spec 不存在 404）。由管理节点按登记时的规则读取来源，返回 `{proceed, present?, host?, reason?}`：读到仓库时 `proceed: true`、`host` 为应答的地址；否则 `proceed: false`，`reason` 的码与登记的 `metadata_notice` 相同（`MODEL_REPO_NOT_FOUND`、`MODEL_REVISION_NOT_FOUND`、`MODEL_REPO_ACCESS_DENIED`、`MODEL_METADATA_UNREACHABLE`、`MODEL_METADATA_FORBIDDEN`）。选择该来源会复用的已登记模型在节点或共享存储上已有就位文件时不访问站点，直接返回 `proceed: true, present: true`",
+
 	"/api/v1/inference-templates/yaml": "模板编辑器里的平铺 YAML：server 用导入同一套目录类型写出，可加 `spec_source=user`（或 `upstream`）只留该来源的 spec，`readme_*` 字段只在 spec 全部列出或模板本身归用户时写出；原样保存（`import?overwrite=true`）不丢字段",
 
 	"/api/v1/instances": "实例列表，新的在前；带 `page`/`page_size` 时分页返回（`{items,page,page_size,total}`，见“错误与响应约定”），不带时返回全部命中（`{items,total}`）；分页与否都可按 `q`（实例 UUID、所属部署名或节点名的子串，不区分大小写）与 `state`（实例自身状态，逗号分隔：`pending`、`pulling`、`starting`、`optimizing`、`running`、`draining`、`removing`、`stopped`、`failed`、`pending-removal`，其他值 400 `LIST_FILTER_INVALID`）筛选；页码超过末页（无论多大）返回空 `items` 与真实 `total`",
@@ -337,7 +339,7 @@ var routeDocs = map[string]string{
 
 	"/api/v1/updates/server/result": "传入本次升级的 `attempt` 或已接受响应的 `backup`，核对下载、等待重启、失败或已确认回滚。无匹配证据时返回 `unknown`。",
 
-	"/api/v1/updates/server/versions": "传入当前保存的 `channel`，返回已验证的服务端版本、当前主机平台、各版本的 Git 提交号（如有）、包摘要与不可安装原因。清单按发布顺序排列，同渠道与跨渠道都只保留当前版本和更新的构建；`latest` 标识渠道索引的最新构建。",
+	"/api/v1/updates/server/versions": "传入当前保存的 `channel`，返回已验证的服务端版本、当前主机平台、各版本的 Git 提交号（如有）、包摘要与不可安装原因。清单按发布顺序排列，同渠道与跨渠道都只保留当前版本和更新的构建，当前构建不是该渠道发布的版本（`server.unpublished_build`）时列出渠道的全部版本；`latest` 标识渠道索引的最新构建。所选版本的数据库结构比本机数据库旧（索引里的数据库迁移编号更小）时带 `downgrades_schema: true`，见[服务端升级限制](#服务端升级限制)。",
 
 	"/api/v1/usage-report": "用户体验改进计划状态 `{enabled, editable, last_day?, last_attempt?: {at, day, ok, error?}, next_due_at?}`：是否加入（`server.yaml` 的 `usage_report`）、能否在控制台修改、最近一份送达的报告覆盖的 UTC 日、本进程最近一次投递、下一份报告的预计时间（[用户体验改进计划](usage-report.md)）",
 

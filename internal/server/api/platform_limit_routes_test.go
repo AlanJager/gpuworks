@@ -78,6 +78,7 @@ read GET /api/v1/inference-templates/organizations
 read GET /api/v1/inference-templates/schema
 read GET /api/v1/inference-templates/summary
 read GET /api/v1/inference-templates/weight-models
+read GET /api/v1/inference-templates/weight-source-probe
 read GET /api/v1/inference-templates/yaml
 read GET /api/v1/instances
 read GET /api/v1/instances/{uuid}

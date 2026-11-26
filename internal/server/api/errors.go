@@ -220,7 +220,7 @@ const (
 	ErrorLocalModelMetadataRefresh        = "LOCAL_MODEL_METADATA_REFRESH"
 	ErrorModelMetadataUnavailable         = "MODEL_METADATA_UNAVAILABLE"
 	// ErrorModelMetadataUnreachable: the management node reached none of
-	// {hosts}, the addresses the site rules give it for {source}.
+	// {hosts} for {source}; {status} when one answered another error status.
 	ErrorModelMetadataUnreachable          = "MODEL_METADATA_UNREACHABLE"
 	ErrorModelMetadataForbidden            = messages.ErrorModelMetadataForbidden
 	ErrorModelSourceUnavailable            = messages.ErrorModelSourceUnavailable

@@ -513,7 +513,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/models` | 模型列表；支持 `page`/`page_size`、`q`、`source`（`huggingface/modelscope/url/local`）、`operation`、`source_id`；后三项可用逗号分隔，`source_id` 整体匹配、不区分大小写。`sort` 为 `name/source/source_id/published_at/created_at/weight/presence`。分页返回 `presence{ready_nodes,cached_nodes,ready_storages,in_flight,in_flight_percent,failed}` 就位汇总及全量 `summary`；逐位置明细查模型详情。见[列表筛选与就位汇总](#列表筛选与就位汇总) | JWT |
 | GET | `/api/v1/models/presence?ids=1,2` | 只读取指定模型的就位摘要，用于下载进度更新。`ids` 必填，逗号分隔的正整数，最多 200 项，重复编号去重；返回以模型编号为键的对象，每项形状同列表的 `presence`。已知但无副本的模型各项为 0；不存在或已删除的编号省略。非法、空或超量参数返回 400，存储读取失败返回 500。普通进度事件只刷新当前页摘要，状态或模型变更继续刷新完整列表 | JWT |
 | GET | `/api/v1/models/catalog` | 在线模型目录。通过 `source`（`modelscope` 或 `huggingface`）和 `path` 请求公开模型列表、README 或 ModelScope 默认分支提交。管理节点按来源规则访问，返回源站正文；Hugging Face 续页信息在 `X-Catalog-Link`。 | JWT |
-| POST | `/api/v1/models` | 注册公共仓库模型（HF/ModelScope） | JWT |
+| POST | `/api/v1/models` | 注册公共仓库模型（HF/ModelScope）。来源站点明确回答没有该仓库或该版本时返回 422 `MODEL_REPO_NOT_FOUND` / `MODEL_REVISION_NOT_FOUND`，不登记；请求体带 `force: true` 时仍登记。站点不可达、拒绝访问（401/403）或只有镜像站回答 404 时照常登记（201），原因写在 `metadata_notice` | JWT |
 | POST | `/api/v1/models/preview-url` | 预览 HTTP 模型目录（`url`）；必须为带主机名的 http/https URL，不允许内嵌凭据。非法地址返回 400 `MODEL_SOURCE_URL_INVALID`，合法但不可读取的目录返回 502 `HTTP_DIRECTORY_UNREACHABLE` | JWT |
 | POST | `/api/v1/models/register-url` | 注册 HTTP 模型目录（`source_url`，可选 `source_id`、`name`）；地址校验与 preview-url 相同，注册成功返回 201 | JWT |
 | POST | `/api/v1/models/local/preview` | 预览节点本地目录是否可注册为模型 | JWT |
@@ -522,7 +522,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/models/{id}` | 模型详情 | JWT |
 | PATCH | `/api/v1/models/{id}` | 修改本地 / HTTP 目录模型的来源 ID（`{"source_id"}`，详情的 `source_id_editable` 表示可改）；公共仓库模型 400 `MODEL_SOURCE_ID_FIXED`，与已有模型重名 409 `MODEL_SOURCE_ID_TAKEN`，有进行中的复制、下载或删除 409 `MODEL_TRANSFER_ACTIVE`；已有副本路径不变 | JWT |
 | DELETE | `/api/v1/models/{id}` | 删除模型 | JWT(admin) |
-| POST | `/api/v1/models/{id}/metadata/refresh` | 重新拉取模型元数据（config/README/logo） | JWT |
+| POST | `/api/v1/models/{id}/metadata/refresh` | 重新拉取模型元数据（config/README/logo）。什么都没读到时按来源站点的回答报错：404 `MODEL_REPO_NOT_FOUND` / `MODEL_REVISION_NOT_FOUND`、403 `MODEL_REPO_ACCESS_DENIED`（`params.host`、`params.repo`、`params.status` 为站点与它的 HTTP 状态码）；站点没有给出关于仓库的回答时 502 `MODEL_METADATA_UNREACHABLE` 或 `MODEL_METADATA_FORBIDDEN` | JWT |
 | POST | `/api/v1/models/{id}/download` | 发起公共仓库下载：`storage_id` 选存储（省略为默认存储），本地存储再给 `node_uuid` 或 `node_uuids`，共享存储由一台写入节点下载一次 | JWT |
 | POST | `/api/v1/models/{id}/download/cancel` | 取消指定存储的模型下载（`storage_id`，本地存储另带 `node_uuid`）；保留已下载数据以供重试 | JWT |
 | POST | `/api/v1/models/{id}/copy` | 在两个位置之间复制模型文件：`source`/`target` 各为 `{storage_id, node_uuid?}`；同一节点能读源写目标时本机复制，否则节点间直传；源与目标为同一位置返回 400，共享存储按存储 ID 判定（忽略节点）；离线或不可写等状态冲突仍返回 409 | JWT |
@@ -586,7 +586,7 @@ macOS 忽略 `no_systemd`。
 | DELETE | `/api/v1/images/{id}` | 删除社区/自定义镜像版本；系统镜像 400 `OFFICIAL_IMAGE_DELETE_FORBIDDEN`，仍被部署、未结束的实例或模型引用时 409 `IMAGE_IN_USE`（与系统镜像删除/弃用同一引用口径） | JWT(admin) |
 | DELETE | `/api/v1/image-series/{id}` | 删除社区/自定义镜像系列；任一版本仍被引用时 409 `IMAGE_IN_USE` | JWT(admin) |
 | POST | `/api/v1/images/import` | 两种请求体：带 `schema_version` 的系统目录 manifest（schema 2/3，其他值 400），或社区/自定义添加用的 `{"series":[...]}`（不能写 `source=official`） | JWT(admin) |
-| POST | `/api/v1/images/sync` | 从发布通道更新系统镜像目录；忽略请求体，返回版本计数与系列。错误见[目录导入结果](#目录导入结果) | JWT(admin) |
+| POST | `/api/v1/images/sync` | 从发布通道更新系统镜像目录；忽略请求体，返回版本计数与系列。当前目录是手工上传的且与渠道目录不同时，须带 `?replace_uploaded=true` 才替换。错误见[目录导入结果](#目录导入结果) | JWT(admin) |
 | POST | `/api/v1/images/preview-archive-url` | 下载前解析 `docker save` 归档 URL：`{"url"}` → `url`、`size_bytes`、`repo_tags`、`previewable`，可选的 `metadata_by_tag` 按引用返回引擎、框架、各自版本和宿主架构 | JWT(admin) |
 | GET | `/api/v1/images/nodes/{uuid}/runtime-images` | 扫描带标签的节点镜像。可选查询参数 `namespace`；返回镜像引用、不可变标识、大小及来源和部署用的 namespace。 | JWT(admin) |
 | POST | `/api/v1/images/nodes/{uuid}/runtime-images/inspect` | 检查所选镜像的配置并回填目录字段。将同一选择和 `node_uuid` 作为 `runtime_image` 随单个自定义版本提交到 `POST /api/v1/images/import`。 | JWT(admin) |
@@ -673,14 +673,16 @@ const importBody = {
 
 `POST /images/sync` 与带 `schema_version` 的 `POST /images/import` 导入系统目录，返回
 `{catalog_version, created, updated, deleted, deprecated, skipped:[], series:[...]}`。
-计数按版本行；`series` 是导入后的系统系列。manifest 未列出的系统版本，有引用或已分发到节点时标记为弃用，其余删除。
+计数按版本行；`series` 是导入后的系统系列。manifest 未列出的系统版本，无引用时删除，有引用时弃用。
 社区/自定义导入返回受影响的系列 `{items:[...], total}`。
 
-通道同步遇到社区或自定义条目的名称或镜像引用冲突时返回 200，保留本地条目，在 `skipped` 中列出跳过项，并导入其余条目。手工上传的 manifest 遇到相同冲突时返回 400 `IMAGE_IMPORT_CONFLICT`，整批回滚。
+失败时不修改目录，按以下错误处理：
 
-manifest 内容非法时，导入前返回 400 `IMAGE_MANIFEST_INVALID`。通道同步还可能在下载阶段返回 502 `UPDATE_SOURCES_UNAVAILABLE`（发布源均不可达）、404 `UPDATE_NOT_PUBLISHED`（索引未发布目录）或 502 `UPDATE_DOWNLOAD_FAILED`（无法下载与索引一致的文件）。
+- 发布源均不可达：502 `UPDATE_SOURCES_UNAVAILABLE`；有索引但没有与索引一致的目录文件：502 `UPDATE_DOWNLOAD_FAILED`。
+- 通道未发布目录：404 `UPDATE_NOT_PUBLISHED`。
+- 内容非法：400 `IMAGE_MANIFEST_INVALID`；与社区/自定义行同名或同 ref 冲突：400 `IMAGE_IMPORT_CONFLICT`。
 
-两种方式都在目录行提交后记录目录版本与跳过项。记录失败时 API 返回 500，此时目录行已经生效。排除存储错误后，重新导入同一份 manifest 即可刷新记录。
+`POST /images/sync` 遇到手工上传的目录且渠道目录与它不同、又没带 `replace_uploaded=true` 时返回 409 `IMAGE_CATALOG_UPLOADED`（`params.current`、`params.latest` 是两个目录版本），目录不变。
 
 版本行的 `rolling_tag`、`deprecated`、`deprecated_since` 描述滚动 tag 与弃用状态；
 `reference_count` 统计引用该 ref 的部署、未结束实例与模型数。
@@ -698,6 +700,7 @@ manifest 内容非法时，导入前返回 400 `IMAGE_MANIFEST_INVALID`。通道
 | GET | `/api/v1/inference-templates/my-chips` | 当前集群实际探测到的加速卡列表，含 `vendor`、`name`、可选 `cc` 和已报告的 `arch_id`；未报告架构时省略 `arch_id` | JWT |
 | GET | `/api/v1/inference-templates/summary` | 模板统计摘要 | JWT |
 | GET | `/api/v1/inference-templates/weight-models` | 某个 spec 声明的权重来源对应的已登记模型（`template_id`、`spec_source`、`spec_name` 必填，缺一 400 `TEMPLATE_WEIGHT_MODELS_QUERY_INVALID`，spec 不存在 404）：`models` 为服务任一来源的模型（按 repo id 不区分大小写匹配，完整仓库可服务子目录请求，新的在前，各一次，行格式同分页列表；按 rank 拆分的来源只列 rank 0 的制品，且 revision 已知时须与来源写的一致）；`sources` 按声明顺序列出各来源，`reuse_model_id` 是选择该来源时复用的同 provider 最新模型 | JWT |
+| GET | `/api/v1/inference-templates/weight-source-probe` | 部署表单在登记前测试某个 spec 声明的一个权重来源（`template_id`、`spec_source`、`spec_name`、`provider`、`repo_id` 必填，缺一 400 `WEIGHT_SOURCE_PROBE_QUERY_INVALID`；`revision`、`subfolder` 按声明原样带上，spec 没有声明这个来源时 400 `WEIGHT_SOURCE_NOT_DECLARED`，spec 不存在 404）。由管理节点按登记时的规则读取来源，返回 `{proceed, present?, host?, reason?}`：读到仓库时 `proceed: true`、`host` 为应答的地址；否则 `proceed: false`，`reason` 的码与登记的 `metadata_notice` 相同（`MODEL_REPO_NOT_FOUND`、`MODEL_REVISION_NOT_FOUND`、`MODEL_REPO_ACCESS_DENIED`、`MODEL_METADATA_UNREACHABLE`、`MODEL_METADATA_FORBIDDEN`）。选择该来源会复用的已登记模型在节点或共享存储上已有就位文件时不访问站点，直接返回 `proceed: true, present: true` | JWT |
 | GET | `/api/v1/inference-templates/export/{digest}` | 按内容摘要导出可执行模板包 | JWT(admin) |
 | GET | `/api/v1/inference-templates/model/*` | 按模型路径获取模板详情。`can_delete` 表示当前调用方有权请求删除整个模板，引用检查在删除时执行。 | JWT |
 | GET | `/api/v1/inference-templates/yaml?model_id=…` | 模板编辑器里的平铺 YAML：server 用导入同一套目录类型写出，可加 `spec_source=user`（或 `upstream`）只留该来源的 spec，`readme_*` 字段只在 spec 全部列出或模板本身归用户时写出；原样保存（`import?overwrite=true`）不丢字段 | JWT |
@@ -1940,7 +1943,7 @@ RunPod 需要开放端口或补平台公钥时，先返回 409 `INSTANCE_RESTART
 | GET | `/api/v1/notices` | 页头通知铃铛 `{notices: [{id, severity, kind, title?, body?, url?, published_at, read}], unread}`：发布方签名发布的、适用于本安装的通知（`kind` 为 `security` / `release` / `event`，`title`/`body` 按语言给出纯文本）；按紧急程度、再按时间排序，`read` 与 `unread` 按调用者计算 | JWT |
 | POST | `/api/v1/notices/read` | 把通知标为已读 `{"ids": [...]}`（1–128 个，每个 ≤64 字节，否则 400 `NOTICE_IDS_INVALID`）；只记调用者自己的已读，重复标记无副作用，204 | JWT |
 | GET | `/api/v1/console/manifest` | 控制台外壳在自身页面之外显示的内容 `{edition, features, nav, banners}`，全部由 server 决定，控制台只负责渲染，见[控制台清单与扩展路由](#控制台清单与扩展路由)。社区版服务端固定返回 `{"edition":"community","features":[],"nav":[],"banners":[]}` | JWT |
-| GET | `/api/v1/updates/server/versions` | 传入当前保存的 `channel`，返回已验证的服务端版本、当前主机平台、各版本的 Git 提交号（如有）、包摘要与不可安装原因。清单按发布顺序排列，同渠道与跨渠道都只保留当前版本和更新的构建；`latest` 标识渠道索引的最新构建。 | JWT(admin) |
+| GET | `/api/v1/updates/server/versions` | 传入当前保存的 `channel`，返回已验证的服务端版本、当前主机平台、各版本的 Git 提交号（如有）、包摘要与不可安装原因。清单按发布顺序排列，同渠道与跨渠道都只保留当前版本和更新的构建，当前构建不是该渠道发布的版本（`server.unpublished_build`）时列出渠道的全部版本；`latest` 标识渠道索引的最新构建。所选版本的数据库结构比本机数据库旧（索引里的数据库迁移编号更小）时带 `downgrades_schema: true`，见[服务端升级限制](#服务端升级限制)。 | JWT(admin) |
 | GET | `/api/v1/updates/server/result` | 传入本次升级的 `attempt` 或已接受响应的 `backup`，核对下载、等待重启、失败或已确认回滚。无匹配证据时返回 `unknown`。 | JWT(admin) |
 | POST | `/api/v1/updates/server` | 可传入 `{channel,version,sha256,attempt}` 精确选择包。无选择时沿用渠道最新版本。下载发布包，备份并替换服务端后重启；接受返回 202 `{from,to,backup}`，下一次启动确认或回滚；见[服务端升级限制](#服务端升级限制) | JWT(admin) |
 | POST | `/api/v1/updates/server/upload` | 同上，但请求体是上传的发布压缩包（上限 512 MiB）；不是可用的发布包时 400 `SERVER_UPGRADE_ARCHIVE_INVALID`（含控制台升级之前的版本：它们不会确认或回滚自己的启动，`detail` 提示改用 `gpuworks upgrade --archive`） | JWT(admin) |
@@ -1989,9 +1992,11 @@ RunPod 需要开放端口或补平台公钥时，先返回 409 `INSTANCE_RESTART
 - `channel`、`channel_editable`：当前渠道及是否允许切换。
 - `auto_check`：自动检测开关。为 `false` 时仅返回上次手动检查的结果；从未检查则为空答复，没有 `sources` 或 `unavailable_reason`。强制刷新仍会检查。
 - 来源信息：胜出源，以及已答复来源的 `{url,ok,latency_ms,error}`；尚未答复的慢源不列出，界面不展示来源详情。
-- `server`、`image_catalog`、`template_catalog`：各含 `current`、`latest`、`update_available`。模板另有 `compatible`；server 另有 `installable`、`self_upgrade`、`self_upgrade_blocker`、`install_dir`（`server.yaml` 所在安装目录，无目录时省略）。
+- `server`、`image_catalog`、`template_catalog`：各含 `current`、`latest`、`update_available`。`image_catalog` 在当前目录是手工上传的时另有 `uploaded: true`，此时 `update_available` 恒为 `false`；渠道目录与它不同时还有 `replaces_upload: true`，表示应用渠道目录会替换上传的目录。模板另有 `compatible`；server 另有 `installable`、`self_upgrade`、`self_upgrade_blocker`、`install_dir`（`server.yaml` 所在安装目录，无目录时省略）。
 
-server 只有渠道版本更新时才标记 `update_available`。目录发布不早于当前构建且内容有变时可更新。系统镜像目录部分导入时，`image_catalog.skipped` 列出冲突名称。当前版本与渠道相同时，`update_available` 仍为 false。管理员解决冲突后可重试导入。完整导入后省略该字段。
+server 只有渠道版本更新时才标记 `update_available`。两份目录还须与当前内容不同，且发布不早于当前构建，避免把旧目录标成更新。
+
+`server.unpublished_build: true` 表示当前构建按该渠道构建、构建时间晚于渠道最新版本，却不在渠道的版本清单里（分支构建或本地构建）。构建时间不能说明它与渠道版本谁新：此时 `server.update_available` 为 `false`，界面显示「非渠道发布的构建」而不是「已是最新」，两份目录只要与当前内容不同就标记 `update_available`。
 无可用源仍返回 200、`available=false`，由 `unavailable_reason` 区分：
 
 - `unpublished`：源可达，但该渠道没有索引。
@@ -2002,7 +2007,7 @@ server 只有渠道版本更新时才标记 `update_available`。目录发布不
 
 `POST /api/v1/updates/server` 下载本平台发布包，按签名索引校验，备份替换后重启。返回 202 `{from,to,backup}`，下次启动确认或回滚。
 
-在线更新检查、候选列表与安装请求使用同一排序规则，不因跨渠道而放行旧版本。两边都是正式版本号 `vX.Y.Z` 时比较版本号，否则比较构建时间；时间无法解析时沿用原有更新检测行为，将不同版本视为可更新。签名索引中的数据库迁移编号不作为在线安装门槛。上传发布包保持原有验证方式，不受这项在线排序限制。
+在线更新检查、候选列表与安装请求使用同一排序规则，不因跨渠道而放行旧版本。两边都是正式版本号 `vX.Y.Z` 时比较版本号，否则比较构建时间；时间无法解析时沿用原有更新检测行为，将不同版本视为可更新。签名索引中的数据库迁移编号不作为在线安装门槛；它只在候选版本上作为事实给出（`downgrades_schema`）。安装一个数据库结构比本机旧的版本时，它无法在这份数据库上启动（启动时报「数据库结构比本版本支持的更新」），连续启动 3 次仍未起来后，启动守卫恢复升级前的快照（数据库、`server.yaml`、主密钥与旧二进制）并记下这次升级失败。分支构建的数据库可能包含渠道版本没有的迁移，所以这条在从 `unpublished_build` 的构建换回渠道版本时最常见。上传发布包保持原有验证方式，不受这项在线排序限制。当前构建不是该渠道发布的版本（`server.unpublished_build`）时没有可比的顺序：候选列表列出渠道的全部版本，安装请求指明 `version` 即可安装其中任意一个，不指明版本的请求仍按下面的 409 拒绝。
 
 - 409 `SERVER_UPGRADE_UNAVAILABLE`：不能自升级，`reason` 为 `no_service_manager`、`not_installed`、`not_installed_binary`、`cluster_member`（控制面集群的成员不在控制台升级）或 `not_writable`。
 - 409 `SERVER_ALREADY_AT_RELEASE`：已是目标版本；409 `SERVER_NEWER_THAN_RELEASE`：目标构建不比当前版本更新。
