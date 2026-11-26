@@ -2,12 +2,13 @@ package store
 
 import (
 	"encoding/json"
-	"slices"
+	"log/slog"
 	"sort"
 
 	"gorm.io/gorm"
 
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/imagecatalog/pullref"
 )
 
 // imageReferenceBatch bounds one IN list. SQLite allows 32766 parameters; a
@@ -87,13 +88,22 @@ func (s *Store) ReconcileMissingOfficialImages(seen map[string]struct{}, since s
 	// Installed template packages update independently of the image catalog.
 	// Keep the row and its other mirrors while a spec names the canonical
 	// reference or one of those mirrors. Read this set once per reconciliation.
-	var templateRefs []string
-	if err := s.db.Model(&InferenceSpecRow{}).Distinct("image").Pluck("image", &templateRefs).Error; err != nil {
+	var templateRefs []struct{ Image, Source string }
+	if err := s.db.Model(&InferenceSpecRow{}).Distinct("image", "source").Scan(&templateRefs).Error; err != nil {
 		return 0, 0, err
 	}
-	pins := make(map[string]bool, len(templateRefs))
-	for _, ref := range templateRefs {
-		pins[ref] = true
+	// Upstream template packages can still require a withdrawn release in the
+	// picker. A user template retains its sources for explicit use, following
+	// the same deprecation rule as a deployment that already uses the image.
+	upstreamPins := map[string]bool{}
+	userPins := map[string]bool{}
+	for _, spec := range templateRefs {
+		key := pullref.RefKey(spec.Image)
+		if spec.Source == "upstream" {
+			upstreamPins[key] = true
+		} else {
+			userPins[key] = true
+		}
 	}
 	var retained []uint
 	var retainedRefs []string
@@ -104,17 +114,28 @@ func (s *Store) ReconcileMissingOfficialImages(seen map[string]struct{}, since s
 		var mirrors []string
 		if row.RegistrySources != "" {
 			if err := json.Unmarshal([]byte(row.RegistrySources), &mirrors); err != nil {
-				return 0, 0, err
+				slog.Warn("skipping missing official image with invalid registry_sources", "image_id", row.ID, "error", err)
+				continue
 			}
 		}
-		if pins[row.ImageRef] || slices.ContainsFunc(mirrors, func(ref string) bool { return pins[ref] }) {
+		key := pullref.RefKey(row.ImageRef)
+		upstream, user := upstreamPins[key], userPins[key]
+		for _, ref := range mirrors {
+			if pullref.IsArchiveURL(ref) {
+				continue
+			}
+			k := pullref.RefKey(ref)
+			upstream = upstream || upstreamPins[k]
+			user = user || userPins[k]
+		}
+		if upstream {
 			if row.AutoSelect != "manual" {
 				retained = append(retained, row.ID)
 				retainedRefs = append(retainedRefs, row.ImageRef)
 			}
 			continue
 		}
-		if counts[row.ImageRef] > 0 || held[row.ID] {
+		if user || counts[row.ImageRef] > 0 || held[row.ID] {
 			// Already deprecated by an earlier catalog: keep the version that
 			// first dropped it.
 			if row.Deprecated && row.DeprecatedSince != "" {

@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/glebarez/sqlite"
@@ -61,7 +62,7 @@ func TestManualSelectionMigrationPreservesExistingPolicy(t *testing.T) {
 func TestImageAutoSelectionUpgradesRecorded249(t *testing.T) {
 	for _, column := range []string{"manual_only BOOLEAN", "auto_select TEXT"} {
 		t.Run(column, func(t *testing.T) {
-			db, err := gorm.Open(sqlite.Open(t.TempDir()+"/old.db"), &gorm.Config{})
+			db, err := gorm.Open(sqlite.Open("file:selection-"+strings.Fields(column)[0]+"?mode=memory&cache=shared"), &gorm.Config{})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -70,13 +71,22 @@ func TestImageAutoSelectionUpgradesRecorded249(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = conn.Close() })
-			if err := db.AutoMigrate(&SchemaMigration{}); err != nil {
+			// Replay the production schema before 250. Old migrations use the
+			// current Image type, so restore the selection column of the reviewed build.
+			i := 0
+			for i < len(migrations) && migrations[i].Version < 249 {
+				i++
+			}
+			if err := migrateDB(db, migrations[:i]); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Exec("ALTER TABLE image_versions DROP COLUMN auto_select").Error; err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Exec("ALTER TABLE image_versions ADD COLUMN " + column).Error; err != nil {
 				t.Fatal(err)
 			}
 			if err := db.Create(&SchemaMigration{Version: 249, Name: "image_manual_selection"}).Error; err != nil {
-				t.Fatal(err)
-			}
-			if err := db.Exec("CREATE TABLE image_versions(id INTEGER PRIMARY KEY, " + column + ")").Error; err != nil {
 				t.Fatal(err)
 			}
 			want := "manual"
@@ -85,7 +95,7 @@ func TestImageAutoSelectionUpgradesRecorded249(t *testing.T) {
 				want = "arm64"
 				stored = want
 			}
-			if err := db.Exec("INSERT INTO image_versions VALUES(1,?),(2,NULL)", stored).Error; err != nil {
+			if err := db.Exec("INSERT INTO image_versions(image_ref,"+strings.Fields(column)[0]+") VALUES('example/runner:r1',?),('example/runner:r2',NULL)", stored).Error; err != nil {
 				t.Fatal(err)
 			}
 			for range 2 {
@@ -94,7 +104,7 @@ func TestImageAutoSelectionUpgradesRecorded249(t *testing.T) {
 				}
 			}
 			var rows []Image
-			if err := db.Order("id").Find(&rows).Error; err != nil || len(rows) != 2 || rows[0].AutoSelect != want || rows[1].AutoSelect != "" {
+			if err := db.Where("image_ref IN ?", []string{"example/runner:r1", "example/runner:r2"}).Order("id").Find(&rows).Error; err != nil || len(rows) != 2 || rows[0].AutoSelect != want || rows[1].AutoSelect != "" {
 				t.Fatalf("rows=%+v err=%v", rows, err)
 			}
 		})

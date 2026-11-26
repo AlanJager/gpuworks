@@ -105,6 +105,7 @@ image catalog synced catalog_version=2026-10-09.f085e40b created=0 updated=25 de
   （`detail` 都列出每个源的原因），渠道没有发布镜像目录时返回 404 `UPDATE_NOT_PUBLISHED`，库都不动。
 - **上传 manifest**：`POST /api/v1/images/import`，请求体就是 manifest JSON 本身。服务器不能访问公网时用它：
   在能联网的机器上下载签名渠道索引中 `image_catalog_v4.path` 对应的文件，旧版 schema 3 服务使用 `<channel>/manifest.json`。
+  新版 server 会拒绝这份旧版兼容目录，保留当前目录和更新来源。
 
 两条路径都把本次的 `catalog_version` 记为当前目录版本，设置页「版本与更新」据此显示是否有更新。
 上传的目录与渠道目录不同时不算「有更新」，该行显示「已上传」。这时「检查更新」和「改用渠道目录」都先弹确认，确认后渠道目录才按下面的规则替换它，只在上传目录里的版本随之删除或转为旧版本；接口不带 `replace_uploaded=true` 时返回 409 `IMAGE_CATALOG_UPLOADED`。

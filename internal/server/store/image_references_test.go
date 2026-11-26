@@ -110,11 +110,11 @@ func TestReconcilePreservesInstalledTemplateMirror(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model := InferenceModel{ModelID: "org/held", Source: "user"}
+	model := InferenceModel{ModelID: "org/held", Source: "upstream"}
 	if err = st.DB().Create(&model).Error; err != nil {
 		t.Fatal(err)
 	}
-	spec := InferenceSpecRow{ModelID: model.ID, Source: "user", Name: "old", Engine: "vllm", Image: mirror, WeightSources: "[]", GPUs: "{}"}
+	spec := InferenceSpecRow{ModelID: model.ID, Source: "upstream", Name: "old", Engine: "vllm", Image: mirror, WeightSources: "[]", GPUs: "{}"}
 	if err = st.DB().Create(&spec).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -132,5 +132,48 @@ func TestReconcilePreservesInstalledTemplateMirror(t *testing.T) {
 	}
 	if deleted, _, err := st.ReconcileMissingOfficialImages(nil, "later"); err != nil || deleted != 1 {
 		t.Fatalf("dropped template: deleted %d: %v", deleted, err)
+	}
+}
+
+func TestReconcileWithdrawnImagesWithAliasesAndMalformedSources(t *testing.T) {
+	st, err := Open("file:withdrawn-aliases?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	const repo = "gpuworks/gpuworks-runner:"
+	model := InferenceModel{ModelID: "org/model", Source: "upstream"}
+	if err := st.DB().Create(&model).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, tag := range []string{"upstream", "user", "broken", "unused"} {
+		img, err := st.UpsertImage(&Image{ImageRef: repo + tag, Enabled: true, Source: "official"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch tag {
+		case "broken":
+			if err := st.DB().Model(img).Update("registry_sources", "{").Error; err != nil {
+				t.Fatal(err)
+			}
+		case "upstream", "user":
+			spec := InferenceSpecRow{ModelID: model.ID, Source: tag, Name: tag, Engine: "vllm", Image: "docker.io/" + repo + tag, WeightSources: "[]", GPUs: "{}"}
+			if err := st.DB().Create(&spec).Error; err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	deleted, dep, err := st.ReconcileMissingOfficialImages(nil, "next")
+	if err != nil || deleted != 1 || dep != 1 {
+		t.Fatalf("deleted=%d deprecated=%d err=%v", deleted, dep, err)
+	}
+	for _, tag := range []string{"upstream", "user", "broken"} {
+		got, err := st.ResolveImageRef("docker.io/" + repo + tag)
+		if err != nil || got.Deprecated != (tag == "user") || (got.AutoSelect == "manual") != (tag == "upstream") {
+			t.Fatalf("%s: %+v %v", tag, got, err)
+		}
+	}
+	if _, err := st.ImageByRef(repo + "unused"); err != ErrNotFound {
+		t.Fatalf("unused: %v", err)
 	}
 }

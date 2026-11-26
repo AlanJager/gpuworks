@@ -54,5 +54,8 @@ func ImportManifest(st *store.Store, body []byte) (manifest.Result, error) {
 	if err != nil {
 		return manifest.Result{}, fmt.Errorf("%w: %v", ErrManifestInvalid, err)
 	}
+	if m.IsLegacyProjection() {
+		return manifest.Result{}, fmt.Errorf("%w: this catalog is for schema 3 servers; use the file at image_catalog_v4.path in the signed channel index", ErrManifestInvalid)
+	}
 	return manifest.ImportOfficial(m, manifestSink{store: st}, manifest.ImportOptions{})
 }

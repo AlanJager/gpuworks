@@ -14,6 +14,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/bus"
 	"gpuworks.ai/gpuworks/internal/server/imagecatalog"
+	"gpuworks.ai/gpuworks/internal/server/imagecatalog/manifest"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -374,5 +375,54 @@ func TestChannelUsesSelectionAwareCatalogForStatusAndSync(t *testing.T) {
 	row, err := run.store.ImageByRef("gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4")
 	if err != nil || row.AutoSelect != "arm64" || !strings.Contains(row.RegistrySources, "swr.") {
 		t.Fatalf("template row %+v: %v", row, err)
+	}
+}
+
+func TestUploadLegacyProjectionLeavesActiveCatalogUntouched(t *testing.T) {
+	run := newImageManifestRun(t)
+	if err := run.store.RecordImageCatalogImport("before", false); err != nil {
+		t.Fatal(err)
+	}
+	before := run.versionCount()
+	body, err := manifest.LegacyCatalog(imagecatalog.SeedJSON())
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := run.do(http.MethodPost, "/api/v1/images/import", "application/json", string(body))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), ErrorImageManifestInvalid) || !strings.Contains(rec.Body.String(), "image_catalog_v4.path") {
+		t.Fatalf("rejection %d: %s", rec.Code, rec.Body.String())
+	}
+	state, err := run.store.OfficialCatalogState()
+	if err != nil || state.ImageCatalogUploaded || state.ImageCatalogVersion != "before" || run.versionCount() != before {
+		t.Fatalf("catalog changed: %+v %v", state, err)
+	}
+	row, err := run.store.ImageByRef("gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4")
+	if err != nil || row.Deprecated || row.AutoSelect != "arm64" {
+		t.Fatalf("policy after rejection: %+v %v", row, err)
+	}
+}
+
+func TestImportedSelectionPolicyUpdatesExistingLegacyRow(t *testing.T) {
+	run := newImageManifestRun(t)
+	const ref = "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4"
+	var id uint
+	for _, tc := range []struct {
+		schema int
+		policy string
+	}{{2, ""}, {3, ""}, {4, "manual"}, {4, "arm64"}, {4, ""}} {
+		field := ""
+		if tc.policy != "" {
+			field = fmt.Sprintf(`,"auto_select":%q`, tc.policy)
+		}
+		body := fmt.Sprintf(`{"schema_version":%d,"catalog_version":"normal","series":[{"name":"vLLM · CUDA","engine":"vllm","versions":[{"image_ref":%q,"arch":"multi"%s}]}]}`, tc.schema, ref, field)
+		rec := run.do(http.MethodPost, "/api/v1/images/import", "application/json", body)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("schema %d: %d %s", tc.schema, rec.Code, rec.Body.String())
+		}
+		row, err := run.store.ImageByRef(ref)
+		if err != nil || row.AutoSelect != tc.policy || id != 0 && row.ID != id {
+			t.Fatalf("schema %d: %+v %v, want %q", tc.schema, row, err, tc.policy)
+		}
+		id = row.ID
 	}
 }
