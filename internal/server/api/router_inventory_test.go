@@ -184,6 +184,7 @@ GET /api/v1/instances/{uuid}/launch-facts
 GET /api/v1/instances/{uuid}/logs
 GET /api/v1/kube/clusters
 GET /api/v1/kube/clusters/{uuid}/manifest
+GET /api/v1/kube/clusters/{uuid}/rollout
 GET /api/v1/kube/defaults
 GET /api/v1/logs/context
 GET /api/v1/logs/histogram

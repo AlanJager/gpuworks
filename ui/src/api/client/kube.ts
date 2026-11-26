@@ -1,5 +1,5 @@
 import { getJSON, localizedResponseError, sendJSON, type List } from "../http";
-import type { KubeCluster, KubeClusterEdit, KubeClusterOperation, KubeClusterPools, KubeClusterRequest, KubeClusterUpdate, KubeDefaults, KubePrecheck, KubePrecheckRequest } from "../kube";
+import type { KubeCluster, KubeClusterEdit, KubeClusterOperation, KubeClusterPools, KubeClusterRequest, KubeClusterUpdate, KubeDefaults, KubePrecheck, KubePrecheckRequest, KubeRollout } from "../kube";
 import { getText } from "./transport";
 
 /** An error response as an Error in the reader's language: a product error's text, or the proxy-page explanation. */
@@ -30,6 +30,8 @@ export const kubeApi = {
   kubePrecheck: (body: KubePrecheckRequest) => sendJSON<KubePrecheck>("POST", "/api/v1/kube/precheck", body),
   createKubeCluster: (body: KubeClusterRequest) => sendJSON<KubeCluster>("POST", "/api/v1/kube/clusters", body),
   updateKubeCluster: (uuid: string, body: KubeClusterUpdate) => sendJSON<KubeClusterEdit>("PUT", `/api/v1/kube/clusters/${encodeURIComponent(uuid)}`, body),
+  /** Reads how a cloud entry's agents stand in its cluster, node by node; only reads. */
+  kubeRollout: (uuid: string) => getJSON<KubeRollout>(`/api/v1/kube/clusters/${encodeURIComponent(uuid)}/rollout`),
   kubeManifest: (uuid: string) => getText(`/api/v1/kube/clusters/${encodeURIComponent(uuid)}/manifest`),
   revokeKubeCluster: (uuid: string) => sendJSON<KubeCluster>("POST", `/api/v1/kube/clusters/${encodeURIComponent(uuid)}/revoke`),
   deleteKubeCluster: (uuid: string) => sendJSON<void>("DELETE", `/api/v1/kube/clusters/${encodeURIComponent(uuid)}`),

@@ -391,3 +391,26 @@ type KubeClusterEdit struct {
 	// the new range (KUBE_ENGINE_PORTS_OUTSIDE); empty when none.
 	Warnings []messages.Warning `json:"warnings"`
 }
+
+// KubeRollout says how the agents of an entry made from a cloud cluster
+// stand, node by node, with the codes of the check after an apply
+// (check_codes.verify of GET /kube/defaults). Done is false while waiting
+// may still change the answer; the client asks again after
+// PollAfterSeconds.
+type KubeRollout struct {
+	Done             bool `json:"done"`
+	PollAfterSeconds int  `json:"poll_after_seconds,omitempty"`
+	// Desired is how many agent pods the DaemonSet wants, null until its
+	// controller has counted the nodes or when there is no DaemonSet.
+	Desired *int           `json:"desired"`
+	Rows    []KubeCheckRow `json:"rows"`
+}
+
+// KubeCheckRow is one line of a check: a node and its pod, or neither for
+// the DaemonSet as a whole, a code and the detail Kubernetes gave.
+type KubeCheckRow struct {
+	Node   string `json:"node,omitempty"`
+	Pod    string `json:"pod,omitempty"`
+	Code   string `json:"code"`
+	Detail string `json:"detail,omitempty"`
+}
