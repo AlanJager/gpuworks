@@ -231,7 +231,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | GET | `/api/v1/agent-upgrades/{id}/items` | 分页查询逐节点结果，可按 state 筛选 | JWT |
 | POST | `/api/v1/agent-upgrades/{id}/stop` | 停止尚未开始的节点，继续观察当前节点 | JWT(admin) |
 | POST | `/api/v1/agent-upgrades/{id}/continue-preview` | 重新预览暂停批次的剩余节点 | JWT(admin) |
-| POST | `/api/v1/agent-upgrades/{id}/items/{uuid}/release` | 管理员填写 note 释放待确认项的全局占位，保留审计 | JWT(admin) |
+| POST | `/api/v1/agent-upgrades/{id}/items/{uuid}/release` | 管理员记录核实结论，把“结果未知”的节点提前标记为已核实（可选；系统会在节点重新连接时自行判定，批次不再因它暂停） | JWT(admin) |
 | POST | `/api/v1/nodes/precheck` | 检查 SSH 接入所需的主机环境与双向连通性；地址规则见[SSH 检查与安装](#ssh-检查与安装) | JWT(admin) |
 | POST | `/api/v1/nodes/install` | 经 SSH 安装 agent；连接参数同创建节点，可用 `no_systemd` 选择 Linux 后台运行方式。冲突与替换条件见[SSH 检查与安装](#ssh-检查与安装) | JWT(admin) |
 | GET | `/api/v1/nodes/{uuid}` | 节点详情（含 GPU 列表；管理员额外含 token） | JWT |
@@ -285,9 +285,9 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 
 预览的 `target_build` 与版本更新接口的 `server.current_build` 共用当前构建说明：包含 `version`、`kind`（`stable`、`prerelease`、`development`、`unknown`）、可用时的 `commit`、`built_at`、`build_channel`、`published_version` 与 `published_at`。构建时间属于当前运行版本，不是远端候选时间；发布字段只在已验签索引的版本号、完整 commit 和构建时间均匹配时填写。Agent 预览只读取已有发布检查缓存，不新增出网请求；更新源不可用或记录不匹配时仍可预览本地制品。
 
-成功返回 202 和批次对象，含 `id`、`state`、`counts`。同幂等键与相同请求返回原批次；修改请求或目标/制品变化返回 409，需重新预览。`GET /agent-upgrades`、`GET /agent-upgrades/{id}/items` 支持 `page`、`page_size`；逐节点结果可用单个 `state` 筛选。`processed` 包含所有终态，不等于 `succeeded`；`unconfirmed` 是未知结果，仍保留全局执行占位。
+成功返回 202 和批次对象，含 `id`、`state`、`counts`。同幂等键与相同请求返回原批次；修改请求或目标/制品变化返回 409，需重新预览。`GET /agent-upgrades`、`GET /agent-upgrades/{id}/items` 支持 `page`、`page_size`；逐节点结果可用单个 `state` 筛选。`processed` 包含所有终态，不等于 `succeeded`；`unconfirmed` 是未知结果：超时后 5 分钟内保留全局执行占位，之后批次继续；连续两台结果未知时批次暂停，`pause_reason` 为 `repeated_unknown_outcome`（安装包不可用时为 `artifact_unavailable`）。有 Agent 升级占用执行名额或批次仍有排队节点时，升级 server 的接口返回 409：`SERVER_UPGRADE_WAITS_FOR_AGENT`（`params.node`、`params.minutes`、`params.run_id`）或 `SERVER_UPGRADE_WAITS_FOR_AGENT_BATCH`（`params.run_id`、`params.queued`）。
 
-停止只取消 queued 项。继续时先调用 `continue-preview`，再次创建时增加 `source_run_id` 指向原批次，原队列的撤销与新批次创建原子完成。管理员核实待确认节点后，向 `items/{uuid}/release` 提交 `{"note":"处理依据"}`，成功返回 204；原结果保留，新增核实审计。查询接口可供管理身份读取，批量写入仅管理员且拒绝只读平台令牌。旧的单节点升级路由保留原权限，返回 202 时增加 `run_id`，与批量升级共享执行占位。操作和业务影响见[升级 Agent](../how-to/upgrade-and-compatibility.md#升级-agent)。
+停止只取消 queued 项。继续时先调用 `continue-preview`，再次创建时增加 `source_run_id` 指向原批次，原队列的撤销与新批次创建原子完成。管理员可选择向 `items/{uuid}/release` 提交 `{"note":"处理依据"}`，提前把结果未知的节点标记为已核实，成功返回 204；原结果保留，新增核实审计。查询接口可供管理身份读取，批量写入仅管理员且拒绝只读平台令牌。旧的单节点升级路由保留原权限，返回 202 时增加 `run_id`，与批量升级共享执行占位。操作和业务影响见[升级 Agent](../how-to/upgrade-and-compatibility.md#升级-agent)。
 
 ### 节点列表的筛选与返回字段
 
