@@ -252,7 +252,7 @@ runtime explanation.
 <!-- translation-source-sha256: 883ab9f8b2d790c67dcf7570053662a81dc49f9ffb70f511ff169cbee4275bd2 ## Node Image Identity and Periodic Inventory -->
 <!-- translation-source-sha256: e2b838cefca66793fc982b53cee60799b35fbb3f686107db9c5ee6d098b8afed ## System Images -->
 <!-- translation-source-sha256: 39168c329fca1b60b4dac45940c92fb95a7eac8dab8b30e86e9ea76fcc060e2a ### Startup Sync -->
-<!-- translation-source-sha256: 571821954b1f6897853432ab61d81d5f2ebe445bd78f9bd8e944f7766cf73f4c ### Updating the Catalog -->
+<!-- translation-source-sha256: 34883677d84cbd11a86d5b48b163bf9f90e7b0121dc3ee16b3a22dbff8631d84 ### Updating the Catalog -->
 <!-- translation-source-sha256: 397515e4600d2a33b15a7f7f56b11e66783f00d6cfd310d01031a84f766215d9 ### Manifest Format -->
 <!-- translation-source-sha256: da92f9dfca846e8a1b55ab4708a4b1f01f97ccd6dd44145d4619b20fd54ee18e ## Community Images -->
 <!-- translation-source-sha256: 77522a45a9d473abc1fd18744cbf1bd083213fe1c1c54f96fe725d892d366f57 ## Custom Images -->

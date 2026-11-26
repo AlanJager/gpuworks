@@ -2487,8 +2487,8 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: 5a937a0329b1aabd619bac36afbe45ff963584a7031b8588b3c6d1c9ebabdbe0 ### Register an image already on a node -->
 <!-- translation-source-sha256: 04f403145369bea2e0886af6fd3a84add59d07299152c9a53cc09ef3d598fdf0 ### Storage Configuration and Cache Status -->
 <!-- translation-source-sha256: 76495aa0a302fbe279f354b4207253de032639c11e8498c2041f1b8a373a248c ### Storage File Operation Scope and Errors -->
-<!-- translation-source-sha256: b86012415544ff715e6a2bb1731ae68aa7766087f5021f8ab337c6bd1b856394 ### Catalog Import Results -->
-<!-- translation-source-sha256: 0ff3fe24b03ecc7778481ff8a63bf46f7f3be79608de3891c7aed28acb9622ea ## Inference Templates (Inference Catalog/Templates) -->
+<!-- translation-source-sha256: a6445bd3de39a7eedb26426af6697cf046cac806efe88dfe1895c40a72126fe1 ### Catalog Import Results -->
+<!-- translation-source-sha256: c162aaa85f62dfb49b9c18ed8540144b49d74ede563ca77a776b437d0b8a1125 ## Inference Templates (Inference Catalog/Templates) -->
 <!-- translation-source-sha256: 4b7e28c06adfbce76189556587fc94653baf4749acae30f34cec3772bf431f37 ### Pre-Import Checks -->
 <!-- translation-source-sha256: f3c254df3774c7c48ee5ebf7cc4861e55fd88aed33f8cc457ecb4190f5c41377 ## Deployments / Instances (Deployments and Instances) -->
 <!-- translation-source-sha256: 853ce95b08ddeb141bb84fdd808c7961cb81e7ed7b2e3b66ca8f26a3729eb149 ### Save as an Inference Template -->
@@ -2551,5 +2551,5 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: d90c2a891f76775aec3f7b48248481bd52e0751724b4a75648d8f62318cd8799 ### OpenAI-Compatible Files and Batches Endpoints -->
 <!-- translation-source-sha256: a896a5dab1c99b94dd8ffc62b82650f6309812d3ef0bf90b28daeb38d7cc2c25 ## Out of Scope -->
 <!-- translation-source-sha256: c4754e1c0339b7b8667346967d3065633f65a4f92b8e5c978e7d78101e64be0e ## Route and Contract Maintenance -->
-<!-- translation-source-sha256: 1f082a1dc64217e23acc8eb01bf5b2781011ef80a37db2325a8ca6b8f758ede1 ### Console manifest and extension routes -->
+<!-- translation-source-sha256: 80b54349c7eba5eae5d68c6d10b866b4e8ce09eedd085a88f2c6f680421b9697 ### Console manifest and extension routes -->
 <!-- translation-source-sha256: 3b39ae121cdbd7a4964c45d1deacffa4a4772f5ddd32c4530ca202ffcd247aef ### Whether GPU capacity is known -->
