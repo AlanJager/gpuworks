@@ -80,8 +80,14 @@ func TestGenerateMapsMatrixItems(t *testing.T) {
 	if strings.Join(names, ",") != wantSeries {
 		t.Fatalf("series = %v", names)
 	}
-	if len(versions) != 48 {
-		t.Fatalf("versions = %d, want 48", len(versions))
+	if len(versions) != 47 {
+		t.Fatalf("versions = %d, want 47", len(versions))
+	}
+	// Out of the catalog: sglang 0.5.23 serves MiniCPM-V 4.6 models with a
+	// crash (GWKS-505). The build and the published tags stay; the catalog
+	// does not offer the image.
+	if _, listed := versions["cuda13.0-sglang0.5.23-r2"]; listed {
+		t.Fatalf("cuda13.0-sglang0.5.23-r2 is out of the catalog (GWKS-505) but was generated")
 	}
 	// The Apple silicon environment package: framework metal, its version the
 	// minimum macOS, its arch the CPU's.
