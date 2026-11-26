@@ -404,6 +404,7 @@ const (
 	ErrorUnitPlacementNone        = messages.ErrorUnitPlacementNone
 	ErrorAutoPlacementTPRequired  = messages.ErrorAutoPlacementTPRequired
 	ErrorAutoPlacementPDMultiNode = messages.ErrorAutoPlacementPDMultiNode
+	ErrorPlacementGPUNotOnNode    = messages.ErrorPlacementGPUNotOnNode
 	// ErrorPlacementModeShape: PUT /deployments/{id}/placement-mode on a
 	// single-node deployment, which states its placement in its node
 	// requirements.

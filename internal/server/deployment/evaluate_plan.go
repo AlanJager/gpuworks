@@ -161,15 +161,9 @@ func (r *evaluateState) planRanks() bool {
 
 	// Estimate + schedule (shared with the controller).
 	gpuCount := len(r.placement.GPUIndexes)
-	// An edit previews a stored deployment: an index its node does not
-	// report was chosen for the node the deployment is moving away from
-	// (the form keeps a card selection when the node changes), so the
-	// preview plans this node's own cards rather than failing on a card it
-	// never had (GWKS-522). A create's draft chose its cards on this node,
-	// and a card it names that the node does not report stays an error.
-	if r.node != nil && r.excludeDeployment != 0 {
-		r.placement = r.placement.CardsOn(r.node)
-		gpuCount = len(r.placement.GPUIndexes)
+	if r.errs.add("placement.gpus", RequestCardsOnNode(r.req, r.node)) {
+		r.writeFieldErrors()
+		return false
 	}
 	resolver := templatePlacementResolver(r.selection.Placement)
 	templateArgs := append([]string(nil), r.launch.TemplateResidual...)

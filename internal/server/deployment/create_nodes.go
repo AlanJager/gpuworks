@@ -32,6 +32,9 @@ func (c *createState) resolveNodes() error {
 		if err != nil {
 			return invalid(err)
 		}
+		if err := RequestCardsOnNode(c.req, c.node); err != nil {
+			return invalid(err)
+		}
 	}
 	// A refused backend is a ProductError with the capability's reason code
 	// (partitioncap.ValidateReady), whose params name the node.

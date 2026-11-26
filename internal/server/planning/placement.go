@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/parallelism"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -48,26 +49,26 @@ func (p Placement) WithoutOperatorChoice() Placement {
 	return p
 }
 
-// CardsOn is the placement as one node can honor it: the GPU indexes the node
-// reports. An index names a card on one machine, so an index the node does not
-// report names a card of another - a card choice made before the deployment
-// moved here. The deployment cannot be held to it; the node's scheduler picks
-// its own cards instead.
-func (p Placement) CardsOn(node *store.Node) Placement {
-	if node == nil || len(p.GPUIndexes) == 0 {
-		return p
+// CardsOnNode refuses a placement naming a card node does not report. A GPU
+// index names a card on one machine, so an index chosen on another node (a
+// form that kept its card choice when the node changed) names no card here;
+// the request is refused rather than rewritten, the same for a create, an
+// edit and a preview.
+func CardsOnNode(p Placement, node *store.Node) error {
+	if node == nil {
+		return nil
 	}
-	kept := make([]int, 0, len(p.GPUIndexes))
 	for _, index := range p.GPUIndexes {
 		if _, ok := node.GPUByIndex(index); ok {
-			kept = append(kept, index)
+			continue
 		}
+		name := node.DisplayName()
+		cards := len(node.OwnedGPUs())
+		return messages.NewProductError(messages.ErrorPlacementGPUNotOnNode,
+			fmt.Sprintf("node %s has no GPU with index %d; it reports %d usable GPUs", name, index, cards),
+			map[string]any{"node": name, "gpu_index": index, "node_gpus": cards})
 	}
-	if len(kept) == len(p.GPUIndexes) {
-		return p
-	}
-	p.GPUIndexes = kept
-	return p
+	return nil
 }
 
 // ParallelismSpec is package parallelism's spec, named here for the same

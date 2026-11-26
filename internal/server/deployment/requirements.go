@@ -38,6 +38,21 @@ func requestPlacement(req *dto.DeployRequest) (planning.Placement, error) {
 	return placement, nil
 }
 
+// RequestCardsOnNode refuses a manually placed single-node request whose
+// cards node does not report (planning.CardsOnNode). An automatic request's
+// cards are the scheduler's, and a placement that does not parse is reported
+// by the step that parses it.
+func RequestCardsOnNode(req *dto.DeployRequest, node *store.Node) error {
+	if IsAutomaticPlacement(req) || req.NNodes > 1 {
+		return nil
+	}
+	placement, err := planning.ParsePlacement(req.Placement)
+	if err != nil || placement.PD != nil {
+		return nil
+	}
+	return planning.CardsOnNode(placement, node)
+}
+
 // requestRequirements is where the request says the deployment may run, as
 // the requirements the deployment stores: node_requirements as stated,
 // target_vendor as the vendor requirement, and a manually placed single-node
@@ -166,35 +181,6 @@ func StoredPlacement(placement map[string]any, automatic bool) map[string]any {
 			continue
 		}
 		out[key] = value
-	}
-	return out
-}
-
-// PlacementForNode is StoredPlacement for a deployment that will run on node:
-// the card indexes the node does not report are dropped, and the node's
-// scheduler picks its own cards. An index names a card on one machine, so an
-// edit that moves a deployment to another node carries the old node's card
-// choice only as far as the new node can honor it (GWKS-522); keeping it
-// would store a placement the launch can never resolve.
-func PlacementForNode(placement map[string]any, automatic bool, node *store.Node) map[string]any {
-	out := StoredPlacement(placement, automatic)
-	if node == nil || out == nil {
-		return out
-	}
-	parsed, err := planning.ParsePlacement(out)
-	if err != nil || len(parsed.GPUIndexes) == 0 {
-		return out
-	}
-	cards := parsed.CardsOn(node)
-	if len(cards.GPUIndexes) == len(parsed.GPUIndexes) {
-		return out
-	}
-	// One spelling in, one spelling out: "gpus" is what the stored document
-	// means, and what both readers prefer when a document has both.
-	delete(out, "gpus")
-	delete(out, "gpu_indexes")
-	if len(cards.GPUIndexes) > 0 {
-		out["gpus"] = cards.GPUIndexes
 	}
 	return out
 }
