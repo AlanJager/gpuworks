@@ -619,6 +619,8 @@ specs:
   - qwen3
   - --mm-encoder-tp-mode
   - data
+  - --max-num-seqs
+  - '256'
   env: null
   api:
     health_endpoint: /health
