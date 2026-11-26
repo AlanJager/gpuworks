@@ -21,7 +21,7 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { retu
 func TestRetryTransportClientCancelDoesNotCoolHealthyInstance(t *testing.T) {
 	b := newBalancer(nil)
 	c := candidate{instanceUUID: "healthy", nodeUUID: "node", modelName: "model"}
-	lease := b.pick([]candidate{c}, nil, func(string) bool { return true }, admission{})
+	lease, _ := b.pick([]candidate{c}, nil, func(string) bool { return true }, admission{})
 	if lease == nil {
 		t.Fatal("initial route did not produce a lease")
 	}
@@ -60,7 +60,7 @@ func TestRetryTransportRetriesTunnelFailureUsingFailoverPolicy(t *testing.T) {
 		{instanceUUID: "primary", nodeUUID: "node-primary", modelName: "model"},
 		{instanceUUID: "backup", nodeUUID: "node-backup", modelName: "model"},
 	}
-	first := b.pickFailover(candidates, nil, func(string) bool { return true }, admission{})
+	first, _ := b.pickFailover(candidates, nil, func(string) bool { return true }, admission{})
 	if first == nil || first.c.instanceUUID != "primary" {
 		t.Fatalf("initial target=%v, want primary", first)
 	}
@@ -110,7 +110,7 @@ func TestRetryTransportRetriesDataLaneUnavailableUsingFailoverPolicy(t *testing.
 		{instanceUUID: "primary", nodeUUID: "node-primary", modelName: "model"},
 		{instanceUUID: "backup", nodeUUID: "node-backup", modelName: "model"},
 	}
-	first := b.pickFailover(candidates, nil, func(string) bool { return true }, admission{})
+	first, _ := b.pickFailover(candidates, nil, func(string) bool { return true }, admission{})
 	if first == nil || first.c.instanceUUID != "primary" {
 		t.Fatalf("initial target=%v, want primary", first)
 	}
@@ -170,7 +170,7 @@ func TestRetryTransportReplaysConsumedBodyAndSkipsDifferentModel(t *testing.T) {
 				{instanceUUID: "b", nodeUUID: "node", modelName: "other"},
 				{instanceUUID: "c", nodeUUID: "node", modelName: "model"},
 			}
-			a := &routeAttempt{candidates: candidates, current: b.pickFailover(candidates, nil, nil, admission{}), tried: map[string]bool{"a": true}, attempts: 1, policy: "failover", modelName: "model"}
+			a := &routeAttempt{candidates: candidates, current: leaseOf(b.pickFailover(candidates, nil, nil, admission{})), tried: map[string]bool{"a": true}, attempts: 1, policy: "failover", modelName: "model"}
 			calls := 0
 			transport := &retryTransport{balancer: b, hub: readinessTestHub{online: map[string]bool{"node": true}}, base: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 				calls++

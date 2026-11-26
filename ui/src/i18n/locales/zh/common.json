@@ -983,6 +983,7 @@
     "INSTANCE_OFFLINE": "实例 {{instance}} 已离线。",
     "MODEL_NOT_READY": "{{model}} 没有可连接的运行实例，请检查部署状态和节点连接。",
     "MODEL_NODE_OFFLINE": "{{model}} 的实例正在运行，但所在节点的 agent 当前未连接，请检查节点。",
+    "MODEL_BUSY": "{{model}} 的副本都已满载，而请求声明了繁忙时不等待。请稍后重发，或不带 X-GPUWorks-If-Busy 发送。",
     "DEPLOYMENT_START_FAILED": "{{model}} 的部署启动失败，请查看部署列表。",
     "PD_PLACEMENT_UNREADABLE": "无法读取该部署的 PD 放置信息。",
     "PD_PREFILL_UNAVAILABLE": "没有 prefill 实例能接收该请求（{{reason}}），请稍后重试。",

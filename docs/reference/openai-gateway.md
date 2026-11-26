@@ -83,12 +83,12 @@ server 的 `/v1/*` 默认要求 API key 鉴权，规则见下文[认证](#认证
 
 ### 令牌信息
 
-`GET /v1/key` 返回调用它的 API 令牌的令牌信息，供放在 GPUWorks 前面的网关在转发之前判断该怎么带优先级请求头。鉴权、令牌范围与匿名访问的处理同 `/v1/models`；其他方法返回 405 `METHOD_NOT_ALLOWED` 并带 `Allow: GET`。它不是推理流量：不计入网关请求数，不留请求记录，从路由表与优先级类快照回答，不读部署表。
+`GET /v1/key` 返回调用它的 API 令牌的令牌信息，供放在 GPUWorks 前面的网关在转发之前判断该怎么带优先级请求头、繁忙声明对哪些模型起作用。鉴权、令牌范围与匿名访问的处理同 `/v1/models`；其他方法返回 405 `METHOD_NOT_ALLOWED` 并带 `Allow: GET`。它不是推理流量：不计入网关请求数，不留请求记录，从路由表与优先级类快照回答，不读部署表。
 
 ```json
 {
   "object": "key",
-  "features": ["priority_scheduling_header"],
+  "features": ["priority_scheduling_header", "busy_reject"],
   "priority": {
     "own": {"name": "normal", "value": 0},
     "ceiling": {"name": "critical", "value": 40},
@@ -101,23 +101,45 @@ server 的 `/v1/*` 默认要求 API key 鉴权，规则见下文[认证](#认证
     ]
   },
   "models": [
-    {"id": "qwen3-8b", "priority_scheduling": "all", "busy_reject": false}
+    {"id": "qwen3-8b", "priority_scheduling": "all", "busy_reject": true}
   ]
 }
 ```
 
 | 字段 | 含义 |
 |---|---|
-| `features` | 本 server 支持的网关能力，只增不减。`priority_scheduling_header`：响应带 `X-GPUWorks-Priority-Scheduling` |
+| `features` | 本 server 支持的网关能力，只增不减。`priority_scheduling_header`：响应带 `X-GPUWorks-Priority-Scheduling`；`busy_reject`：认 `X-GPUWorks-If-Busy`，见[繁忙婉拒](#繁忙婉拒) |
 | `priority` | 令牌的优先级绑定；不带令牌的匿名访问为 `null` |
 | `priority.own` | 不带 `X-GPUWorks-Priority-Class` 时请求使用的类 |
 | `priority.reachable` | 请求头能用到的全部类（含 `own`），按数值从高到低 |
 | `priority.ceiling` | 请求头指定了不在 `reachable` 里的类时实际使用的类。策略为「固定」或「只降不升」时等于 `own` |
 | `models` | 令牌有权调用的模型，与 `/v1/models` 的 `id` 相同，按名字排序 |
 | `models[].priority_scheduling` | 运行中的副本里按优先级调度的有多少：`all`、`some` 或 `none`（没有运行中的副本也是 `none`） |
-| `models[].busy_reject` | 当前恒为 `false` |
+| `models[].busy_reject` | 带繁忙声明的请求在模型繁忙时会不会被婉拒：令牌能调用的该模型的部署都不是 PD 分离或多机部署，且每个运行中的副本都在启动参数里写明了并发序列上限时为 `true`；没有运行中的副本时为 `false` |
 
 调用方解析一个类只用一条规则：在 `reachable` 里就按它，否则按 `ceiling`；网关的策略逻辑不必在调用方重写。字段只增不改，调用方应忽略不认识的字段。没有这个接口的旧版本 server 把它当作没写模型的模型请求，带有效令牌时返回 400 `MODEL_REQUIRED`。类与令牌绑定的改动生效时间同请求本身（见[请求优先级](../explanation/request-priority.md)）。
+
+### 繁忙婉拒
+
+有别处可以改投的调用方（例如放在 GPUWorks 前面的网关）可以在模型请求上带 `X-GPUWorks-If-Busy: reject`，声明「忙就别排队」：GPUWorks 判断当前接不了这个请求时，立即返回 429 `MODEL_BUSY` 并带 `Retry-After: 1`，调用方可以马上改投；判断接得了就照常转发。不带这个头，或取值不是 `reject`，行为与今天完全相同。这个头不会转给引擎。
+
+```json
+{"error": {"message": "every replica of qwen3-8b is busy and the request asked not to wait; send it again later, elsewhere, or without X-GPUWorks-If-Busy", "type": "invalid_request_error", "code": "MODEL_BUSY", "param": null, "params": {"model": "qwen3-8b"}}}
+```
+
+调用方只按状态码与 `error.code` 识别婉拒，不要匹配 `message`，也不要依赖下面的口径：口径会随版本变准，语义不变。
+
+当前的口径：网关在选副本并占位的同一时刻判断，两个并发请求不会同时拿到最后一个空位。副本的运行位是实例启动参数里明确写出的并发序列上限（vLLM `--max-num-seqs`、SGLang `--max-running-requests`）；副本上优先级不低于本请求的在途请求数达到运行位，就算没有空位，优先级更低的不算，因为引擎会先运行本请求。部署的路由策略（`least_request`、`prefix_affinity`、`failover`）首选的副本没有空位而别的可选副本有时，请求落到有空位的副本；所有可选副本都没有空位才婉拒。
+
+以下情况不婉拒，照常转发或按原有规则处理：
+
+- 有副本的启动参数没有写明并发序列上限（GPUWorks 不猜引擎的默认值），或写明了数据并行规模大于 1；
+- PD 分离部署、多机部署；
+- 部署在休眠或唤醒中：照常等唤醒或返回 503 `MODEL_ASLEEP`；
+- 连接失败后换副本重发、被抢占后重放的那一次；
+- `/v1/tokenize` 等辅助接口与试验场的请求（声明被丢弃）。
+
+婉拒计入部署网关请求数的 429 一类，不留请求记录，不更新部署的最近请求时间。多个 server 时每个 server 只数自己转发的在途请求，结果是该婉拒时可能没婉拒，不会误拒。[令牌信息](#令牌信息)的 `features` 含 `busy_reject` 表示 server 认这个声明，`models[].busy_reject` 说明哪些模型会婉拒。
 
 ## Trace context
 
@@ -253,6 +275,7 @@ PD 分离将输入提示词计算和后续生成交给不同实例。vLLM 顺序
 | `ROUTE_NOT_FOUND` | 404 | `not_found_error` | — | 这个监听地址不提供 `/v1`（只开了控制台或 agent 功能） |
 | `INSTANCE_NOT_FOUND` | 404 | `not_found_error` | — | 固定的实例不存在 |
 | `INSTANCE_MODEL_MISMATCH` | 404 | `not_found_error` | `model` | 固定的实例不提供该模型 |
+| `MODEL_BUSY` | 429 | `invalid_request_error` | — | 请求带了 `X-GPUWorks-If-Busy: reject`，而模型 `params.model` 当前接不了；带 `Retry-After: 1`，改投别处或稍后重发，见[繁忙婉拒](#繁忙婉拒) |
 | `MODEL_ASLEEP` | 503 | `server_error` | — | 部署在睡眠；唤醒部署 `params.deployment_id`，或等定时唤醒、排队中的唤醒；可能带 `Retry-After` |
 | `INSTANCE_ASLEEP` | 503 | `server_error` | — | 固定的实例所属部署在睡眠 |
 | `INSTANCE_NOT_RUNNING` | 503 | `server_error` | — | 固定的实例没有在运行 |

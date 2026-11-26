@@ -60,7 +60,7 @@ func TestKeyInfoWireShape(t *testing.T) {
 	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "application/json" {
 		t.Fatalf("GET /v1/key = %d %q %s", rec.Code, rec.Header().Get("Content-Type"), rec.Body)
 	}
-	want := `{"object":"key","features":["priority_scheduling_header"],` +
+	want := `{"object":"key","features":["priority_scheduling_header","busy_reject"],` +
 		`"priority":{"own":{"name":"normal","value":0},"ceiling":{"name":"critical","value":40},` +
 		`"reachable":[{"name":"critical","value":40},{"name":"high","value":20},{"name":"normal","value":0},{"name":"low","value":-20},{"name":"batch","value":-40}]},` +
 		`"models":[{"id":"off","priority_scheduling":"none","busy_reject":false},` +

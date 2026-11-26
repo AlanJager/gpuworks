@@ -83,12 +83,12 @@ The response header `X-GPUWorks-Priority-Scheduling` says whether the engine sch
 
 ### Key Information
 
-`GET /v1/key` returns the key information of the API key that calls it, so that a gateway in front of GPUWorks can decide which priority header to send before it forwards. Authentication, the key's scope and open access work as for `/v1/models`; any other method returns 405 `METHOD_NOT_ALLOWED` with `Allow: GET`. It is not inference traffic: it does not count toward the gateway's requests, leaves no request record, and answers from the route table and the class snapshot without reading the deployments table.
+`GET /v1/key` returns the key information of the API key that calls it, so that a gateway in front of GPUWorks can decide, before it forwards, which priority header to send and for which models the busy declaration works. Authentication, the key's scope and open access work as for `/v1/models`; any other method returns 405 `METHOD_NOT_ALLOWED` with `Allow: GET`. It is not inference traffic: it does not count toward the gateway's requests, leaves no request record, and answers from the route table and the class snapshot without reading the deployments table.
 
 ```json
 {
   "object": "key",
-  "features": ["priority_scheduling_header"],
+  "features": ["priority_scheduling_header", "busy_reject"],
   "priority": {
     "own": {"name": "normal", "value": 0},
     "ceiling": {"name": "critical", "value": 40},
@@ -101,23 +101,45 @@ The response header `X-GPUWorks-Priority-Scheduling` says whether the engine sch
     ]
   },
   "models": [
-    {"id": "qwen3-8b", "priority_scheduling": "all", "busy_reject": false}
+    {"id": "qwen3-8b", "priority_scheduling": "all", "busy_reject": true}
   ]
 }
 ```
 
 | Field | Meaning |
 |---|---|
-| `features` | Gateway capabilities this server has; a listed one is never removed. `priority_scheduling_header`: answers carry `X-GPUWorks-Priority-Scheduling` |
+| `features` | Gateway capabilities this server has; a listed one is never removed. `priority_scheduling_header`: answers carry `X-GPUWorks-Priority-Scheduling`; `busy_reject`: `X-GPUWorks-If-Busy` is honoured, see [Busy Rejection](#busy-rejection) |
 | `priority` | The key's priority binding; `null` for anonymous access without a key |
 | `priority.own` | The class a request runs at without `X-GPUWorks-Priority-Class` |
 | `priority.reachable` | Every class the header can run at (`own` included), highest value first |
 | `priority.ceiling` | The class a request runs at when the header names a class not in `reachable`. Equal to `own` under the "fixed" and "down only" policies |
 | `models` | The models the key may call, with the same `id` as `/v1/models`, in name order |
 | `models[].priority_scheduling` | How many running replicas schedule by priority: `all`, `some` or `none` (also `none` with no running replica) |
-| `models[].busy_reject` | Always `false` for now |
+| `models[].busy_reject` | Whether a request with the busy declaration is refused when the model is busy: `true` when no deployment of the model the key may call is PD-disaggregated or multi-node and every running replica states a concurrent-sequence cap in its launch arguments; `false` with no running replica |
 
 A caller resolves a class by one rule: as named when it is in `reachable`, at `ceiling` otherwise; it does not need to reimplement the gateway's policies. Fields are only added, never changed, and a caller should ignore fields it does not know. An older server without this route treats it as a model request that names no model and, with a valid key, answers 400 `MODEL_REQUIRED`. Changes to classes and key bindings take effect as for requests (see [Request Priority](../explanation/request-priority.md)).
+
+### Busy Rejection
+
+A caller with somewhere else to send a request (a gateway in front of GPUWorks, say) can add `X-GPUWorks-If-Busy: reject` to a model request to declare "do not queue it when busy": when GPUWorks judges it cannot take the request now, it answers at once with 429 `MODEL_BUSY` and `Retry-After: 1`, and the caller can send it elsewhere straight away; when it can, the request is forwarded as usual. Without the header, or with any value other than `reject`, nothing changes. The header never reaches the engine.
+
+```json
+{"error": {"message": "every replica of qwen3-8b is busy and the request asked not to wait; send it again later, elsewhere, or without X-GPUWorks-If-Busy", "type": "invalid_request_error", "code": "MODEL_BUSY", "param": null, "params": {"model": "qwen3-8b"}}}
+```
+
+A caller recognizes the refusal by the status and `error.code` only, never by matching `message`, and does not rely on the rule below: it may become more precise between versions while the meaning stays.
+
+The current rule: the gateway judges at the moment it chooses a replica and takes a place on it, so two concurrent requests never both get the last free place. A replica's run slots are the concurrent-sequence cap its instance's launch arguments state (vLLM `--max-num-seqs`, SGLang `--max-running-requests`); a replica has no free place when its in-flight requests of this request's priority or higher reach its run slots. Lower-priority ones do not count, since the engine runs this request first. When the replica the deployment's routing policy (`least_request`, `prefix_affinity`, `failover`) prefers has no free place but another eligible one does, the request goes to that one; it is refused only when no eligible replica has a free place.
+
+These are never refused, and are forwarded or handled by the existing rules:
+
+- a replica whose launch arguments state no concurrent-sequence cap (GPUWorks does not guess the engine's default), or state a data-parallel size above 1;
+- PD-disaggregated and multi-node deployments;
+- a deployment that sleeps or is waking: it waits for the wake or gets 503 `MODEL_ASLEEP` as before;
+- the resend to another replica after a connection failure, and the replay after preemption;
+- auxiliary routes such as `/v1/tokenize`, and playground requests (the declaration is dropped).
+
+A refusal counts toward the deployment's gateway requests in the 429 class, leaves no request record and does not update the deployment's last request time. With several servers each counts only the in-flight requests it forwarded, so a request may go unrefused when it should have been refused, but is never refused wrongly. [Key Information](#key-information) lists `busy_reject` in `features` when the server honours the declaration, and `models[].busy_reject` says which models refuse.
 
 ## Trace Context
 
@@ -253,6 +275,7 @@ Every `/v1` response, including a request refused before forwarding, carries `X-
 | `ROUTE_NOT_FOUND` | 404 | `not_found_error` | — | This listening address does not serve `/v1` (only the console or agent function) |
 | `INSTANCE_NOT_FOUND` | 404 | `not_found_error` | — | The pinned instance does not exist |
 | `INSTANCE_MODEL_MISMATCH` | 404 | `not_found_error` | `model` | The pinned instance does not serve the model |
+| `MODEL_BUSY` | 429 | `invalid_request_error` | — | The request carried `X-GPUWorks-If-Busy: reject` and model `params.model` cannot take it now; carries `Retry-After: 1`. Send it elsewhere or again later, see [Busy Rejection](#busy-rejection) |
 | `MODEL_ASLEEP` | 503 | `server_error` | — | The deployment sleeps; wake deployment `params.deployment_id`, or wait for its schedule or a waiting wake; may carry `Retry-After` |
 | `INSTANCE_ASLEEP` | 503 | `server_error` | — | The pinned instance's deployment sleeps |
 | `INSTANCE_NOT_RUNNING` | 503 | `server_error` | — | The pinned instance is not running |
@@ -301,7 +324,8 @@ Streaming SSE and binary responses (such as WAV) are forwarded with their origin
 <!-- translation-source-sha256: 6acb770e47b044aaa2f5ae020be8de5399e18f1c1a2ca8766b6335625d6cff3b ## Batches (Files and Batches) -->
 <!-- translation-source-sha256: 475124ec8de50b9072b50ee962f92870520b5df325b80187af159d220745f2a7 ## Tokenization (tokenize) -->
 <!-- translation-source-sha256: f58e813c16efd7420156a21d092c58c2a473ea51613acd92208ff4a509628474 ## Request Priority -->
-<!-- translation-source-sha256: 0fe10b2ca7ce3b9806b31020061b0099acaa0d7780d433a9d2394e9dad4e98e5 ### Key Information -->
+<!-- translation-source-sha256: 0a2b5cddf2dccdf08a1b141cc6daf8706982dd1ee9fecc3e82f13a461c311cf2 ### Key Information -->
+<!-- translation-source-sha256: fad44335bde56d02bab94f974f0b23a6903145718574e486d5b7210759e1fa13 ### Busy Rejection -->
 <!-- translation-source-sha256: 91d6198ea9bcfb40d784f10fa77320acb27b0b45bcb8fdb958cf4d46554ea647 ## Trace Context -->
 <!-- translation-source-sha256: 2b9c4f0c8955d7d09cb9fc312559725988923ab947e97e8e4f21fbe931ef9cdf ### Trace Identifiers and Request IDs -->
 <!-- translation-source-sha256: 19589bf0b20be8387b262c114cb369861640ef81042c8ac4039bd2b51d39dafe ### Connect to the Caller's Trace -->
@@ -309,6 +333,6 @@ Streaming SSE and binary responses (such as WAV) are forwarded with their origin
 <!-- translation-source-sha256: 9c37d4f05b6f03c9e6aff79e566c378a64251aaa8a9fdb9a0f2af24fb3a2745d ### Obtain Usage for Streaming Requests -->
 <!-- translation-source-sha256: b1aad95e9d7e77247af93d91aabebaafbbdcd7f28bfb207c6b8fec973a997271 ### Usage for Messages and Responses -->
 <!-- translation-source-sha256: 1e99cb203865e1dc47e85e652d668709bf98e039c55d60b02f03d99d54a77696 ### Source of Cache Hit Counts in PD Disaggregation Deployments -->
-<!-- translation-source-sha256: e7f31181b01ee976e4b99e6b3d226da30de2d87a01421059370b45457fa8a71e ## Errors -->
+<!-- translation-source-sha256: e6aa1f712d529c4a49e5b3acc9f38e5b9c68110db01f1e2bec742824a417dd0d ## Errors -->
 <!-- translation-source-sha256: 8ae89817b16c25868b3a33ebd10d60695c312cb82bf517b25aef2b73b85182c8 ## Playground -->
 <!-- translation-source-sha256: 9923f454eda93d5f4500f52ff744daba8ddd4870a4f1564e373d004af15c11b7 ## Differences and Troubleshooting -->

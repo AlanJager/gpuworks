@@ -2045,6 +2045,18 @@
       "translations": {
         "zh": "令牌信息"
       }
+    },
+    {
+      "term_en": "Run Slots",
+      "translations": {
+        "zh": "运行位"
+      }
+    },
+    {
+      "term_en": "Busy Rejection",
+      "translations": {
+        "zh": "繁忙婉拒"
+      }
     }
   ],
   "do_not_translate": [

@@ -134,7 +134,7 @@ func (p *Proxy) probeSelected(ctx context.Context, deploymentID uint, path strin
 func (p *Proxy) probeTarget(id uint) (servedName string, tgt target, ok bool) {
 	if p.routes != nil {
 		if rd := p.routes.deployment(id); rd != nil {
-			if tgt, ok := p.pickRouted(rd, rd.servedName, "", p.hold.drainingOf(id), admission{}); ok {
+			if tgt, ok, _ := p.pickRouted(rd, rd.servedName, "", p.hold.drainingOf(id), admission{}); ok {
 				return rd.servedName, tgt, true
 			}
 		}

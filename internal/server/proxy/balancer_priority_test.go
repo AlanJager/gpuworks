@@ -33,7 +33,7 @@ func TestInflightCountsByPriority(t *testing.T) {
 	normal, batch, high := admission{priority: 0}, admission{priority: -40}, admission{priority: 20}
 	var leases []*lease
 	for _, adm := range []admission{normal, batch, normal, batch, normal} {
-		l := b.pick(replica, nil, allOnline, adm)
+		l, _ := b.pick(replica, nil, allOnline, adm)
 		if l == nil || l.priority != adm.priority || l.c.slots != 8 {
 			t.Fatalf("lease = %+v, want one for priority %d carrying the replica's slots", l, adm.priority)
 		}
@@ -93,8 +93,8 @@ func TestPriorityDoesNotChangeTheChoice(t *testing.T) {
 				if policy == deploy.PrefixAffinity {
 					affinity = []string{"k1", "k2", "k3"}[i%3]
 				}
-				want := neutral.pickBy(policy, candidates, affinity, nil, allOnline, admission{})
-				got := mixed.pickBy(policy, candidates, affinity, nil, allOnline, classes[i%len(classes)])
+				want, _ := neutral.pickBy(policy, candidates, affinity, nil, allOnline, admission{})
+				got, _ := mixed.pickBy(policy, candidates, affinity, nil, allOnline, classes[i%len(classes)])
 				if want.c.instanceUUID != got.c.instanceUUID {
 					t.Fatalf("pick %d: %s with classes, %s without", i, got.c.instanceUUID, want.c.instanceUUID)
 				}
@@ -125,7 +125,7 @@ func TestReplicaSwitchKeepsTheRequestPriority(t *testing.T) {
 	b := newBalancer(nil)
 	candidates := []candidate{{instanceUUID: "primary", nodeUUID: "n", modelName: "m"}, {instanceUUID: "backup", nodeUUID: "n", modelName: "m"}}
 	high := admission{priority: 20}
-	first := b.pickFailover(candidates, nil, allOnline, high)
+	first, _ := b.pickFailover(candidates, nil, allOnline, high)
 	attempt := &routeAttempt{candidates: candidates, current: first, tried: map[string]bool{"primary": true}, attempts: 1, modelName: "m", policy: deploy.Failover, started: time.Now(), admission: high}
 	calls := 0
 	transport := &retryTransport{

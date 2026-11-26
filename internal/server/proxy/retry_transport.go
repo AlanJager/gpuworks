@@ -138,10 +138,13 @@ func (a *routeAttempt) releaseRenamed() {
 
 // pickNext leases the next replica to retry on. One whose engine answers
 // under another name is taken only when the body can be renamed for it,
-// which needs the public name the client asked for.
+// which needs the public name the client asked for. A resend is never refused
+// for being busy: a replica already took the request.
 func (t *retryTransport) pickNext(a *routeAttempt, rename bool) *lease {
+	adm := a.admission.waiting()
 	return leaseUntil(func(excluded map[string]bool) *lease {
-		return t.balancer.pickBy(a.policy, a.candidates, a.affinity, excluded, t.hub.Online, a.admission)
+		l, _ := t.balancer.pickBy(a.policy, a.candidates, a.affinity, excluded, t.hub.Online, adm)
+		return l
 	}, a.tried, func(l *lease) bool {
 		if l.c.modelName != a.modelName && !rename {
 			return false

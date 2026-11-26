@@ -123,7 +123,11 @@ func mix64(x uint64) uint64 {
 	return x ^ (x >> 31)
 }
 
-func (b *balancer) pickAffinity(candidates []candidate, key string, excluded map[string]bool, online func(string) bool, adm admission) *lease {
+// pickAffinity leases the candidate key ranks first that is not cooling down
+// or loaded well above the average, else the least loaded; for adm only
+// among those with a free run slot, busy as for pick. The average counts
+// every eligible candidate, so a full one still weighs on it.
+func (b *balancer) pickAffinity(candidates []candidate, key string, excluded map[string]bool, online func(string) bool, adm admission) (l *lease, busy bool) {
 	if strings.TrimSpace(key) == "" {
 		return b.pick(candidates, excluded, online, adm)
 	}
@@ -138,14 +142,19 @@ func (b *balancer) pickAffinity(candidates []candidate, key string, excluded map
 		score uint64
 	}
 	items := make([]scored, 0, len(candidates))
-	total := 0
+	total, eligible := 0, 0
 	for _, c := range candidates {
 		if excluded[c.instanceUUID] || (online != nil && !online(c.nodeUUID)) {
 			continue
 		}
 		s := b.state(c.instanceUUID)
+		eligible++
 		if s.cooldownUntil.IsZero() || nowFn().After(s.cooldownUntil) {
 			total += s.inflight.total
+		}
+		if !b.hasRoom(c, adm) {
+			busy = true
+			continue
 		}
 		uuidHash := c.uuidHash
 		if uuidHash == 0 {
@@ -154,10 +163,10 @@ func (b *balancer) pickAffinity(candidates []candidate, key string, excluded map
 		items = append(items, scored{c, mix64(fnv64([]byte(key)) ^ uuidHash)})
 	}
 	if len(items) == 0 {
-		return nil
+		return nil, busy
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].score > items[j].score })
-	avg := float64(total+1) / float64(len(items))
+	avg := float64(total+1) / float64(eligible)
 	limit := int(avg * 1.5)
 	if limit < 4 {
 		limit = 4
@@ -165,7 +174,7 @@ func (b *balancer) pickAffinity(candidates []candidate, key string, excluded map
 	for _, item := range items {
 		s := b.state(item.c.instanceUUID)
 		if (s.cooldownUntil.IsZero() || nowFn().After(s.cooldownUntil)) && s.inflight.total < limit {
-			return b.take(item.c, adm)
+			return b.take(item.c, adm), false
 		}
 	}
 	best := items[0]
@@ -174,7 +183,7 @@ func (b *balancer) pickAffinity(candidates []candidate, key string, excluded map
 			best = item
 		}
 	}
-	return b.take(best.c, adm)
+	return b.take(best.c, adm), false
 }
 
 func (p *Proxy) affinityKey(modelName string, r *http.Request) string {

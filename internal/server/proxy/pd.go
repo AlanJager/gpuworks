@@ -57,7 +57,8 @@ func (p *Proxy) pickPrefill(route *pdRoute, affinity, decodeNode string, exclude
 
 func (p *Proxy) pickPrefillOnce(route *pdRoute, affinity, decodeNode string, excluded map[string]bool, adm admission) *lease {
 	if strings.TrimSpace(affinity) != "" {
-		return p.balancer.pickAffinity(route.prefill, affinity, excluded, p.hub.Online, adm)
+		l, _ := p.balancer.pickAffinity(route.prefill, affinity, excluded, p.hub.Online, adm)
+		return l
 	}
 	var local []candidate
 	for _, c := range route.prefill {
@@ -65,10 +66,11 @@ func (p *Proxy) pickPrefillOnce(route *pdRoute, affinity, decodeNode string, exc
 			local = append(local, c)
 		}
 	}
-	if l := p.balancer.pick(local, excluded, p.hub.Online, adm); l != nil {
+	if l, _ := p.balancer.pick(local, excluded, p.hub.Online, adm); l != nil {
 		return l
 	}
-	return p.balancer.pick(route.prefill, excluded, p.hub.Online, adm)
+	l, _ := p.balancer.pick(route.prefill, excluded, p.hub.Online, adm)
+	return l
 }
 
 // servePrefillStage runs the prefill stage of a two-stage request and leaves

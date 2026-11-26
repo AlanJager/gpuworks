@@ -24,6 +24,10 @@ const (
 	// says in X-GPUWorks-Priority-Scheduling whether the engine scheduled
 	// the request by its class.
 	FeaturePriorityScheduling = "priority_scheduling_header"
+	// FeatureBusyReject: a model request declaring X-GPUWorks-If-Busy:
+	// reject is answered at once with 429 MODEL_BUSY when the gateway
+	// judges it cannot take it now (busy_reject.go).
+	FeatureBusyReject = "busy_reject"
 )
 
 // priorityScheduling says in the answer whether the engine scheduled the
@@ -69,7 +73,8 @@ type KeyModelState struct {
 	// priority: SchedulingAll, SchedulingSome or SchedulingNone.
 	PriorityScheduling string `json:"priority_scheduling"`
 	// BusyReject says whether it refuses at once a request that asks not to
-	// wait when it is busy. No model does yet.
+	// wait when it is busy: every running replica of it states its run
+	// slots, and none is PD-disaggregated or multi-node.
 	BusyReject bool `json:"busy_reject"`
 }
 
@@ -86,7 +91,7 @@ func (p *Proxy) KeyHandler() http.HandlerFunc {
 			writeAPIError(w, r, ErrorMethodNotAllowed, map[string]any{"path": KeyPath, "method": http.MethodGet})
 			return
 		}
-		info := KeyInfo{Object: "key", Features: []string{FeaturePriorityScheduling}, Models: p.routes.modelStates(identity.Allows)}
+		info := KeyInfo{Object: "key", Features: []string{FeaturePriorityScheduling, FeatureBusyReject}, Models: p.routes.modelStates(identity.Allows)}
 		if identity.KeyID != 0 {
 			reach := priority.KeyReach(p.priority.get(), identity.Priority)
 			info.Priority = &KeyPriority{Own: keyClass(reach.Own), Ceiling: keyClass(reach.Ceiling), Reachable: make([]KeyClass, 0, len(reach.Reachable))}
@@ -102,9 +107,9 @@ func (p *Proxy) KeyHandler() http.HandlerFunc {
 func keyClass(c priority.Class) KeyClass { return KeyClass{Name: c.Name, Value: c.Value} }
 
 // modelStates are the served names allow accepts, in name order as
-// servedNames lists them, each with how its running replicas schedule. A
-// name several deployments share counts the replicas of those allow
-// accepts.
+// servedNames lists them, each with how its running replicas schedule and
+// whether a busy one refuses a request that asked it to. A name several
+// deployments share counts the replicas of those allow accepts.
 func (r *routeTable) modelStates(allow func(deploymentID uint) bool) []KeyModelState {
 	out := []KeyModelState{}
 	if r == nil {
@@ -118,12 +123,13 @@ func (r *routeTable) modelStates(allow func(deploymentID uint) bool) []KeyModelS
 		if name == "" {
 			continue
 		}
-		replicas, prioritized, allowed := 0, 0, false
+		replicas, prioritized, allowed, rejects := 0, 0, false, true
 		for _, d := range deps {
 			if allow(d.id) {
 				allowed = true
 				replicas += d.replicas
 				prioritized += d.prioritizedReplicas
+				rejects = rejects && d.rejectsBusy()
 			}
 		}
 		if !allowed {
@@ -136,7 +142,7 @@ func (r *routeTable) modelStates(allow func(deploymentID uint) bool) []KeyModelS
 		case prioritized > 0:
 			coverage = SchedulingSome
 		}
-		out = append(out, KeyModelState{ID: name, PriorityScheduling: coverage})
+		out = append(out, KeyModelState{ID: name, PriorityScheduling: coverage, BusyReject: rejects && replicas > 0})
 	}
 	slices.SortFunc(out, func(a, b KeyModelState) int { return strings.Compare(a.ID, b.ID) })
 	return out

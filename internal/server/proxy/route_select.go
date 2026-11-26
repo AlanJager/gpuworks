@@ -29,19 +29,31 @@ func (p *Proxy) selectDeploymentInstanceWithKey(modelName, affinity string) (*st
 // deployments the caller's API key may call (nil: all). A name served only by
 // deployments outside the scope is 403; deployments outside it are never
 // touched, so a scoped caller cannot wake or load them. The replica is leased
-// for adm.
+// for adm. A request that asked to be refused when busy is, with
+// MODEL_BUSY, when a deployment that would have served it has no free run
+// slot for it and no other deployment of the name takes it.
 func (p *Proxy) selectScopedDeploymentInstance(scope *store.APIKeyIdentity, modelName, affinity string, adm admission) (*store.Deployment, target, *refusal, bool) {
 	allowed := func(id uint) bool { return scope == nil || scope.Allows(id) }
 	if p.routes != nil {
 		deployments, ok := p.routes.snapshot(modelName)
 		if ok {
+			var full *store.Deployment
 			for _, rd := range deployments {
 				if !allowed(rd.dep.ID) {
 					continue
 				}
-				if tgt, ok := p.pickRouted(rd, modelName, affinity, p.hold.drainingOf(rd.dep.ID), adm); ok {
+				tgt, ok, busy := p.pickRouted(rd, modelName, affinity, p.hold.drainingOf(rd.dep.ID), adm)
+				if ok {
 					return rd.dep, tgt, nil, false
 				}
+				if busy && full == nil {
+					full = rd.dep
+				}
+			}
+			// The busy answer is the snapshot's: answering it reads nothing,
+			// which is what a saturated gateway needs.
+			if full != nil {
+				return full, target{}, busyRefusal(modelName), false
 			}
 			// A dirty snapshot is refreshed asynchronously. The name-scoped store
 			// lookup below is the bounded correctness fallback; never rebuild the
@@ -71,11 +83,17 @@ func (p *Proxy) selectScopedDeploymentInstance(scope *store.APIKeyIdentity, mode
 	// selection below exactly.
 	attempted := &deployments[0]
 	asleep := false
+	var full *store.Deployment
 	for index := range deployments {
 		dep := &deployments[index]
 		tgt, candidate, candidateAsleep := p.selectDeploymentInstances(dep, modelName, affinity, adm)
 		if candidate == nil {
 			return dep, tgt, nil, false
+		}
+		// A deployment that would have served the request but for its
+		// declaration answers for the name: busy is the truth to tell.
+		if candidate.code == ErrorModelBusy && full == nil {
+			full = dep
 		}
 		if index == 0 || candidateAsleep {
 			rejection = candidate
@@ -83,12 +101,17 @@ func (p *Proxy) selectScopedDeploymentInstance(scope *store.APIKeyIdentity, mode
 			attempted = dep
 		}
 	}
+	if full != nil {
+		return full, target{}, busyRefusal(modelName), false
+	}
 	return attempted, target{}, rejection, asleep
 }
 
-func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string, draining map[string]bool, adm admission) (target, bool) {
+// pickRouted leases a replica of rd from the route snapshot; busy says none
+// was leased because none had a free run slot for adm.
+func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string, draining map[string]bool, adm admission) (tgt target, ok, busy bool) {
 	if draining != nil && rd.nnodes > 1 {
-		return target{}, false
+		return target{}, false, false
 	}
 	if rd.nnodes > 1 {
 		// Distributed readiness is read through once per request because
@@ -97,18 +120,21 @@ func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string, drai
 		// query for every rank.
 		insts, _ := p.store.InstancesForDeployment(rd.id)
 		tgt, rejection, _ := p.selectDistributedInstanceWithNodes(rd.dep, insts, modelName, affinity, rd.nodes, rd.drivers, adm)
-		return tgt, rejection == nil
+		return tgt, rejection == nil, false
 	}
 	candidates := withoutDraining(rd.candidates, draining)
 	if len(candidates) == 0 {
-		return target{}, false
+		return target{}, false, false
 	}
-	lease := p.pickAwake(candidates, rd.policy, affinity, false, adm)
+	if rd.pd != nil {
+		adm = adm.waiting()
+	}
+	lease, busy := p.pickAwake(candidates, rd.policy, affinity, false, adm)
 	if lease == nil {
-		return target{}, false
+		return target{}, false, busy
 	}
 	attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: rd.policy, affinity: affinity, deploymentID: rd.id, accountant: p.acct, admission: adm}
-	return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, pd: rd.pd, affinity: affinity}, true
+	return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, pd: rd.pd, affinity: affinity}, true, false
 }
 
 func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affinity string, adm admission) (target, *refusal, bool) {
@@ -131,6 +157,9 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 	if err != nil {
 		p.log.Warn("PD deployment not routed: placement cannot be read", "dep", dep.ID, "err", err)
 		return target{}, refuse(ErrorPDPlacementUnreadable, nil), false
+	}
+	if pd != nil {
+		adm = adm.waiting()
 	}
 	for _, in := range insts {
 		// An instance ordered to sleep, or still asleep, is "running" but cannot
@@ -180,9 +209,13 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 	}
 	if len(candidates) > 0 {
 		policy := deploy.NormalizeRoutingPolicy(dep.RoutingPolicy)
-		if lease := p.pickAwake(candidates, policy, affinity, true, adm); lease != nil {
+		lease, busy := p.pickAwake(candidates, policy, affinity, true, adm)
+		if lease != nil {
 			attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: policy, affinity: affinity, deploymentID: dep.ID, accountant: p.acct, admission: adm}
 			return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, pd: pd, affinity: affinity}, nil, false
+		}
+		if busy {
+			return target{}, busyRefusal(modelName), false
 		}
 	}
 	// Distinguish "sleeping" from "not ready" so the caller is told to wake
@@ -233,8 +266,10 @@ func (p *Proxy) selectDistributedInstance(dep *store.Deployment, insts []store.I
 }
 
 // nodes and drivers are the route snapshot's node UUIDs and runtime drivers by
-// node ID; nil reads each node from the store.
+// node ID; nil reads each node from the store. A multi-node replica is never
+// refused for being busy.
 func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts []store.Instance, modelName, affinity string, nodes, drivers map[uint]string, adm admission) (target, *refusal, bool) {
+	adm = adm.waiting()
 	nodeUUID := func(id uint) string {
 		if nodes != nil {
 			return nodes[id]
@@ -301,7 +336,7 @@ func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts 
 		return target{}, refuse(ErrorDistributedNotReady, map[string]any{"model": modelName}), false
 	}
 	policy := deploy.NormalizeRoutingPolicy(dep.RoutingPolicy)
-	lease := p.pickAwake(candidates, policy, affinity, true, adm)
+	lease, _ := p.pickAwake(candidates, policy, affinity, true, adm)
 	if lease == nil {
 		return target{}, refuse(ErrorDistributedLeaderOffline, map[string]any{"model": modelName}), false
 	}

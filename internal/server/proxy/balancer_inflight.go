@@ -7,10 +7,13 @@ import (
 )
 
 // admission is what the request being routed brings to a pick: the value of
-// the class it runs at (priority.Class.Value, larger is more important). The
-// lease taken for it holds that value until released.
+// the class it runs at (priority.Class.Value, larger is more important), and
+// whether it asked to be refused rather than wait when no replica has a free
+// run slot for it (busy_reject.go). The lease taken for it holds that value
+// until released.
 type admission struct {
-	priority int
+	priority   int
+	rejectBusy bool
 }
 
 // admissionFrom is the request's admission: the class the gateway decided

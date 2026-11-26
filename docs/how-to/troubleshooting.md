@@ -1257,6 +1257,7 @@ SGLang 默认的 `/health` 会向调度器提交一个只生成 1 个 token 的�
 | 404 | `MODEL_NOT_FOUND` | 模型名不是部署的 served name（`GET /v1/models` 可列出），或部署已停止 |
 | 404 | `MODEL_ROUTE_NOT_EXPOSED` | 只有试验场（`/api/v1/playground/v1/*`）会做 contract 检查并返回它：该部署的 API contract 不包含这个接口（比如对 Chat 模型调 `/v1/embeddings`）；`GET /api/v1/playground/openapi.json` 可查看它声明了哪些接口。公网 `/v1` 不做这项检查，请求原样转给引擎，由引擎自己返回 404 等 |
 | 404 | `ROUTE_NOT_FOUND` | 访问的监听地址不承载推理 API，检查 `listen.gateway` |
+| 429 + `Retry-After: 1` | `MODEL_BUSY` | 请求带了 `X-GPUWorks-If-Busy: reject`，而模型的副本都没有空闲运行位；稍后重发，或去掉这个头让请求照常排队，见[繁忙婉拒](../reference/openai-gateway.md#繁忙婉拒) |
 | 503 | `MODEL_ASLEEP` | 没有可服务的清醒副本；在控制台或调用 `POST /api/v1/deployments/{id}/wake` 唤醒，定时计划或等位中的唤醒也会唤醒它，见[调度分析](scheduling-center.md)。休眠意图发出后，所选实例即不再接收新请求 |
 | 503 | `MODEL_NOT_READY`、`DEPLOYMENT_START_FAILED` | 没有 running 副本：还在启动、失败或被停止；看实例状态 |
 | 503 | `MODEL_NODE_OFFLINE` | 副本在运行，但所在节点的 agent 没有连接；看节点连接状态 |
