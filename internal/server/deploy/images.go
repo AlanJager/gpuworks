@@ -189,9 +189,6 @@ func ResolveImageCatalog(t ImageTarget, candidates []ImageCandidate) ImageResolu
 // and host architecture decide it; the chip family only orders the automatic
 // pick (chipFamilyWeight), so every image stays a manual choice.
 func ImageCandidateSelectable(t ImageTarget, candidate ImageCandidate) bool {
-	if candidate.AutoSelect != "" && candidate.AutoSelect != "manual" && t.PlatformArch != "" && candidate.AutoSelect != normalizeArch(t.PlatformArch) {
-		return false
-	}
 	return imageCandidateEligible(t, candidate)
 }
 

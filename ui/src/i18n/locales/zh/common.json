@@ -551,6 +551,7 @@
     "EXPERIENCE_FAILED": "功能体验模式操作失败：{{reason}}",
     "EXPERIENCE_PORT_IN_USE": "端口 {{port}} 已被其他程序占用：请释放该端口，或调整本服务的控制台端口（体验环境使用控制台端口 +10）。",
     "NOTICE_IDS_INVALID": "请指定 1 到 128 条要标为已读的通知。",
+    "IMAGE_MANIFEST_LEGACY_PROJECTION": "这是供旧版服务使用的 schema 3 目录。请下载签名渠道索引中 {{field}} 指向的文件并在此上传。",
     "IMAGE_MANIFEST_INVALID": "镜像 manifest 无效：{{detail}}",
     "IMAGE_IMPORT_CONFLICT": "manifest 与已有的社区或自定义镜像冲突：{{detail}}",
     "IMAGE_CATALOG_UPLOADED": "当前系统镜像目录 {{current}} 是手工上传的；改用渠道目录 {{latest}} 需要确认，只在上传目录里的镜像版本会被删除，仍在使用的转为旧版本。",

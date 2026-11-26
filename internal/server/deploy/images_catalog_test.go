@@ -170,7 +170,7 @@ func TestPartialMultiArchitectureWinner(t *testing.T) {
 	for arch, want := range map[string]string{"amd64": single.ImageRef, "arm64": multi.ImageRef} {
 		target := ImageTarget{Engine: "vllm", PlatformArch: arch}
 		got := ResolveImageCatalog(target, []ImageCandidate{multi, single})
-		if got.Image != want || ImageCandidateSelectable(target, multi) != (arch == "arm64") {
+		if got.Image != want || !ImageCandidateSelectable(target, multi) {
 			t.Errorf("%s: %+v", arch, got)
 		}
 		target.Override = multi.ImageRef

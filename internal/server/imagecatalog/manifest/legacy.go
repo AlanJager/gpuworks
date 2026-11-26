@@ -4,16 +4,22 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"strings"
 )
 
-const legacyVersionPrefix = "schema3."
+const legacyVersionSuffix = "-schema3"
 
 // IsLegacyProjection identifies the lossy catalog emitted for older readers.
 func (m Manifest) IsLegacyProjection() bool {
-	suffix, ok := strings.CutPrefix(m.CatalogVersion, legacyVersionPrefix)
-	if m.SchemaVersion != 3 || !ok || len(suffix) != sha256.Size*2 {
+	if m.SchemaVersion != 3 {
+		return false
+	}
+	if strings.HasSuffix(m.CatalogVersion, legacyVersionSuffix) {
+		return true
+	}
+	// Previously published projections used schema3.<SHA-256>.
+	suffix, ok := strings.CutPrefix(m.CatalogVersion, "schema3.")
+	if !ok || len(suffix) != sha256.Size*2 {
 		return false
 	}
 	_, err := hex.DecodeString(suffix)
@@ -32,18 +38,15 @@ func LegacyCatalog(body []byte) ([]byte, error) {
 	for _, series := range m.Series {
 		for i := range series.Versions {
 			v := &series.Versions[i]
-			if v.AutoSelect == "manual" {
+			if v.AutoSelect == "manual" && !v.Deprecated {
 				v.Deprecated = true
+				v.DeprecatedSince = m.CatalogVersion
 			}
 			v.AutoSelect = ""
 			v.RegistryDigest = ""
 		}
 	}
-	data, err := json.Marshal(m.Series)
-	if err != nil {
-		return nil, err
-	}
-	m.CatalogVersion = fmt.Sprintf(legacyVersionPrefix+"%x", sha256.Sum256(data))
+	m.CatalogVersion += legacyVersionSuffix
 	m.Signature = ""
 	m.SHA256 = ComputeSHA256(m)
 	body, err = json.MarshalIndent(m, "", "  ")

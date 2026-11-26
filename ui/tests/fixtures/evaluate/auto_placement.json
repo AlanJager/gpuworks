@@ -448,6 +448,13 @@
           "engine_version": "0.31.0"
         },
         {
+          "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4",
+          "reason": "catalog_match",
+          "compatible": true,
+          "engine": "vllm",
+          "engine_version": "0.30.0"
+        },
+        {
           "image": "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cuda12.8-sglang0.5.9-r1",
           "reason": "catalog_match",
           "compatible": true,

@@ -389,7 +389,14 @@ func TestUploadLegacyProjectionLeavesActiveCatalogUntouched(t *testing.T) {
 		t.Fatal(err)
 	}
 	rec := run.do(http.MethodPost, "/api/v1/images/import", "application/json", string(body))
-	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), ErrorImageManifestInvalid) || !strings.Contains(rec.Body.String(), "image_catalog_v4.path") {
+	var response struct {
+		Code   string            `json:"code"`
+		Params map[string]string `json:"params"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Code != http.StatusBadRequest || response.Code != "IMAGE_MANIFEST_LEGACY_PROJECTION" || response.Params["field"] != "image_catalog_v4.path" {
 		t.Fatalf("rejection %d: %s", rec.Code, rec.Body.String())
 	}
 	state, err := run.store.OfficialCatalogState()
