@@ -268,10 +268,14 @@ func (a *apiHandlers) editedDeployment(ctx context.Context, dep *store.Deploymen
 		if _, err := planning.ParsePlacement(placement); err != nil {
 			return bad(err)
 		}
-		if err := deployment.RequestCardsOnNode(req, node); err != nil {
-			return bad(err)
-		}
 		next.Placement = keepEquivalentJSON(dep.Placement, jsonStr(placement))
+		// Only a card choice the edit makes is judged: an edit of other
+		// fields still saves after a pinned card stops being reported.
+		if next.NodeID != dep.NodeID || next.Placement != dep.Placement {
+			if err := deployment.RequestCardsOnNode(req, node); err != nil {
+				return bad(err)
+			}
+		}
 	}
 
 	base, err := storedLaunchConfig(dep)

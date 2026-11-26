@@ -65,7 +65,7 @@ func pinnedToCardOne(t *testing.T, h *apiHandlers, modelID uint) dto.Deployment 
 // one-card node; refusedBody is the whole 400 body a create or edit answers.
 const (
 	cardNotOnNode = `"code":"PLACEMENT_GPU_NOT_ON_NODE","params":{"gpu_index":1,"node":"one-card","node_gpus":1}`
-	refusedBody   = `{"code":"PLACEMENT_GPU_NOT_ON_NODE","error":"node one-card has no GPU with index 1; it reports 1 usable GPUs","params":{"gpu_index":1,"node":"one-card","node_gpus":1}}`
+	refusedBody   = `{"code":"PLACEMENT_GPU_NOT_ON_NODE","error":"node one-card has no GPU with index 1; usable GPUs on it: 1","params":{"gpu_index":1,"node":"one-card","node_gpus":1}}`
 )
 
 // GWKS-522: a deployment pinned to card 1 of a two-card node is edited onto a
@@ -117,6 +117,23 @@ func TestEditOntoAnotherNodeWithoutCardsSaves(t *testing.T) {
 	}
 	if row.NodeID != oneCard.ID || row.Placement != `{"tp":1}` {
 		t.Fatalf("stored deployment node=%d (want %d) placement=%s", row.NodeID, oneCard.ID, row.Placement)
+	}
+}
+
+// An edit that leaves the node and the cards alone is not judged on them: a
+// pinned card the node stopped reporting does not block saving other fields.
+func TestEditKeepingAPinnedCardTheNodeLostSaves(t *testing.T) {
+	h, st, modelID := twoNodesFixture(t)
+	dep := pinnedToCardOne(t, h, modelID)
+	if err := st.UpdateNodeStatus("two-card", proto.NodeStatus{
+		Sys:  proto.SysInfo{Hostname: "two-card", Arch: "amd64", GPUVendor: "nvidia", Framework: "cuda", FrameworkVersion: "12.4"},
+		GPUs: []proto.GPUInfo{{Index: 0, Name: "NVIDIA RTX 4090", Vendor: "nvidia", ArchID: "sm_89", ComputeCapability: "8.9", MemoryTotalBytes: 24 << 30, Healthy: true}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	status, resp := putEdit(t, h, dep.ID, editBody(t, h, dep.ID), false)
+	if status != http.StatusOK {
+		t.Fatalf("edit = %d %s", status, resp)
 	}
 }
 

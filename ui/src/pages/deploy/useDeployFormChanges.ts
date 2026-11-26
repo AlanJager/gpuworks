@@ -47,10 +47,8 @@ export default function useDeployFormChanges({
       Object.prototype.hasOwnProperty.call(changed, "node_uuid") &&
       !Object.prototype.hasOwnProperty.call(changed, "gpu_indexes")
     ) {
-      // A card index names a card on one machine: the cards picked on the
-      // previous node are no choice on this one, so a changed node starts
-      // the card choice over. The server refuses a card the node does not
-      // report (PLACEMENT_GPU_NOT_ON_NODE, GWKS-522).
+      // Card indexes belong to the previous node; the server refuses a card
+      // the node lacks (PLACEMENT_GPU_NOT_ON_NODE).
       form.setFieldValue("gpu_indexes", undefined);
     }
     if (Object.prototype.hasOwnProperty.call(changed, "image_mode")) {
