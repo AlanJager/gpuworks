@@ -462,14 +462,6 @@
           "engine": "sglang",
           "engine_version": "0.5.21",
           "selects_engine": "sglang"
-        },
-        {
-          "image": "gpuworks/gpuworks-runner:cuda13.0-sglang0.5.23-r2",
-          "reason": "catalog_match",
-          "compatible": true,
-          "engine": "sglang",
-          "engine_version": "0.5.23",
-          "selects_engine": "sglang"
         }
       ]
     },
