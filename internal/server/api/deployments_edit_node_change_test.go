@@ -111,7 +111,7 @@ func TestEvaluateOnAnotherNodeDropsTheOldNodesCards(t *testing.T) {
 	if strings.Contains(rec.Body.String(), "deployment 0") {
 		t.Fatalf("preview names deployment 0: %s", rec.Body)
 	}
-	if resp.Errors != nil && len(resp.Errors) > 0 {
+	if len(resp.Errors) > 0 {
 		t.Fatalf("evaluate errors = %+v", resp.Errors)
 	}
 	// The plan ran: the preview picked the new node's own card, not the
