@@ -49,11 +49,8 @@ func (p Placement) WithoutOperatorChoice() Placement {
 	return p
 }
 
-// CardsOnNode refuses a placement naming a card node does not report. A GPU
-// index names a card on one machine, so an index chosen on another node (a
-// form that kept its card choice when the node changed) names no card here;
-// the request is refused rather than rewritten, the same for a create, an
-// edit and a preview.
+// CardsOnNode refuses a placement naming a card node does not report. An index
+// names a card on one machine, so the request is refused, not rewritten.
 func CardsOnNode(p Placement, node *store.Node) error {
 	if node == nil {
 		return nil
@@ -65,7 +62,7 @@ func CardsOnNode(p Placement, node *store.Node) error {
 		name := node.DisplayName()
 		cards := len(node.OwnedGPUs())
 		return messages.NewProductError(messages.ErrorPlacementGPUNotOnNode,
-			fmt.Sprintf("node %s has no GPU with index %d; it reports %d usable GPUs", name, index, cards),
+			fmt.Sprintf("node %s has no GPU with index %d; usable GPUs on it: %d", name, index, cards),
 			map[string]any{"node": name, "gpu_index": index, "node_gpus": cards})
 	}
 	return nil

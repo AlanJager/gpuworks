@@ -46,11 +46,10 @@ func RequestCardsOnNode(req *dto.DeployRequest, node *store.Node) error {
 	if IsAutomaticPlacement(req) || req.NNodes > 1 {
 		return nil
 	}
-	placement, err := planning.ParsePlacement(req.Placement)
-	if err != nil || placement.PD != nil {
-		return nil
+	if placement, err := planning.ParsePlacement(req.Placement); err == nil && placement.PD == nil {
+		return planning.CardsOnNode(placement, node)
 	}
-	return planning.CardsOnNode(placement, node)
+	return nil
 }
 
 // requestRequirements is where the request says the deployment may run, as
