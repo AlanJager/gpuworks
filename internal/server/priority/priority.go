@@ -66,7 +66,8 @@ type Policy string
 
 const (
 	// PolicyFixed: every request runs at the key's class; a requested class
-	// is ignored.
+	// that exists has no effect, and one that does not is refused as under
+	// every policy.
 	PolicyFixed Policy = "fixed"
 	// PolicyWithinCeiling: a request may name any class whose value does not
 	// exceed the key's ceiling class (its own class when it has none); one

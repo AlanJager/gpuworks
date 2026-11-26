@@ -75,7 +75,7 @@ server 的 `/v1/*` 默认要求 API key 鉴权，规则见下文[认证](#认证
 
 ## 请求优先级
 
-请求的优先级由网关决定：按 API 令牌绑定的优先级类，以及客户端用请求头 `X-GPUWorks-Priority-Class: <名称>` 在令牌允许范围内的指定；批处理请求使用任务创建时选的类，通过 `/v1/batches` 创建的任务固定为 `batch` 类。名称不存在时返回 400。响应头 `X-GPUWorks-Priority-Class` 给出请求实际使用的类。
+请求的优先级由网关决定：按 API 令牌绑定的优先级类，以及客户端用请求头 `X-GPUWorks-Priority-Class: <名称>` 在令牌允许范围内的指定；批处理请求使用任务创建时选的类，通过 `/v1/batches` 创建的任务固定为 `batch` 类。名称不存在时返回 400 `PRIORITY_CLASS_UNKNOWN`，令牌的三种策略（包括「固定」）都是如此；不带令牌的匿名访问不看这个请求头。响应头 `X-GPUWorks-Priority-Class` 给出请求实际使用的类。
 
 部署开启了请求优先级时，网关把类的数值按引擎方向写进请求体的 `priority`；否则把已有的 `priority` 改为 `0`。客户端自带的 `priority` 字段和 `X-Vllm-Priority` 请求头都不会到达引擎，无论模型写在请求体、`?model=` 还是 `X-GPUWorks-Model` 里，也无论请求体声明的 Content-Type；声明为 JSON 或文本的请求体须为 UTF-8 编码，否则返回 400。详见[请求优先级](../explanation/request-priority.md)。
 
@@ -115,7 +115,7 @@ server 的 `/v1/*` 默认要求 API key 鉴权，规则见下文[认证](#认证
 | `priority.ceiling` | 请求头指定了不在 `reachable` 里的类时实际使用的类。策略为「固定」或「只降不升」时等于 `own` |
 | `models` | 令牌有权调用的模型，与 `/v1/models` 的 `id` 相同，按名字排序 |
 | `models[].priority_scheduling` | 运行中的副本里按优先级调度的有多少：`all`、`some` 或 `none`（没有运行中的副本也是 `none`） |
-| `models[].busy_reject` | 带繁忙声明的请求在模型繁忙时会不会被婉拒：令牌能调用的该模型的部署都不是 PD 分离或多机部署，且每个运行中的副本都在启动参数里写明了并发序列上限时为 `true`；没有运行中的副本时为 `false` |
+| `models[].busy_reject` | 带繁忙声明的请求在模型繁忙时会不会被婉拒：令牌能调用的该模型的部署都不是 PD 分离或多机部署，且每个运行中的副本的运行位已知（启动参数写明了并发序列上限、数据并行规模为 1）时为 `true`；没有运行中的副本时为 `false` |
 
 调用方解析一个类只用一条规则：在 `reachable` 里就按它，否则按 `ceiling`；网关的策略逻辑不必在调用方重写。字段只增不改，调用方应忽略不认识的字段。没有这个接口的旧版本 server 把它当作没写模型的模型请求，带有效令牌时返回 400 `MODEL_REQUIRED`。类与令牌绑定的改动生效时间同请求本身（见[请求优先级](../explanation/request-priority.md)）。
 
@@ -139,7 +139,7 @@ server 的 `/v1/*` 默认要求 API key 鉴权，规则见下文[认证](#认证
 - 连接失败后换副本重发、被抢占后重放的那一次；
 - `/v1/tokenize` 等辅助接口与试验场的请求（声明被丢弃）。
 
-婉拒计入部署网关请求数的 429 一类，不留请求记录，不更新部署的最近请求时间。多个 server 时每个 server 只数自己转发的在途请求，结果是该婉拒时可能没婉拒，不会误拒。[令牌信息](#令牌信息)的 `features` 含 `busy_reject` 表示 server 认这个声明，`models[].busy_reject` 说明哪些模型会婉拒。
+婉拒计入部署网关请求数的 429 一类，不留请求记录，不更新部署的最近请求时间。让部署参与婉拒的步骤见[上游网关接入](../explanation/request-priority.md#上游网关接入)，设计取舍见 [ADR 0083](../adr/0083-busy-rejection-for-upstream-gateways.md)。多个 server 时每个 server 只数自己转发的在途请求，结果是该婉拒时可能没婉拒，不会误拒。[令牌信息](#令牌信息)的 `features` 含 `busy_reject` 表示 server 认这个声明，`models[].busy_reject` 说明哪些模型会婉拒。
 
 ## Trace context
 
@@ -264,6 +264,7 @@ PD 分离将输入提示词计算和后续生成交给不同实例。vLLM 顺序
 | `INVALID_API_KEY` | 401 | `authentication_error` | — | 缺少 API key 或 key 无效 |
 | `MODEL_ACCESS_DENIED` | 403 | `permission_error` | `model` | 这个 API key 无权调用该模型（`params.model`） |
 | `MODEL_REQUIRED` | 400 | `invalid_request_error` | `model` | 请求没有指定 `model` |
+| `PRIORITY_CLASS_UNKNOWN` | 400 | `invalid_request_error` | — | 请求头 `params.header`（`X-GPUWorks-Priority-Class`）里的名称不是任何优先级类；令牌的每种策略都拒绝，不转发、不唤醒休眠的部署 |
 | `REQUEST_BODY_INVALID` | 400 | `invalid_request_error` | — | 请求体无法读取（如 multipart 缺 boundary、不是 JSON 对象），`params.detail` 说明原因 |
 | `REQUEST_TOO_LARGE` | 413 | `invalid_request_error` | — | 请求体超过上限（`params.max_bytes`） |
 | `METHOD_NOT_ALLOWED` | 405 | `invalid_request_error` | — | 该路由只接受 `params.method`（如 `GET /v1/tokenize`），响应带 `Allow` |

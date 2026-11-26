@@ -75,7 +75,7 @@ You can disable tokenization forwarding for each deployment: set `tokenize_enabl
 
 ## Request Priority
 
-The gateway decides a request's priority: from the priority class its API key is bound to, and the class the client names with the request header `X-GPUWorks-Priority-Class: <name>` within what the key allows; batch requests run at the class their batch was created with, and a batch created through `/v1/batches` always at the `batch` class. A name that matches no class returns 400. The response header `X-GPUWorks-Priority-Class` names the class the request ran at.
+The gateway decides a request's priority: from the priority class its API key is bound to, and the class the client names with the request header `X-GPUWorks-Priority-Class: <name>` within what the key allows; batch requests run at the class their batch was created with, and a batch created through `/v1/batches` always at the `batch` class. A name that matches no class returns 400 `PRIORITY_CLASS_UNKNOWN`, under all three key policies (fixed included); anonymous access without a key does not read the header. The response header `X-GPUWorks-Priority-Class` names the class the request ran at.
 
 For a deployment with request priority on, the gateway writes the class value into the body's `priority` in the engine's direction; otherwise it sets an existing `priority` to `0`. A client's own `priority` field and `X-Vllm-Priority` header never reach the engine, whether the model is named in the body, in `?model=` or in `X-GPUWorks-Model`, and whatever Content-Type the body declares; a body declared as JSON or text must be UTF-8, or the request gets a 400. See [Request Priority](../explanation/request-priority.md).
 
@@ -115,7 +115,7 @@ The response header `X-GPUWorks-Priority-Scheduling` says whether the engine sch
 | `priority.ceiling` | The class a request runs at when the header names a class not in `reachable`. Equal to `own` under the "fixed" and "down only" policies |
 | `models` | The models the key may call, with the same `id` as `/v1/models`, in name order |
 | `models[].priority_scheduling` | How many running replicas schedule by priority: `all`, `some` or `none` (also `none` with no running replica) |
-| `models[].busy_reject` | Whether a request with the busy declaration is refused when the model is busy: `true` when no deployment of the model the key may call is PD-disaggregated or multi-node and every running replica states a concurrent-sequence cap in its launch arguments; `false` with no running replica |
+| `models[].busy_reject` | Whether a request with the busy declaration is refused when the model is busy: `true` when no deployment of the model the key may call is PD-disaggregated or multi-node and every running replica has known run slots (its launch arguments state a concurrent-sequence cap and a data-parallel size of 1); `false` with no running replica |
 
 A caller resolves a class by one rule: as named when it is in `reachable`, at `ceiling` otherwise; it does not need to reimplement the gateway's policies. Fields are only added, never changed, and a caller should ignore fields it does not know. An older server without this route treats it as a model request that names no model and, with a valid key, answers 400 `MODEL_REQUIRED`. Changes to classes and key bindings take effect as for requests (see [Request Priority](../explanation/request-priority.md)).
 
@@ -139,7 +139,7 @@ These are never refused, and are forwarded or handled by the existing rules:
 - the resend to another replica after a connection failure, and the replay after preemption;
 - auxiliary routes such as `/v1/tokenize`, and playground requests (the declaration is dropped).
 
-A refusal counts toward the deployment's gateway requests in the 429 class, leaves no request record and does not update the deployment's last request time. With several servers each counts only the in-flight requests it forwarded, so a request may go unrefused when it should have been refused, but is never refused wrongly. [Key Information](#key-information) lists `busy_reject` in `features` when the server honours the declaration, and `models[].busy_reject` says which models refuse.
+A refusal counts toward the deployment's gateway requests in the 429 class, leaves no request record and does not update the deployment's last request time. The steps that make a deployment take part are in [Connecting an Upstream Gateway](../explanation/request-priority.md#connecting-an-upstream-gateway), and the design trade-offs in [ADR 0083](../adr/0083-busy-rejection-for-upstream-gateways.md). With several servers each counts only the in-flight requests it forwarded, so a request may go unrefused when it should have been refused, but is never refused wrongly. [Key Information](#key-information) lists `busy_reject` in `features` when the server honours the declaration, and `models[].busy_reject` says which models refuse.
 
 ## Trace Context
 
@@ -264,6 +264,7 @@ Every `/v1` response, including a request refused before forwarding, carries `X-
 | `INVALID_API_KEY` | 401 | `authentication_error` | — | The API key is missing or invalid |
 | `MODEL_ACCESS_DENIED` | 403 | `permission_error` | `model` | This API key may not call the model (`params.model`) |
 | `MODEL_REQUIRED` | 400 | `invalid_request_error` | `model` | The request names no `model` |
+| `PRIORITY_CLASS_UNKNOWN` | 400 | `invalid_request_error` | — | The name in header `params.header` (`X-GPUWorks-Priority-Class`) is no priority class; refused under every key policy, without forwarding or waking a sleeping deployment |
 | `REQUEST_BODY_INVALID` | 400 | `invalid_request_error` | — | The request body cannot be read (multipart without a boundary, not a JSON object); `params.detail` says why |
 | `REQUEST_TOO_LARGE` | 413 | `invalid_request_error` | — | The request body exceeds the limit (`params.max_bytes`) |
 | `METHOD_NOT_ALLOWED` | 405 | `invalid_request_error` | — | The route only accepts `params.method` (such as `GET /v1/tokenize`); the response carries `Allow` |
@@ -323,9 +324,9 @@ Streaming SSE and binary responses (such as WAV) are forwarded with their origin
 <!-- translation-source-sha256: 7bf01655b1c8196029d9b3ac65802f9f07b54314ee15dfcd83cb02319629c518 ## Replica Selection and Retries -->
 <!-- translation-source-sha256: 6acb770e47b044aaa2f5ae020be8de5399e18f1c1a2ca8766b6335625d6cff3b ## Batches (Files and Batches) -->
 <!-- translation-source-sha256: 475124ec8de50b9072b50ee962f92870520b5df325b80187af159d220745f2a7 ## Tokenization (tokenize) -->
-<!-- translation-source-sha256: f58e813c16efd7420156a21d092c58c2a473ea51613acd92208ff4a509628474 ## Request Priority -->
-<!-- translation-source-sha256: 0a2b5cddf2dccdf08a1b141cc6daf8706982dd1ee9fecc3e82f13a461c311cf2 ### Key Information -->
-<!-- translation-source-sha256: fad44335bde56d02bab94f974f0b23a6903145718574e486d5b7210759e1fa13 ### Busy Rejection -->
+<!-- translation-source-sha256: 268eb45d34b0b5cc56820c7b8c2e43aa7de21ceadc07c0b804befbe8d8cc9ef0 ## Request Priority -->
+<!-- translation-source-sha256: f80543a00f9698b41620aff843c77a9096612b8267d49bf64c8f08c52cbb3ab0 ### Key Information -->
+<!-- translation-source-sha256: def6b84468123b8aa473ff723ab9cfc4626178aad57ec2006da3a7b54f87c20c ### Busy Rejection -->
 <!-- translation-source-sha256: 91d6198ea9bcfb40d784f10fa77320acb27b0b45bcb8fdb958cf4d46554ea647 ## Trace Context -->
 <!-- translation-source-sha256: 2b9c4f0c8955d7d09cb9fc312559725988923ab947e97e8e4f21fbe931ef9cdf ### Trace Identifiers and Request IDs -->
 <!-- translation-source-sha256: 19589bf0b20be8387b262c114cb369861640ef81042c8ac4039bd2b51d39dafe ### Connect to the Caller's Trace -->
@@ -333,6 +334,6 @@ Streaming SSE and binary responses (such as WAV) are forwarded with their origin
 <!-- translation-source-sha256: 9c37d4f05b6f03c9e6aff79e566c378a64251aaa8a9fdb9a0f2af24fb3a2745d ### Obtain Usage for Streaming Requests -->
 <!-- translation-source-sha256: b1aad95e9d7e77247af93d91aabebaafbbdcd7f28bfb207c6b8fec973a997271 ### Usage for Messages and Responses -->
 <!-- translation-source-sha256: 1e99cb203865e1dc47e85e652d668709bf98e039c55d60b02f03d99d54a77696 ### Source of Cache Hit Counts in PD Disaggregation Deployments -->
-<!-- translation-source-sha256: e6aa1f712d529c4a49e5b3acc9f38e5b9c68110db01f1e2bec742824a417dd0d ## Errors -->
+<!-- translation-source-sha256: fee33bb944cca4be6e883637cc154ca3c2e95c63807b4c4b1dd283d858c465ae ## Errors -->
 <!-- translation-source-sha256: 8ae89817b16c25868b3a33ebd10d60695c312cb82bf517b25aef2b73b85182c8 ## Playground -->
 <!-- translation-source-sha256: 9923f454eda93d5f4500f52ff744daba8ddd4870a4f1564e373d004af15c11b7 ## Differences and Troubleshooting -->

@@ -52,7 +52,8 @@ type KeyInfo struct {
 
 // KeyPriority is the key's priority binding as a client sees it
 // (priority.Reach): a class header naming a Reachable class runs at it, any
-// other at Ceiling; no header runs at Own.
+// other class at Ceiling (a name that is no class is refused); no header runs
+// at Own.
 type KeyPriority struct {
 	Own       KeyClass   `json:"own"`
 	Ceiling   KeyClass   `json:"ceiling"`

@@ -48,10 +48,10 @@ On the API Keys page an administrator can bind a key:
 - **Class**: the class the key's requests run at by default; unbound, the default class.
 - **What clients may ask for** (the policy); clients name a class with the request header `X-GPUWorks-Priority-Class: <name>`:
   - **Within ceiling** (the default): any class up to the **ceiling**; a higher one is lowered to the ceiling. Without a ceiling it is the key's own class; a ceiling cannot be below the key's own class.
-  - **Fixed**: the header is ignored.
-  - **Down only**: only classes up to the key's own.
+  - **Fixed**: requests always run at the key's own class; the class in the header has no effect.
+  - **Down only**: only classes up to the key's own; a higher one runs at the key's own class.
 
-Only within ceiling has a ceiling; saving another policy drops it. The name in the header is not case-sensitive; one that matches no class is refused with 400 before a deployment is chosen, so nothing is forwarded and no sleeping deployment is woken. Retries of a request and its replay after preemption run at the class decided first.
+Only within ceiling has a ceiling; saving another policy drops it. The name in the header is not case-sensitive; one that matches no class is refused with 400 `PRIORITY_CLASS_UNKNOWN` under all three policies (fixed included) before a deployment is chosen, so nothing is forwarded and no sleeping deployment is woken. Anonymous access without a key does not read the header and always uses the default class. Retries of a request and its replay after preemption run at the class decided first.
 
 ## Playground, Batches and Evaluations
 
@@ -78,9 +78,19 @@ A class change applies to the next request on the server that made it; with seve
 
 ## Observation
 
-- A gateway in front of GPUWorks can read a key's priority binding with `GET /v1/key`, together with how many running replicas of each model the key may call schedule by priority; see [OpenAI-Compatible Gateway](../reference/openai-gateway.md#key-information).
+- A gateway in front of GPUWorks can read a key's priority binding with `GET /v1/key`, together with how many running replicas of each model the key may call schedule by priority and whether the model can reject when busy; see [OpenAI-Compatible Gateway](../reference/openai-gateway.md#key-information) and [Connecting an Upstream Gateway](#connecting-an-upstream-gateway).
 - Every request record carries `priority_class` (the name of the class the request ran at), shown in the request detail; the request records API can filter by it (the `priority_class` parameter).
 - The Service quality page of Operations analytics has a "By request priority" table giving each class's requests, success rate and first-token and end-to-end quantiles. A low class can queue for long while a high one keeps the engine saturated, which the totals hide; this table shows it. Requests from before priority classes count as "Unrecorded", their class unknown.
+
+## Connecting an Upstream Gateway
+
+Another gateway can sit in front of GPUWorks, with other upstreams (a public cloud, for example) behind the same model name. Such a gateway uses `X-GPUWorks-Priority-Class` to have important requests handled first in GPUWorks, and [busy rejection](../reference/openai-gateway.md#busy-rejection) to divert at once when there is no local room. The design trade-offs are in [ADR 0083](../adr/0083-busy-rejection-for-upstream-gateways.md). On the GPUWorks side there are three steps:
+
+1. **Give the API key the gateway uses the policy "Within ceiling"**, with the ceiling set to the highest class the gateway may use (for example `critical`), and the key's own class no higher than `high`. A gateway usually sends the header only on the requests it raises; its ordinary requests carry none and run at the key's own class. When the key's own class is above `high` (for example `critical`), the gateway's requests marked `high` rank below its ordinary unmarked ones. Without a ceiling the ceiling is the key's own class, and a higher class in the header is silently lowered to it.
+2. **Turn on "Request priority" for the deployments that should schedule by priority**; see [The Switch on a Deployment](#the-switch-on-a-deployment). Deployments created before an upgrade have it off.
+3. **For deployments that should take part in busy rejection, state the concurrent-sequence limit in the launch arguments**: "Maximum Concurrent Sequences" in the deploy form (parameter `max_num_seqs`, that is vLLM `--max-num-seqs` and SGLang `--max-running-requests`), or the same parameter stated in the inference template or custom arguments. Left empty, the engine derives it from GPU memory, GPUWorks does not know the value, and the deployment never rejects; only some built-in inference templates state it. PD-disaggregated and multi-node deployments do not take part in busy rejection.
+
+Afterwards, call `GET /v1/key` with the gateway's key to check (see [Key Information](../reference/openai-gateway.md#key-information)): `priority.own` and `priority.ceiling` are the classes set in step 1; `models[].priority_scheduling` is `all` when step 2 is in effect for every running replica (changing the switch rebuilds replicas, and until then it is `some` or `none`); `models[].busy_reject` is `true` when step 3 is in effect. The response headers `X-GPUWorks-Priority-Class` and `X-GPUWorks-Priority-Scheduling` of each answer give the class actually used and whether the engine scheduled by it.
 
 ## Effects and Limits
 
@@ -88,14 +98,15 @@ A class change applies to the next request on the server that made it; with seve
 - In vLLM, a new high-priority request does not displace running requests; it waits for a slot under `--max-num-seqs`. Only when KV cache runs short is the lowest-priority, latest-arriving request preempted. A preempted streaming request pauses for a few seconds and then continues with complete output.
 - In SGLang, a new request whose priority exceeds a running request's by more than 10 (the default `--priority-scheduling-preemption-threshold`, strictly greater) preempts it at once; the preempted request resumes from the prefix cache.
 - Both engines use strict priority with no aging by waiting time: under sustained saturation, low-priority requests can wait without bound.
-- Priority only takes effect inside one replica; the gateway does not consider it when choosing among replicas.
+- Priority only takes effect inside one replica; the gateway does not consider it when choosing among replicas. Requests with the busy declaration are the exception: when judging whether a replica has room the gateway counts only the in-flight requests at this request's priority or above, but it still chooses among the replicas with room by the deployment's routing policy.
 - Measured on a single NVIDIA card, turning it on changed throughput, time to first token and prefix-cache hit rate for same-priority load by no more than measurement noise.
 
 <!-- translation-source-sha256: d7e74375c5cd59bb288240923a8a8f631dac536b5e4f4511c9f8d60b5ba72683 # Request Priority -->
 <!-- translation-source-sha256: 0cbe3098670221077975fb0d59dc1994dd3810d41b38fc6bd0e64f49c655b47b ## The Switch on a Deployment -->
 <!-- translation-source-sha256: e68bb5553e31da8b61d16b83d68a2774087b167273eaee5b406fa2db9bda789c ## Priority Classes -->
-<!-- translation-source-sha256: f0a7820bbc07bf6371c3bca95173ce56cff7911ed57b1fededa72e983b3e3c3f ## Key Binding and Client Choice -->
+<!-- translation-source-sha256: 79a42ca4732c0d2c8691e80b541bd1984cd98117902a03aba80f9efe56474e29 ## Key Binding and Client Choice -->
 <!-- translation-source-sha256: c3e6ec30b3d17ad88cb0201462ebf5a15443cfeae174275ada4509afa8650ba4 ## Playground, Batches and Evaluations -->
 <!-- translation-source-sha256: ad69b3aed66393ea5f9b0dd604ead45756bffa34984279967de5b7bbf42a6151 ## How the Gateway Writes the Priority -->
-<!-- translation-source-sha256: ce77e6de19b8a69563d30b07bd48e740237687c9651ffb3b60fa897581b94905 ## Observation -->
-<!-- translation-source-sha256: 5e0426da219374b5c19bb1f5d43a757cafcd926fc2a70946b98e34b2372af3ba ## Effects and Limits -->
+<!-- translation-source-sha256: 01165cd92505eddcfc41e12f3f1b2759daed743432a39e7cb6e4dbd6fe26919c ## Observation -->
+<!-- translation-source-sha256: 6be6137f5187a29d1a1852aba1bce2c31de0f3d6c7e58de3377f051b4f88e2d6 ## Connecting an Upstream Gateway -->
+<!-- translation-source-sha256: 65b9962e5e790ca2a90184681bb953e3e16d92ac2d29a26c7fced6deeb617fcc ## Effects and Limits -->
