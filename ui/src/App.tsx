@@ -5,7 +5,9 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import AppSidebar from "./app/AppSidebar";
 import ConsoleBanners from "./app/ConsoleBanners";
 import ConsoleManifestWait from "./app/ConsoleManifestWait";
+import { lazyPage } from "./app/lazyPage";
 import { ConsoleIcon } from "./ui-kit/consoleIcons";
+import { Spinner } from "./ui-kit/Spinner";
 
 const AssistantIcon = ConsoleIcon.assistant;
 import UpdateNotice from "./components/UpdateNotice";
@@ -13,41 +15,14 @@ import NoticeBell from "./components/NoticeBell";
 import AssistantPanel from "./assistant/AssistantPanel";
 import { AssistantProvider, useAssistant } from "./assistant/AssistantContext";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
-import NodesPage from "./pages/NodesPage";
-import DashboardPage from "./pages/DashboardPage";
-import MonitorPage from "./pages/monitor/MonitorPage";
-import ServiceMonitorPage from "./pages/monitor/ServiceMonitorPage";
-import AnalyticsPage from "./pages/analytics/AnalyticsPage";
-import ModelsPage from "./pages/ModelsPage";
-import InferenceTemplatesPage from "./pages/InferenceTemplatesPage";
-import InferenceTemplateDetailPage from "./pages/InferenceTemplateDetailPage";
-import DeployPage from "./pages/DeployPage";
-import DeploymentsPage from "./pages/DeploymentsPage";
-import SchedulingPage from "./pages/SchedulingPage";
-import BatchesPage from "./pages/BatchesPage";
-import EvaluationsPage from "./pages/EvaluationsPage";
-import EvaluationDetailPage from "./pages/evaluations/EvaluationDetailPage";
-import EvaluationComparePage from "./pages/evaluations/EvaluationComparePage";
-import APIKeysPage from "./pages/APIKeysPage";
-import CloudProvidersPage from "./pages/CloudProvidersPage";
-import SettingsPage from "./pages/SettingsPage";
-import LogsPage from "./pages/LogsPage";
 import SessionBoundary from "./components/SessionBoundary";
 import ClusterUpgradeBoundary from "./components/ClusterUpgradeScreen";
 import UserMenu from "./components/UserMenu";
-import NotFoundPage from "./pages/NotFoundPage";
-import ImagesPage from "./pages/ImagesPage";
-import StoragePage from "./pages/StoragePage";
 import { StorageDetailRedirect } from "./pages/storage/storageLinks";
-import NetworksPage from "./pages/networks/NetworksPage";
-import NetworkTopologyGuide from "./pages/networks/topology/NetworkTopologyGuide";
 import { NetworkDetailRedirect } from "./pages/networks/networkLinks";
-import GPUPage from "./pages/GPUPage";
-import TerminalPage from "./pages/TerminalPage";
 import AppErrorBoundary from "./components/AppErrorBoundary";
-import PlaygroundPage from "./pages/playground/PlaygroundPage";
 import { signOutPlayground } from "./pages/playground/conversations/useConversations";
 import LanguageSwitcher from "./components/LanguageSwitcher";
 import { BrandMark, useBranding, useDocumentBranding } from "./branding";
@@ -65,6 +40,36 @@ import "./pages/batches/batches.css";
 import "./pages/scheduling/heatmap.css";
 import "./pages/playground/playground.css";
 
+// Each page is its own chunk: the shell paints and the first page asks for
+// its data without downloading and parsing every other page with it.
+const NodesPage = lazyPage(() => import("./pages/NodesPage"));
+const DashboardPage = lazyPage(() => import("./pages/DashboardPage"));
+const MonitorPage = lazyPage(() => import("./pages/monitor/MonitorPage"));
+const ServiceMonitorPage = lazyPage(() => import("./pages/monitor/ServiceMonitorPage"));
+const AnalyticsPage = lazyPage(() => import("./pages/analytics/AnalyticsPage"));
+const ModelsPage = lazyPage(() => import("./pages/ModelsPage"));
+const InferenceTemplatesPage = lazyPage(() => import("./pages/InferenceTemplatesPage"));
+const InferenceTemplateDetailPage = lazyPage(() => import("./pages/InferenceTemplateDetailPage"));
+const DeployPage = lazyPage(() => import("./pages/DeployPage"));
+const DeploymentsPage = lazyPage(() => import("./pages/DeploymentsPage"));
+const SchedulingPage = lazyPage(() => import("./pages/SchedulingPage"));
+const BatchesPage = lazyPage(() => import("./pages/BatchesPage"));
+const EvaluationsPage = lazyPage(() => import("./pages/EvaluationsPage"));
+const EvaluationDetailPage = lazyPage(() => import("./pages/evaluations/EvaluationDetailPage"));
+const EvaluationComparePage = lazyPage(() => import("./pages/evaluations/EvaluationComparePage"));
+const APIKeysPage = lazyPage(() => import("./pages/APIKeysPage"));
+const CloudProvidersPage = lazyPage(() => import("./pages/CloudProvidersPage"));
+const SettingsPage = lazyPage(() => import("./pages/SettingsPage"));
+const LogsPage = lazyPage(() => import("./pages/LogsPage"));
+const NotFoundPage = lazyPage(() => import("./pages/NotFoundPage"));
+const ImagesPage = lazyPage(() => import("./pages/ImagesPage"));
+const StoragePage = lazyPage(() => import("./pages/StoragePage"));
+const NetworksPage = lazyPage(() => import("./pages/networks/NetworksPage"));
+const NetworkTopologyGuide = lazyPage(() => import("./pages/networks/topology/NetworkTopologyGuide"));
+const GPUPage = lazyPage(() => import("./pages/GPUPage"));
+const TerminalPage = lazyPage(() => import("./pages/TerminalPage"));
+const PlaygroundPage = lazyPage(() => import("./pages/playground/PlaygroundPage"));
+
 
 export default function App() {
   return (
@@ -75,7 +80,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Navigate to="/dashboard" replace />} />
             {/* The terminal uses the full viewport and shares the session gate. */}
-            <Route path="/nodes/:uuid/terminal" element={<TerminalPage />} />
+            <Route path="/nodes/:uuid/terminal" element={<Suspense fallback={<PageLoading />}><TerminalPage /></Suspense>} />
             <Route path="*" element={<AuthenticatedShell onLogout={logout} />} />
           </Routes>
         </AppErrorBoundary>}
@@ -121,6 +126,7 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
         <main className="app-content"><div className="app-page">
           <ConsoleBanners />
           <ConsoleManifestWait>
+          <Suspense fallback={<PageLoading />}>
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/login" element={<Navigate to="/dashboard" replace />} />
@@ -163,6 +169,7 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
             ))}
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
+          </Suspense>
           </ConsoleManifestWait>
         </div></main>
       </div>
@@ -171,6 +178,13 @@ function AuthenticatedShell({ onLogout }: { onLogout: () => Promise<void> }) {
     </div>
     </AssistantProvider>
   );
+}
+
+// PageLoading stands in the content area while a page's chunk arrives, as an
+// extension's page does while its module loads.
+function PageLoading() {
+  const { t } = useTranslation("common");
+  return <Spinner label={t("consoleExtension.loading")} />;
 }
 
 // AssistantHeaderButton opens the resident assistant from any page (also ⌘I / Ctrl+I).
