@@ -170,6 +170,35 @@ func StoredPlacement(placement map[string]any, automatic bool) map[string]any {
 	return out
 }
 
+// PlacementForNode is StoredPlacement for a deployment that will run on node:
+// the card indexes the node does not report are dropped, and the node's
+// scheduler picks its own cards. An index names a card on one machine, so an
+// edit that moves a deployment to another node carries the old node's card
+// choice only as far as the new node can honor it (GWKS-522); keeping it
+// would store a placement the launch can never resolve.
+func PlacementForNode(placement map[string]any, automatic bool, node *store.Node) map[string]any {
+	out := StoredPlacement(placement, automatic)
+	if node == nil || out == nil {
+		return out
+	}
+	parsed, err := planning.ParsePlacement(out)
+	if err != nil || len(parsed.GPUIndexes) == 0 {
+		return out
+	}
+	cards := parsed.CardsOn(node)
+	if len(cards.GPUIndexes) == len(parsed.GPUIndexes) {
+		return out
+	}
+	// One spelling in, one spelling out: "gpus" is what the stored document
+	// means, and what both readers prefer when a document has both.
+	delete(out, "gpus")
+	delete(out, "gpu_indexes")
+	if len(cards.GPUIndexes) > 0 {
+		out["gpus"] = cards.GPUIndexes
+	}
+	return out
+}
+
 // RequestNode is the node a single-node create names, with its GPUs.
 // Automatic placement names the node its evaluation picked, so a create names
 // one either way; naming none, or a node that does not exist, is a field
