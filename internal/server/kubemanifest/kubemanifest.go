@@ -251,23 +251,14 @@ func Render(p Params) (string, error) {
 	if err := p.Validate(); err != nil {
 		return "", err
 	}
-	keys := make([]string, 0, len(p.NodeSelector))
-	for k := range p.NodeSelector {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	type kv struct{ K, V string }
-	selector := make([]kv, 0, len(keys))
-	for _, k := range keys {
-		selector = append(selector, kv{k, p.NodeSelector[k]})
-	}
+	selector := sortedSelector(p.NodeSelector)
 	poolIDs := append([]string(nil), p.PoolIDs...)
 	sort.Strings(poolIDs)
 	// The agent carries no vendor's mounts: it reads the host's files
 	// through the host's root and runs vendor CLIs there (hostPID). The
 	// NVIDIA variables only take effect under NVIDIA's runtime, where they
 	// put the driver's nvidia-smi into the agent's container.
-	env := []kv{{"NVIDIA_DRIVER_CAPABILITIES", "compute,utility"}, {"NVIDIA_VISIBLE_DEVICES", "all"}}
+	env := []selectorEntry{{"NVIDIA_DRIVER_CAPABILITIES", "compute,utility"}, {"NVIDIA_VISIBLE_DEVICES", "all"}}
 	apiHost, apiPort := "", ""
 	if p.APIServer != "" {
 		apiHost, apiPort, _ = ParseAPIServer(p.APIServer)
