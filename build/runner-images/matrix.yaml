@@ -283,11 +283,17 @@ items:
       CUDA 13 的 sglang 档，含 diffusion 依赖（从 base 的 sglang 源码树安装，
       装不上即构建失败）。
 
+  # Out of the catalog: sglang 0.5.23 fails to serve MiniCPM-V 4.6 models
+  # (MiniCPMV4_6 object has no attribute shared_experts_config; GWKS-505), and
+  # on a 24 GiB card its 0.88 default leaves too little for warm-up. The image
+  # itself the build and the record stay; lift this flag when a fixed release
+  # (r3) exists and is verified on that model.
   - id: cuda13.0-sglang0.5.23
     revision: r2
     backend: cuda
     builder: prebuilt
     engine: sglang
+    catalog: false
     artifact: quay.io/gpuworks/gpuworks-runner@sha256:fbc5b7ccf18c3ccdebb87829b6ff6e3cd71d65509ca171969556f6ff41641277
     args: {SGLANG_VERSION: "0.5.23", FRAMEWORK_VERSION: "13.0"}
     note: >-

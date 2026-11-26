@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
-  "catalog_version": "2026-11-25.e54abab6",
-  "sha256": "f0223ad43195a6105d2e7f1f33b3a14b174958864e8b2a7020c3c1cb7c03ccaf",
+  "catalog_version": "2026-11-26.6f8a46fd",
+  "sha256": "2d3ed7c97bcef538b36812b220c2ba1236b25db05b0eeacc8eb07491b1266c9f",
   "series": [
     {
       "name": "MLX Audio · Metal",
@@ -152,18 +152,6 @@
             "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2"
           ],
           "notes": "CUDA 13 的 sglang 档，含 diffusion 依赖（从 base 的 sglang 源码树安装， 装不上即构建失败）。\nrequires: engine, engine_import, diffusion, overlays"
-        },
-        {
-          "name": "cuda13.0-sglang0.5.23-r2",
-          "image_ref": "gpuworks/gpuworks-runner:cuda13.0-sglang0.5.23-r2",
-          "engine_version": "0.5.23",
-          "framework_version": "13.0",
-          "arch": "multi",
-          "registry_sources": [
-            "quay.io/gpuworks/gpuworks-runner:cuda13.0-sglang0.5.23-r2",
-            "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:cuda13.0-sglang0.5.23-r2"
-          ],
-          "notes": "CUDA 13 的 sglang 0.5.23 档，含 diffusion 依赖，amd64 与 arm64。"
         }
       ]
     },
