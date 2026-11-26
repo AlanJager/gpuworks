@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"strings"
 	"testing"
 
@@ -62,17 +61,48 @@ func pinnedToCardOne(t *testing.T, h *apiHandlers, modelID uint) dto.Deployment 
 	return dep
 }
 
+// cardNotOnNode is the code and params of a request naming card 1 on the
+// one-card node; refusedBody is the whole 400 body a create or edit answers.
+const (
+	cardNotOnNode = `"code":"PLACEMENT_GPU_NOT_ON_NODE","params":{"gpu_index":1,"node":"one-card","node_gpus":1}`
+	refusedBody   = `{"code":"PLACEMENT_GPU_NOT_ON_NODE","error":"node one-card has no GPU with index 1; it reports 1 usable GPUs","params":{"gpu_index":1,"node":"one-card","node_gpus":1}}`
+)
+
 // GWKS-522: a deployment pinned to card 1 of a two-card node is edited onto a
-// one-card node while the form still carries the card choice made for the old
-// node. An index names a card on one machine, so the edit writes the
-// deployment without it and the scheduler picks the new node's cards, instead
-// of the save failing with "has no GPU with index 1".
-func TestEditOntoAnotherNodeDropsTheOldNodesCards(t *testing.T) {
+// one-card node while the request still carries the card chosen on the old
+// node. An index names a card on one machine, so the edit is refused with the
+// node, the index and the node's card count, and the stored deployment is
+// untouched.
+func TestEditOntoAnotherNodeRefusesTheOldNodesCards(t *testing.T) {
+	h, st, modelID := twoNodesFixture(t)
+	dep := pinnedToCardOne(t, h, modelID)
+	before, err := st.GetDeployment(dep.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := editBody(t, h, dep.ID, `"node_uuid":"two-card"`, `"node_uuid":"one-card"`)
+	status, resp := putEdit(t, h, dep.ID, body, false)
+	if status != http.StatusBadRequest || strings.TrimSpace(resp) != refusedBody {
+		t.Fatalf("edit = %d %s, want 400 %s", status, resp, refusedBody)
+	}
+	after, err := st.GetDeployment(dep.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.NodeID != before.NodeID || after.Placement != before.Placement {
+		t.Fatalf("refused edit changed the deployment: node %d→%d placement %s→%s", before.NodeID, after.NodeID, before.Placement, after.Placement)
+	}
+}
+
+// The same move without a card choice - what the form sends, since a changed
+// node clears it - saves, and the stored placement names no card: the new
+// node's scheduler picks them.
+func TestEditOntoAnotherNodeWithoutCardsSaves(t *testing.T) {
 	h, st, modelID := twoNodesFixture(t)
 	dep := pinnedToCardOne(t, h, modelID)
 	body := editBody(t, h, dep.ID,
 		`"node_uuid":"two-card"`, `"node_uuid":"one-card"`,
-		`"placement":{"gpus":[1],"tp":1}`, `"placement":{"gpus":[1],"tp":1}`)
+		`"placement":{"gpus":[1],"tp":1}`, `"placement":{"tp":1}`)
 	status, resp := putEdit(t, h, dep.ID, body, false)
 	if status != http.StatusOK {
 		t.Fatalf("edit = %d %s", status, resp)
@@ -81,18 +111,19 @@ func TestEditOntoAnotherNodeDropsTheOldNodesCards(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(row.Placement, `"gpus"`) {
-		t.Fatalf("stored placement keeps the old node's card: %s", row.Placement)
+	oneCard, err := st.NodeWithGPUs("one-card")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if row.NodeID == 0 || row.Placement != `{"tp":1}` {
-		t.Fatalf("stored deployment node=%d placement=%s", row.NodeID, row.Placement)
+	if row.NodeID != oneCard.ID || row.Placement != `{"tp":1}` {
+		t.Fatalf("stored deployment node=%d (want %d) placement=%s", row.NodeID, oneCard.ID, row.Placement)
 	}
 }
 
-// The same edit previewed (the form sends the deployment it edits): the
-// evaluation plans the new node with the cards it has instead of failing on
-// the old node's index, and names no "deployment 0".
-func TestEvaluateOnAnotherNodeDropsTheOldNodesCards(t *testing.T) {
+// The edit previewed (the form sends the deployment it edits): the card the
+// old node had is a field error on placement.gpus with the same code, not a
+// launch failure naming "deployment 0".
+func TestEvaluateOnAnotherNodeRefusesTheOldNodesCards(t *testing.T) {
 	h, _, modelID := twoNodesFixture(t)
 	dep := pinnedToCardOne(t, h, modelID)
 	body := fmt.Sprintf(`{"name":"moved","model_id":%d,"engine":"vllm","node_uuid":"one-card","image":"example/engine:test","placement":{"gpus":[1],"tp":1},"quick_params":{},"deployment_id":%d}`, modelID, dep.ID)
@@ -101,32 +132,19 @@ func TestEvaluateOnAnotherNodeDropsTheOldNodesCards(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("evaluate = %d %s", rec.Code, rec.Body)
 	}
-	var resp dto.EvaluateResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
-		t.Fatal(err)
+	if want := `{"field":"placement.gpus",` + cardNotOnNode + `}`; !strings.Contains(rec.Body.String(), want) {
+		t.Fatalf("evaluate lacks %s\n%s", want, rec.Body)
 	}
-	if !resp.OK {
-		t.Fatalf("evaluate refused a placement the node can run: %s", rec.Body)
+	if !strings.Contains(rec.Body.String(), `"ok":false`) || strings.Contains(rec.Body.String(), "deployment 0") {
+		t.Fatalf("evaluate = %s", rec.Body)
 	}
-	if strings.Contains(rec.Body.String(), "deployment 0") {
-		t.Fatalf("preview names deployment 0: %s", rec.Body)
-	}
-	if len(resp.Errors) > 0 {
-		t.Fatalf("evaluate errors = %+v", resp.Errors)
-	}
-	// The plan ran: the preview picked the new node's own card, not the
-	// index the request carried over from the old one.
-	var wire struct {
-		Plan struct {
-			Plan struct {
-				GPUs []int `json:"gpus"`
-			} `json:"plan"`
-		} `json:"plan"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &wire); err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(wire.Plan.Plan.GPUs, []int{0}) {
-		t.Fatalf("planned gpus = %v, want [0] (the one-card node's only card)", wire.Plan.Plan.GPUs)
+}
+
+// A create naming a card its node does not report is refused the same way.
+func TestCreateRefusesACardTheNodeDoesNotReport(t *testing.T) {
+	h, _, modelID := twoNodesFixture(t)
+	code, resp := createOnTwoCards(t, h, fmt.Sprintf(`{"name":"elsewhere","model_id":%d,"engine":"vllm","node_uuid":"one-card","image":"example/engine:test","placement":{"gpus":[1],"tp":1},"quick_params":{}}`, modelID))
+	if code != http.StatusBadRequest || strings.TrimSpace(resp) != refusedBody {
+		t.Fatalf("create = %d %s, want 400 %s", code, resp, refusedBody)
 	}
 }

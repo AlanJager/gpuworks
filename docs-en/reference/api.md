@@ -1554,17 +1554,18 @@ Independent request-level checks report their errors together. Request-level fie
 
 - Quick parameters use the dictionary key directly (the form field name), such as `max_model_len` and `gpu_memory_utilization`.
 - Request-level fields use their names in the request JSON: `replicas`, `nnodes`, `engine`, `target_vendor`, `extra_args`,
-  `quick_params_unset`, `master_port`, `placement`, `placement.tp`, `placement.pp`, `node_requirements`,
+  `quick_params_unset`, `master_port`, `placement`, `placement.gpus`, `placement.tp`, `placement.pp`, `node_requirements`,
   `placement_strategy`, `partition_backend`, `start_timeout_sec`, and `health_check_threshold_sec`.
 - `node_uuids` (the multi-node list) maps to the `distributed_nodes` control in the form; when an automatic multi-node request cannot pick nodes or lacks `placement.tp`, the error is attributed to `placement_mode`.
 - All additional mount rows map to `container_mount_rows` (the request carries only user-added mounts, without row numbers).
 - Docker argument errors map to `container_docker_args`, and shared memory size errors map to `container_shm_gib`.
 - **Errors with an empty `field` string do not belong to any control**: failures unrelated to an individual parameter, such as launch assembly or placement simulation failures
-  (for example, the node does not have the specified GPU index, or no runtime image is available), use this form. Clients must merge them into page-level
+  (for example, no runtime image is available), use this form. Clients must merge them into page-level
   messages and must not attach them to parameter controls.
 
 The rules cover replica shape (`REPLICAS_NEGATIVE`/`REPLICAS_TOO_MANY`/`DISTRIBUTED_REPLICA_COUNT`),
 node requirements (`NODE_REQUIREMENTS_INVALID`/`NODE_REQUIREMENTS_UNMET`), placement strategy (`PLACEMENT_STRATEGY_INVALID`),
+named cards (`PLACEMENT_GPU_NOT_ON_NODE`: `placement.gpus` names an index the selected node does not have, `params.node`/`gpu_index`/`node_gpus`),
 vendor (`TARGET_VENDOR_INVALID`), engine (`ENGINE_INVALID`),
 extra_args parsing (`EXTRA_ARGS_INVALID`), mounts (`MOUNT_CONTAINER_PATH`/`MOUNT_HOST_PATH`/
 `MOUNT_TARGET_DUPLICATE`/`MOUNT_TARGET_NESTED`/`MOUNT_VOLUME_INVALID`), JSON parameters (`QUICK_PARAM_JSON_INVALID`),
@@ -2520,7 +2521,7 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: 6ddc68a02f5cb22b8e620e368c46524ef8c9626138d69e78a25e2a7a68fab526 ### Health Checks -->
 <!-- translation-source-sha256: e7d8e9be1155b1cfb96a1b2f3ce361296581c5a25ffcd642194d34d4e6790bf0 ### Automatically Placed Multi-Node and PD Deployments -->
 <!-- translation-source-sha256: 4746449fc90f7cb2d9e16e5561c9f3741478453fa0b9ef38fbeb11182ab55bf9 ### Evaluation Requests and Acquisition Estimates -->
-<!-- translation-source-sha256: 7dc71e6b90d4dbf5934073cc9e8db4e6604b8b5068d599dc3056ebb243c4e1c9 ### Evaluation Field Errors (`errors[]`) and `ok=false` Semantics -->
+<!-- translation-source-sha256: 71c3d64e6ba23ad708131380fac2b428ff13c37b49d77758531ad719255f10f1 ### Evaluation Field Errors (`errors[]`) and `ok=false` Semantics -->
 <!-- translation-source-sha256: 88cb849dfd035df08ee25bd8d0c73481757feb4d58dfb56df3c289608515e1b7 ### PD Disaggregation Deployments (`placement.pd`) -->
 <!-- translation-source-sha256: 12626c939c377f3d9b6d4039f0c8e5e179d8e8daecfc32db0218d7b5dcb4a510 ## Benchmarks -->
 <!-- translation-source-sha256: ecb6a1c6841684be7b5314d1fce4a0d700ecba4806a10f86a4bdc041fac42253 ## Profiles / GPUs (Estimation Calibration and GPU Inventory) -->

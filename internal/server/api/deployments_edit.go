@@ -264,8 +264,11 @@ func (a *apiHandlers) editedDeployment(ctx context.Context, dep *store.Deploymen
 		} else if req.VRAMLimitGiB > 0 {
 			next.PartitionBackend = strings.TrimSpace(req.PartitionBackend)
 		}
-		placement := deployment.PlacementForNode(req.Placement, deployment.IsAutomaticPlacement(req), node)
+		placement := deployment.StoredPlacement(req.Placement, deployment.IsAutomaticPlacement(req))
 		if _, err := planning.ParsePlacement(placement); err != nil {
+			return bad(err)
+		}
+		if err := deployment.RequestCardsOnNode(req, node); err != nil {
 			return bad(err)
 		}
 		next.Placement = keepEquivalentJSON(dep.Placement, jsonStr(placement))

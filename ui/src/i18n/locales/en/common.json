@@ -863,6 +863,7 @@
     "UNIT_PLACEMENT_NONE": "No group of nodes can take this deployment (of {{nodes}} nodes): {{reasons}}",
     "AUTO_PLACEMENT_TP_REQUIRED": "Automatic placement of a multi-node deployment needs a tensor parallel (TP) degree, so the platform knows how many GPUs each node gives a rank.",
     "AUTO_PLACEMENT_PD_MULTI_NODE": "Automatic placement takes PD instances that fit one node, but the {{role}} role's instances span nodes. Switch to manual placement and name their nodes.",
+    "PLACEMENT_GPU_NOT_ON_NODE": "Node {{node}} has no GPU with index {{gpu_index}} (it has {{node_gpus}} usable GPUs). A GPU index names a card on one node; choose cards on this node again, or leave them for the scheduler.",
     "PLACEMENT_MODE_SHAPE": "A single-node deployment states its placement in its node requirements; automatic and manual placement apply to multi-node and PD deployments.",
     "BATCH_NOT_FOUND": "The batch or file was not found, or its output has expired and was deleted.",
     "BATCH_NOT_CANCELLABLE": "The batch can no longer be cancelled: it has finished or is assembling its results.",
