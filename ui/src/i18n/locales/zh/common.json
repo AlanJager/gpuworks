@@ -888,6 +888,7 @@
     "ACCELERATOR_CARD_MISSING": "实例所在的 GPU（{{resource}}）已不在节点上。",
     "DISTRIBUTED_NETWORK_UNAVAILABLE": "无法为多机推理选定网卡：{{detail}}",
     "MODEL_PATH_UNAVAILABLE": "模型目录 {{resource}} 不可用：{{detail}}",
+    "MODEL_PATH_MISSING": "节点上没有模型目录 {{resource}}。已撤销这份记录，下次启动前会重新获取模型。",
     "ENGINE_PORT_REFUSED": "节点上的端口 {{port}} 已被占用，未启动任何内容。",
     "ENGINE_PORT_IN_USE": "端口 {{port}} 上响应的是另一个引擎（{{detail}}）。",
     "IMAGE_PULL_FAILED": "镜像拉取失败：{{detail}}",

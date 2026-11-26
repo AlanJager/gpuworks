@@ -888,6 +888,7 @@
     "ACCELERATOR_CARD_MISSING": "The GPU this instance is placed on ({{resource}}) is no longer on the node.",
     "DISTRIBUTED_NETWORK_UNAVAILABLE": "No network interface could be chosen for multi-node inference: {{detail}}",
     "MODEL_PATH_UNAVAILABLE": "The model directory {{resource}} is unavailable: {{detail}}",
+    "MODEL_PATH_MISSING": "The model directory {{resource}} is not on the node. Its record was removed, and the model is fetched again before the next start.",
     "ENGINE_PORT_REFUSED": "Port {{port}} is already in use on the node; nothing was started.",
     "ENGINE_PORT_IN_USE": "Another engine answers on port {{port}} ({{detail}}).",
     "IMAGE_PULL_FAILED": "The image could not be pulled: {{detail}}",
