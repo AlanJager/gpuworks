@@ -97,3 +97,40 @@ func TestImageCatalogSimplifyMigrationIsIdempotent(t *testing.T) {
 		t.Fatalf("migration marker: %v", err)
 	}
 }
+
+func TestReconcilePreservesInstalledTemplateMirror(t *testing.T) {
+	st, err := Open("file:installed-template-pin?mode=memory&cache=shared", bus.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	const canonical = "gpuworks/gpuworks-runner:old-r1"
+	const mirror = "quay.io/" + canonical
+	row, err := st.UpsertImage(&Image{ImageRef: canonical, Source: "official", Enabled: true, RegistrySources: `["` + mirror + `"]`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	model := InferenceModel{ModelID: "org/held", Source: "user"}
+	if err = st.DB().Create(&model).Error; err != nil {
+		t.Fatal(err)
+	}
+	spec := InferenceSpecRow{ModelID: model.ID, Source: "user", Name: "old", Engine: "vllm", Image: mirror, WeightSources: "[]", GPUs: "{}"}
+	if err = st.DB().Create(&spec).Error; err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if _, _, err = st.ReconcileMissingOfficialImages(nil, "next"); err != nil {
+			t.Fatal(err)
+		}
+		got, err := st.ResolveImageRef(mirror)
+		if err != nil || got.ID != row.ID || got.AutoSelect != "manual" || !got.Enabled || got.Deprecated || got.ImageRef != canonical {
+			t.Fatalf("retained row %+v: %v", got, err)
+		}
+	}
+	if err = st.DB().Delete(&spec).Error; err != nil {
+		t.Fatal(err)
+	}
+	if deleted, _, err := st.ReconcileMissingOfficialImages(nil, "later"); err != nil || deleted != 1 {
+		t.Fatalf("dropped template: deleted %d: %v", deleted, err)
+	}
+}

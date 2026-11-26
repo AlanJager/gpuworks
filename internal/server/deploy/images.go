@@ -50,6 +50,8 @@ type ImageCandidate struct {
 	Source     string
 	Deprecated bool
 	Enabled    bool
+	// AutoSelect limits automatic selection to a CPU architecture or to manual choice.
+	AutoSelect string
 	// RollingTag marks a tag whose content moves (latest, nightly, ...). It
 	// may be chosen by hand but is never picked automatically: two replicas
 	// of one deployment could otherwise run different builds.
@@ -154,7 +156,7 @@ func ResolveImageCatalog(t ImageTarget, candidates []ImageCandidate) ImageResolu
 	var best *ImageCandidate
 	for i := range candidates {
 		candidate := &candidates[i]
-		if candidate.RollingTag || !imageCandidateEligible(t, *candidate) {
+		if (candidate.AutoSelect == "manual" || (candidate.AutoSelect != "" && candidate.AutoSelect != normalizeArch(t.PlatformArch))) || candidate.RollingTag || !imageCandidateEligible(t, *candidate) {
 			continue
 		}
 		compatible, score := catalogCompatibility(t, targetVendor, *candidate)
@@ -187,6 +189,9 @@ func ResolveImageCatalog(t ImageTarget, candidates []ImageCandidate) ImageResolu
 // and host architecture decide it; the chip family only orders the automatic
 // pick (chipFamilyWeight), so every image stays a manual choice.
 func ImageCandidateSelectable(t ImageTarget, candidate ImageCandidate) bool {
+	if candidate.AutoSelect != "" && candidate.AutoSelect != "manual" && t.PlatformArch != "" && candidate.AutoSelect != normalizeArch(t.PlatformArch) {
+		return false
+	}
 	return imageCandidateEligible(t, candidate)
 }
 

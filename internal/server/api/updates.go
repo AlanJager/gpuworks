@@ -188,7 +188,7 @@ func (a *apiHandlers) getUpdates(w http.ResponseWriter, r *http.Request) {
 	// build the channel never published has no such order, so the channel's
 	// catalogs stay on offer.
 	catalogsBehind := index.Server.OlderThan(version.Version, version.BuildDate) && !status.Server.UnpublishedBuild
-	if catalog := index.ImageCatalog; catalog != nil {
+	if catalog := index.CurrentImageCatalog(); catalog != nil {
 		status.ImageCatalog.Latest = catalog.Version
 		// An uploaded catalog differs from the channel's because someone chose
 		// it: the channel's is not offered as its update, and applying it is a

@@ -109,7 +109,7 @@ server 版本、系统镜像目录与内置推理模板目录通过同一个发�
 |---|---|
 | `<channel>/index.json` | ed25519 签名信封，即带签名的发布索引；正文列出 server 各平台压缩包、镜像目录与推理模板目录包，每个文件带路径、大小与 sha256 |
 | `<channel>/latest` | release id 纯文本，供首次下载定位版本 |
-| `<channel>/manifest.json` | 与该渠道索引里的镜像目录是同一文件，固定地址，供离线环境手工下载后上传 |
+| `<channel>/manifest.json` | schema 3 离线目录，匹配签名索引中的 `image_catalog`。新版 server 使用 `image_catalog_v4.path` |
 | `releases/<release_id>/` | server 压缩包与 `SHA256SUMS` |
 | `catalog/images/<sha256>.json` | 按内容摘要标识的镜像目录 |
 | `catalog/templates/<sha256>.tar.gz` | 按内容摘要标识的推理模板目录包 |

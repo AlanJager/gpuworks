@@ -63,7 +63,7 @@ type imageImportPayload struct {
 	Series       []manifestSeriesInput `json:"series" yaml:"series"`
 }
 
-// importImages accepts two bodies. A manifest (schema_version 2 or 3) is the
+// importImages accepts two bodies. A versioned manifest is the
 // system catalog uploaded by hand, applied exactly like "check for updates".
 // A body without schema_version is the community/custom form the image page
 // submits. Any other schema_version is an old catalog format and is refused.
@@ -238,7 +238,7 @@ func (a *apiHandlers) syncImagesManifest(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	catalog := fetched.Index.ImageCatalog
+	catalog := fetched.Index.CurrentImageCatalog()
 	if catalog == nil {
 		writeNotPublished(w, "image_catalog")
 		return

@@ -13,6 +13,9 @@ import (
 	"strings"
 )
 
+// RunnerSchema carries automatic selection constraints and registry manifest digests.
+const RunnerSchema = 4
+
 type Manifest struct {
 	SchemaVersion  int              `json:"schema_version"`
 	CatalogVersion string           `json:"catalog_version"`
@@ -54,6 +57,8 @@ type ManifestVersion struct {
 	Blob            string `json:"blob,omitempty"`
 	Deprecated      bool   `json:"deprecated,omitempty"`
 	DeprecatedSince string `json:"deprecated_since,omitempty"`
+	RegistryDigest  string `json:"registry_digest,omitempty"`
+	AutoSelect      string `json:"auto_select,omitempty"`
 	RollingTag      bool   `json:"rolling_tag,omitempty"`
 	Notes           string `json:"notes,omitempty"`
 }
@@ -70,7 +75,7 @@ type CommonEnv struct {
 }
 
 func (m Manifest) Validate() error {
-	if m.SchemaVersion != 2 && m.SchemaVersion != 3 {
+	if m.SchemaVersion != 2 && m.SchemaVersion != 3 && m.SchemaVersion != RunnerSchema {
 		return fmt.Errorf("unsupported manifest schema_version %d", m.SchemaVersion)
 	}
 	if strings.TrimSpace(m.CatalogVersion) == "" {
@@ -88,6 +93,24 @@ func (m Manifest) Validate() error {
 			return fmt.Errorf("series %q must contain at least one version", s.Name)
 		}
 		for _, v := range s.Versions {
+			if m.SchemaVersion != RunnerSchema && (v.AutoSelect != "" || v.RegistryDigest != "") {
+				return fmt.Errorf("%s: selection policy and registry digest require schema %d", v.ImageRef, RunnerSchema)
+			}
+			switch v.AutoSelect {
+			case "", "manual":
+			case "amd64", "arm64":
+				if v.Arch != "multi" {
+					return fmt.Errorf("%s: partial selection requires a multi-architecture image", v.ImageRef)
+				}
+			default:
+				return fmt.Errorf("%s: unknown auto_select %q", v.ImageRef, v.AutoSelect)
+			}
+			if v.RegistryDigest != "" {
+				hexDigest, ok := strings.CutPrefix(v.RegistryDigest, "sha256:")
+				if _, err := hex.DecodeString(hexDigest); !ok || len(hexDigest) != 64 || err != nil {
+					return fmt.Errorf("%s: invalid registry digest", v.ImageRef)
+				}
+			}
 			if err := ValidateTagged(v.ImageRef); err != nil {
 				return err
 			}

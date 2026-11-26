@@ -44,6 +44,7 @@ type ImageInput struct {
 	Arch             string
 	ImageRef         string
 	RegistrySources  []string
+	AutoSelect       string
 	RollingTag       bool
 	BlobSHA256       string
 	SizeBytes        int64
@@ -174,7 +175,7 @@ func ImportOfficial(m Manifest, sink Sink, opt ImportOptions) (Result, error) {
 				Engine: series.Engine, EngineVersion: version.EngineVersion,
 				Framework: series.Framework, FrameworkVersion: version.FrameworkVersion,
 				Arch: version.Arch, ImageRef: version.ImageRef,
-				RegistrySources: version.RegistrySources, BlobSHA256: version.BlobSHA256, RollingTag: version.RollingTag,
+				RegistrySources: version.RegistrySources, BlobSHA256: version.BlobSHA256, AutoSelect: version.AutoSelect, RollingTag: version.RollingTag,
 				SizeBytes:  version.SizeBytes,
 				Deprecated: version.Deprecated, DeprecatedSince: deprecatedSince,
 				Notes: version.Notes,

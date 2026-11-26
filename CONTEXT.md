@@ -135,7 +135,7 @@ _Avoid_: 三种镜像表、在界面或文档正文里把系统镜像叫「官�
 _Avoid_: 用归档体积乘副本数冒充本地体积、用未知值填零、把逐镜像体积之和称为磁盘使用量
 
 **镜像目录 — Image Catalog**:
-定义系统镜像全集的 manifest 文件（schema 3），由 gpuworks-runner 构建矩阵生成。内嵌种子（server 换了构建后的首次启动重放）、「检查更新」（从[[发布通道]]取）、「上传 manifest」三条入口走同一导入规则；导入即对系统行全量对账，最后一次导入生效（ADR 0040）。`catalog_version` 只作展示与等值比较，不做新旧比较。
+定义系统镜像全集的 manifest 文件（schema 4，兼容导入 2、3），由 gpuworks-runner 构建矩阵生成。内嵌种子（server 换了构建后的首次启动重放）、「检查更新」（从[[发布通道]]取）、「上传 manifest」三条入口走同一导入规则；导入即对系统行全量对账，最后一次导入生效（ADR 0040）。`catalog_version` 只作展示与等值比较，不做新旧比较。目录中的 `arch` 表示实际支持的架构，`auto_select` 只限制自动选用范围（省略表示全部支持架构，`manual` 表示仅手选）。`registry_digest` 是发布校验时预期的 registry 顶层 manifest 摘要。
 _Avoid_: 镜像列表(那是查询结果,不是权威定义)、离线镜像包（已删除，目录只是一个 JSON）
 
 **推理模板目录 — Inference Catalog**:

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -348,5 +349,30 @@ func TestSyncImageForceReachesThePullUnsourced(t *testing.T) {
 	var wire dto.ImageNodeSyncRequest
 	if err := json.Unmarshal([]byte(`{"force":true,"source":"quay"}`), &wire); err != nil || !wire.Force || wire.Source != "quay" {
 		t.Fatalf("request wire = %+v, %v", wire, err)
+	}
+}
+
+func TestChannelUsesSelectionAwareCatalogForStatusAndSync(t *testing.T) {
+	run := newImageManifestRun(t)
+	c := newTestChannel(t)
+	c.publishImageCatalog(imagecatalog.SeedJSON())
+	c.index.ImageCatalogV4 = c.index.ImageCatalog
+	want := c.imagePath
+	c.publishImageCatalog([]byte(upstreamManifest))
+	run.useChannel(c)
+	status := getUpdateStatus(t, run)
+	if status.ImageCatalog.Latest != c.index.ImageCatalogV4.Version || !status.ImageCatalog.UpdateAvailable {
+		t.Fatalf("channel status %+v", status.ImageCatalog)
+	}
+	rec := run.do(http.MethodPost, "/api/v1/images/sync", "", "")
+	if rec.Code != http.StatusOK || !slices.Contains(c.requested(), want) {
+		t.Fatalf("sync %d, requested %v", rec.Code, c.requested())
+	}
+	if applied := getUpdateStatus(t, run); applied.ImageCatalog.Current != c.index.ImageCatalogV4.Version || applied.ImageCatalog.UpdateAvailable {
+		t.Fatalf("after sync: %+v", applied.ImageCatalog)
+	}
+	row, err := run.store.ImageByRef("gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4")
+	if err != nil || row.AutoSelect != "arm64" || !strings.Contains(row.RegistrySources, "swr.") {
+		t.Fatalf("template row %+v: %v", row, err)
 	}
 }
