@@ -380,7 +380,7 @@ func TestChannelUsesSelectionAwareCatalogForStatusAndSync(t *testing.T) {
 
 func TestUploadLegacyProjectionLeavesActiveCatalogUntouched(t *testing.T) {
 	run := newImageManifestRun(t)
-	if err := run.store.RecordImageCatalogImport("before", false); err != nil {
+	if err := run.store.RecordImageCatalogImport("before"); err != nil {
 		t.Fatal(err)
 	}
 	before := run.versionCount()
@@ -400,7 +400,7 @@ func TestUploadLegacyProjectionLeavesActiveCatalogUntouched(t *testing.T) {
 		t.Fatalf("rejection %d: %s", rec.Code, rec.Body.String())
 	}
 	state, err := run.store.OfficialCatalogState()
-	if err != nil || state.ImageCatalogUploaded || state.ImageCatalogVersion != "before" || run.versionCount() != before {
+	if err != nil || state.ImageCatalogVersion != "before" || run.versionCount() != before {
 		t.Fatalf("catalog changed: %+v %v", state, err)
 	}
 	row, err := run.store.ImageByRef("gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4")
