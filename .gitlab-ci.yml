@@ -569,13 +569,16 @@ core-lint:
     # data and journal commits too: ppu1 stalled the inner dockerd for 45-110s
     # at a time, every queued `docker run` with it, and L3/L2 waits timed out
     # (dockerd stack: cleanup_mnt -> ovl_sync_fs -> sync_filesystem). On tmpfs
-    # that sync has nothing to write. A DinD holds ~2.5 GB, so only runners
-    # with 64 GiB available take this; GPUWORKS_CI_DIND_TMPFS=0 opts out.
+    # that sync has nothing to write. A DinD holds ~2.5 GB, but tmpfs is RAM
+    # the host cannot hand to other jobs, and a pipeline runs up to three of
+    # them at once: 12g each leaves room for a build above the working set
+    # without reserving 24g per job. Only runners with 64 GiB available take
+    # this; GPUWORKS_CI_DIND_TMPFS=0 opts out.
     - |
       GPUWORKS_CI_DIND_STORAGE=""
       avail_kb=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo 2>/dev/null)
       if [ "${GPUWORKS_CI_DIND_TMPFS:-1}" != 0 ] && [ "${avail_kb:-0}" -ge 67108864 ]; then
-        GPUWORKS_CI_DIND_STORAGE="--tmpfs /var/lib/docker:rw,exec,suid,dev,size=24g"
+        GPUWORKS_CI_DIND_STORAGE="--tmpfs /var/lib/docker:rw,exec,suid,dev,size=12g"
       fi
       echo "DinD storage: ${GPUWORKS_CI_DIND_STORAGE:-anonymous volume on the host docker root}"
     # The host agent reclaims gpuworks-* names as managed workloads.
