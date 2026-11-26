@@ -43,6 +43,17 @@ export default function useDeployFormChanges({
         });
       }
     }
+    if (
+      Object.prototype.hasOwnProperty.call(changed, "node_uuid") &&
+      !Object.prototype.hasOwnProperty.call(changed, "gpu_indexes")
+    ) {
+      // A card index names a card on one machine: the cards picked on the
+      // previous node are no choice on this one, so a changed node starts
+      // the card choice over. The server drops indexes the new node does not
+      // report either way (GWKS-522); clearing here keeps the field honest
+      // instead of showing a card the node does not have.
+      form.setFieldValue("gpu_indexes", undefined);
+    }
     if (Object.prototype.hasOwnProperty.call(changed, "image_mode")) {
       const mode = changed.image_mode as ImageSelectionMode;
       form.setFieldsValue({

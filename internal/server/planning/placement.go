@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/server/parallelism"
+	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
 // Placement is the placement hint a deployment carries: what a confirmed plan
@@ -44,6 +45,28 @@ func (p Placement) OperatorPinned() bool { return p.operatorChose && len(p.GPUIn
 // operator's, for a caller that replaces them with its own.
 func (p Placement) WithoutOperatorChoice() Placement {
 	p.operatorChose = false
+	return p
+}
+
+// CardsOn is the placement as one node can honor it: the GPU indexes the node
+// reports. An index names a card on one machine, so an index the node does not
+// report names a card of another - a card choice made before the deployment
+// moved here. The deployment cannot be held to it; the node's scheduler picks
+// its own cards instead.
+func (p Placement) CardsOn(node *store.Node) Placement {
+	if node == nil || len(p.GPUIndexes) == 0 {
+		return p
+	}
+	kept := make([]int, 0, len(p.GPUIndexes))
+	for _, index := range p.GPUIndexes {
+		if _, ok := node.GPUByIndex(index); ok {
+			kept = append(kept, index)
+		}
+	}
+	if len(kept) == len(p.GPUIndexes) {
+		return p
+	}
+	p.GPUIndexes = kept
 	return p
 }
 
