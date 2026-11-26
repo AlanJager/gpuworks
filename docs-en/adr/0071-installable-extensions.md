@@ -111,7 +111,7 @@ Several constraints shape the answer together. Server and agent are static `CGO_
 
 Implemented:
 
-- ADR 0070's module contract (`app.Module`, `app.Host`, the feature gate, node insert guards, scheduling holders and their reapply, `NodeFleet` and the node fleet topic, banners, the console manifest, extension migration namespaces) and the contract tests in `internal/testenv/extmodule`, as the core-internal contract and the base for the plugin host.
+- ADR 0070's module contract (`app.Module`, `app.Host`, the feature gate, node insert guards, scheduling holders and card holders and their reapply, `NodeFleet`, `CardFleet` and the node fleet topic, banners, the console manifest, extension migration namespaces) and the contract tests in `internal/testenv/extmodule`, as the core-internal contract and the base for the plugin host.
 - The extension route prefix `/api/v1/x/<name>/` (the compiled-module part of decision 12): the core registers no route under `/api/v1/x/`, so extension names no longer need to avoid core path segments.
 - The wire formats (the format part of decisions 4, 5, 7, 8 and 16): the package manifest, publisher certificates, trust updates and revocation lists, the signature envelope, the `gwx/1` handshake, health and errors, the push envelope and the rows of the first five pushed tables, and the comparison of persisted version markers are frozen in the public, standard-library-only module `pkg/extapi`, with a golden corpus as the authority; see [Plugin Protocol and Wire Formats](../reference/plugin-protocol.md). The publisher's package index is among them.
 - Reading and verifying plugin packages (decisions 4 and 5): `internal/server/extpkg` verifies a `.gwpkg` step by step in the verification order, fail-closed, stages it in the data directory, switches versions atomically with rollback, and verifies installed packages again on listing and before a start (rehashing only changed files then). The trust chain, host-trusted issuers and the site policy (`plugins` in `server.yaml`), revocations, the anti-rollback floors and offline imports of trust updates, revocation lists and package indexes live in typed core tables. The `install`, `list`, `remove`, `trust import`, `index import` and read-only `compat` subcommands of `gpuworks plugin` work with the server stopped ([CLI Reference](../reference/cli.md#gpuworks-plugin)). This build compiles in no project root yet.
@@ -143,6 +143,6 @@ Decided but not implemented yet: dynamic route mounting, on-demand starts of on-
 <!-- translation-source-sha256: 905493fb4b58077f2c6a5434f6667c7d2aeab3edc690ff709131e7234332df02 ## Context -->
 <!-- translation-source-sha256: c325bcf20bc84e03489d471879acde804ae154d085da7b219db31f5c6af867f3 ## Decision -->
 <!-- translation-source-sha256: 2d8dba33fa5f08caaa79f42d4155f3429e2c87f62e6b5717dc30c3211187a71e ## Where each ADR 0070 decision goes -->
-<!-- translation-source-sha256: ba15051ade23ecb31ab1140cf7d182ccd3b16bf8125a1d30dfea7f5228b4acd1 ## Implementation status -->
+<!-- translation-source-sha256: 094aa2899f36d71cd7c4cbf156eeca78616b9f13042050eaf91a74e14ee0d77a ## Implementation status -->
 <!-- translation-source-sha256: 0e5930e6fe9a66ea6d976b621ceb579d3f70bc2fae31720564c3bd9b5696c6af ## Trade-offs -->
 <!-- translation-source-sha256: c670029635e6bf13a75c98f5cac32f338f749a827f74c59d65542dac4a3625ef ## Consequences -->

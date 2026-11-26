@@ -1392,6 +1392,12 @@
       }
     },
     {
+      "term_en": "Extension-Held Card",
+      "translations": {
+        "zh": "扩展保持的卡"
+      }
+    },
+    {
       "term_en": "Extension Module",
       "translations": {
         "zh": "扩展模块"

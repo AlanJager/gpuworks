@@ -1072,6 +1072,7 @@ the `POST /api/v1/evaluate` response and in `DEPLOYMENT_UNSCHEDULABLE` deploymen
 | `no_healthy_gpu` | None of the node's own cards has a health level that permits serving |
 | `no_owned_gpu` | The node has no cards available for its own use: it has none, or all are passed through to VMs, lack an available vendor driver, or are held by other drivers |
 | `gpus_held_outside_platform` | The cards themselves are healthy, but all usable cards (the named ones, when the request names cards) are occupied by processes outside the platform, and this deployment cannot share them: it takes whole cards, the outside processes' memory is unknown, or the node's agent is older |
+| `gpus_held` | The usable cards (the named ones, when the request names cards) are held out of scheduling by an extension module; params `gpus`, `count`, `node`. An administrator cannot enable scheduling on them, and each card shows the extension's reason in the node's GPU table; act on that reason on the extension's side, or pick another node |
 | `held_outside_platform_sleep` | Only cards shared with processes outside the platform could take this memory-limited deployment, but it sleeps: while those processes run, it could not be woken on that card once asleep. Fix: turn off sleep for this deployment, or pick another card |
 | `held_outside_platform_not_allowed` | Cards that could take this memory-limited deployment are used by processes outside the platform, and neither is scheduling enabled on those cards nor did this deployment pick them; params `gpus`, `count`, `node`. Also reported when the node has a clean card that is busy or too small. Fix: enable scheduling on those cards in the node's GPU table, or pick the card yourself |
 | `foreign_shared_gpus_used` | A plan note (not a refusal): `count` of the chosen cards are shared with processes outside the platform (up to `foreign_gib` GiB), because no clean card could take the deployment |
@@ -1602,7 +1603,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 2e761edaeef85606c46762d1dc9680a3b996f61c30b4ae0b42ecf5b838256459 ### Why Candidates Switch and When Pulls Are Considered Stalled -->
 <!-- translation-source-sha256: 1032ac3a3086dc0bdfab0834acfa339935693f6e5b97faef8234bf02748ec5f1 ### Registry Rate Limits or Refused Connections -->
 <!-- translation-source-sha256: 28cfb7773daaae60e9e0285d967cb43b45bf53b7839887598260df0fb59f32ed ### Additional Checks for Digest References -->
-<!-- translation-source-sha256: 764137da3d8542c5e01b15a48e85178a7e7c8642536638ada09ff01b7905538e ## Deployment Rejected, Insufficient Estimated GPU Memory, or No Suitable Node -->
+<!-- translation-source-sha256: 94afa58746779e032e7f720d30cdf437795e5688d923a8938624614b18ed8d9b ## Deployment Rejected, Insufficient Estimated GPU Memory, or No Suitable Node -->
 <!-- translation-source-sha256: b6d85798c7347370b799710bd36ca3bd36fc4830973089961d74d506bc75980b ## Instance Startup Failure, Repeated Restarts, or OOM -->
 <!-- translation-source-sha256: 71da95ca5ab9db8518ad2524787a82835f8ca14f9d5ce4d4724e240444103463 ### Find the Cause of This Failure -->
 <!-- translation-source-sha256: 2767b9a17fd44ed4e114c17cf95320e87486bc057a517077bf2be5a2b2a58bfc ### Insufficient GPU Memory or an Incorrect Startup Command -->
