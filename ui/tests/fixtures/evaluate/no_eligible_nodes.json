@@ -247,7 +247,9 @@
         {
           "image": "gpuworks/gpuworks-runner:cann9.2-910b-vllm0.30.0-r1",
           "reason": "catalog_match",
-          "compatible": true
+          "compatible": true,
+          "engine": "vllm",
+          "engine_version": "0.30.0"
         },
         {
           "image": "gpuworks/gpuworks-runner:cann9.2-910b-vllm0.30.0rc2-r1",
@@ -259,7 +261,9 @@
         {
           "image": "gpuworks/gpuworks-runner:cann9.2-910b-vllm0.32.0rc1-r1",
           "reason": "catalog_match",
-          "compatible": true
+          "compatible": true,
+          "engine": "vllm",
+          "engine_version": "0.32.0rc1"
         },
         {
           "image": "gpuworks/gpuworks-runner:cann9.2-950-vllm0.30.0rc2-r1",
@@ -271,7 +275,9 @@
         {
           "image": "gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0-r1",
           "reason": "catalog_match",
-          "compatible": true
+          "compatible": true,
+          "engine": "vllm",
+          "engine_version": "0.30.0"
         },
         {
           "image": "gpuworks/gpuworks-runner:cann9.2-a3-vllm0.30.0rc2-r1",
@@ -283,7 +289,9 @@
         {
           "image": "gpuworks/gpuworks-runner:cann9.2-a3-vllm0.32.0rc1-r1",
           "reason": "catalog_match",
-          "compatible": true
+          "compatible": true,
+          "engine": "vllm",
+          "engine_version": "0.32.0rc1"
         },
         {
           "image": "gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2",
@@ -302,12 +310,16 @@
         {
           "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.33.0-r1",
           "reason": "catalog_match",
-          "compatible": true
+          "compatible": true,
+          "engine": "vllm",
+          "engine_version": "0.33.0"
         },
         {
           "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.34.0-r1",
           "reason": "catalog_match",
-          "compatible": true
+          "compatible": true,
+          "engine": "vllm",
+          "engine_version": "0.34.0"
         },
         {
           "image": "gpuworks/gpuworks-runner:dtk26.04-vllm0.18.1-r2",
