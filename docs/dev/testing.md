@@ -257,7 +257,7 @@ target。先以 `make help`/Makefile 确认目标，再只运行所需的测试�
   `modelscope-public-download`）**不进定时任务**：这个资源池几乎排不到机器，阿里云用例接替它们。
   需要时从 web/api 流水线带 `COMPSHARE_VM=1` 手动触发，或在 MR 里手动点。CompShare 的容器用例
   （`l4-compshare-server-dial-node-onboarding-container`）和离线契约
-  （`core-compshare-offline-contracts`）照常运行。
+  （并进 `core-test`）照常运行。
 
 云端 L4 的 CI job 都带 `environment: {name: cloud-test/<provider>/<lane>, action: prepare}`：环境作用域的
 变量（`cloud-test/<provider>/*` 下的凭据）照常注入，但 `action: prepare` 不创建 deployment。

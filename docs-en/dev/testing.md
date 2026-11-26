@@ -258,7 +258,7 @@ Trigger policy for the schedules (`CLOUD_FULL=1`, twice a day at 03:00 and 15:00
   `modelscope-public-download`) are **not scheduled**: that pool almost never has capacity, and the
   Aliyun cases replace them. Start them on demand from a web/api pipeline with `COMPSHARE_VM=1`, or as an
   MR manual action. The CompShare container case (`l4-compshare-server-dial-node-onboarding-container`)
-  and the offline contracts (`core-compshare-offline-contracts`) run as before.
+  and the offline contracts (inside `core-test`) run as before.
 
 The cloud L4 CI jobs all carry `environment: {name: cloud-test/<provider>/<lane>, action: prepare}`:
 environment-scoped variables (the credentials under `cloud-test/<provider>/*`) are injected as usual, but
@@ -488,7 +488,7 @@ This guide documents testing methods. Put one-off run logs, screenshots, image d
 <!-- translation-source-sha256: 5c3e60a90cab0e3fbfb98c31b738915fd326f9056c1c12c2f97956fef4febd32 ### List Responses During Onboarding -->
 <!-- translation-source-sha256: 86a7d492ecd7cba3c0d779343b3d51cdcd2187b7075ea9457ac6ddb1578ec2c3 ### Scaling and Prerequisites -->
 <!-- translation-source-sha256: 79d788f9b325de50911bbacf523a0afcf302fb0dc53149802e23a6235b44e64b ## Public Access (expose) -->
-<!-- translation-source-sha256: 17ba151a060cd27a72e3617f168a737818d07bb23a0f2baa00546e99f1f086f9 ## Architecture Gates -->
+<!-- translation-source-sha256: 2358061f84042c82e51270aff833ade51dfe474ae32bf12e8f9724f462206c1f ## Architecture Gates -->
 <!-- translation-source-sha256: 7f453deca452b26014227f08ffdbd3c26237f7024b30a904a4c19e151c4c7278 ## GitLab MR Pipeline Splitting -->
 <!-- translation-source-sha256: 1644fce8cc809697c63fc6bb838d83ce1359a86babf0169b8cd2d8daee93f632 ## GitHub Actions Mirror Gates -->
 <!-- translation-source-sha256: 28e38a75599bd1817d3814cfe51fe861536e28931c10233529dd45a328e07e95 ## Cost and Caching -->
