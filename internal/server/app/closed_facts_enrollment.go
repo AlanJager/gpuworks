@@ -168,23 +168,16 @@ func projectClosedQuorumFacts(expected store.ClusterIdentity, nonce string, lega
 		Term: proof.Term, Index: proof.Index, ConfigurationIndex: proof.ConfigurationIndex, LeaderID: proof.LeaderID,
 		Members: make([]enrollment.ClusterMember, 0, len(proof.Members)),
 	}
+	// Which members of the database are members of the cluster is the
+	// store's definition, the one every membership grant uses.
+	bound, err := store.BindClusterMembers(proof.Members, admissions)
+	if err != nil {
+		return fail()
+	}
 	providerAddress := ""
-	for _, member := range proof.Members {
-		var binding store.ClusterAdmission
-		found := false
-		for _, admission := range active {
-			if admission.Address == member.Address {
-				if found {
-					return fail()
-				}
-				binding, found = admission, true
-			}
-		}
-		if !found {
-			return fail()
-		}
-		facts.Members = append(facts.Members, enrollment.ClusterMember{ID: member.ID, Address: member.Address, Role: member.Role, KeyFingerprint: binding.KeyFingerprint, EnrollmentOrigin: binding.EnrollmentOrigin})
-		if member.ID == proof.LeaderID && member.Role == "voter" && binding.KeyFingerprint == provider {
+	for _, member := range bound {
+		facts.Members = append(facts.Members, enrollment.ClusterMember{ID: member.ID, Address: member.Address, Role: member.Role, KeyFingerprint: member.KeyFingerprint, EnrollmentOrigin: member.EnrollmentOrigin})
+		if member.ID == proof.LeaderID && member.Role == "voter" && member.KeyFingerprint == provider {
 			providerAddress = member.Address
 		}
 	}
