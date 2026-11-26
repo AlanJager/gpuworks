@@ -87,7 +87,9 @@ Releases use calendar versions `YY.M.PATCH`, tagged as `vYY.M.PATCH`, for exampl
   Only tags that match `^v[0-9]+\.[0-9]+\.[0-9]+$` create a pipeline and publish to the `release` channel; tags such as `v26.11.0-rc.1` create no pipeline.
 - `v*` must be a protected tag in GitLab: the signing private key and the distribution source credentials are protected variables, so a pipeline for an unprotected tag cannot read them and the publish job fails.
 - Once pushed, a tag is never moved or recreated: a release id maps to exactly one set of bytes (see step 1 of the publishing process below). If something is wrong, release the next patch version.
-- When a server decides whether an update exists, it compares version numbers if both sides are version tags, and otherwise (a nightly's short commit hash, a local build) compares build times
+- When a server decides whether an update exists, it compares version numbers if both sides are version tags, and otherwise (a nightly's short commit hash, a local build) compares build times;
+  a build for the same channel that is later than the channel's newest version yet absent from its version list (a branch build) is left out of the comparison, and the console does not show it as up to date
+  (the console's version picker also marks a channel version whose database schema is older than this server's). The CLI `gpuworks upgrade` still compares build times only, so from a branch build the CLI takes a channel version for older and needs `--force` to install it
   ([ADR 0040](../adr/0040-signed-multi-source-distribution.md)). The `release` channel follows only the newest release line: when the channel already names a higher version
   (for example, pushing `v26.11.2` after `v26.12.0` was released), `publish_dist.sh` refuses to publish.
 
@@ -260,7 +262,7 @@ embedded seed is generated from the gpuworks-runner build matrix by `make image-
 <!-- translation-source-sha256: 380ca742c2dd61ef49dd156973902812f1d52c8475127999dbff095c3b9fd434 # Release Guide -->
 <!-- translation-source-sha256: 9aadf552a7b17d37e4bb529f3165267cf854b47d6e32bf8cbca5992f5ab761e4 ## Build Artifacts -->
 <!-- translation-source-sha256: 42932b93632fa7546204b34d9107d978394aecabb5dea1d91d77f4aecd28097e ## Release Documentation PDFs -->
-<!-- translation-source-sha256: d7ce5d3d9eeb9df54e385d8877ce972c83455c47a0527194b5eb544befb004a8 ## Version Numbers -->
+<!-- translation-source-sha256: 92549e86298548097b01b5143a11749f2f5b1871caaf622d2be7463e06adab29 ## Version Numbers -->
 <!-- translation-source-sha256: 45a4d948512339ccdfaa81f1a634562af3a1b2bfe63df90154a64cb86302bee8 ## Distribution Channel -->
 <!-- translation-source-sha256: 43e6e82a406f6474f33b1436024c8e7d2e9a8f5167bc8d4a1ed73cfd15fea161 ### GitHub Actions Releases -->
 <!-- translation-source-sha256: 32a0c93ed7537847e5c6869de4228919ff01e969e898cef1f5f3a268150adfcd ### Kubernetes Agent Image -->

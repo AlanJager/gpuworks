@@ -210,6 +210,7 @@ export default function UpdatesCard() {
     if (!status?.available) return <Text type="secondary">{t("updates.unknown")}</Text>;
     if (row.checkError) return <Text type="danger">{productMessageText(tCommon, row.checkError)}</Text>;
     if (!row.latest) return <Text type="secondary">{t("updates.notPublished")}</Text>;
+    if (row.key === "server" && serverState === "unpublishedBuild") return <Badge size="sm" status="neutral">{t("updates.unpublishedBuild")}</Badge>;
     if (row.key === "server" && serverState === "differentChannelVersion") return <Badge size="sm" status="neutral">{t("updates.differentChannelVersion")}</Badge>;
     if (!row.updateAvailable) return <Badge size="sm" status="success">{t("updates.upToDate")}</Badge>;
     if (!row.compatible) return <Badge size="sm" status="danger">{t("updates.needsServer")}</Badge>;
@@ -382,6 +383,8 @@ export default function UpdatesCard() {
           {confirmed && status?.server.current_build?.build_channel &&
             status.server.current_build.build_channel !== confirmed.channel &&
             <Notice className="mb-4" tone="warning" title={t("versionPicker.crossChannelWarning")} />}
+          {confirmed && status?.server.unpublished_build && <Notice className="mb-4" tone="warning" title={t("versionPicker.unpublishedWarning")} />}
+          {confirmed?.release.downgrades_schema && <Notice className="mb-4" tone="warning" title={t("versionPicker.schemaWarning")} />}
           <p className="mb-3"><strong>{status?.server.current_build?.build_channel || "—"} · {status?.server.current}</strong> → <strong>{confirmed?.channel} · {confirmed?.release.version}</strong></p>
           <p>{t("updates.serverConfirm")}</p>
           <DialogFooter>
