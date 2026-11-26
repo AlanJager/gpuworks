@@ -317,8 +317,9 @@ When an image build change lands on the protected default branch, the job publis
   VM has systemd, which the console upgrade cases take for a service manager, and the real terminal case
   accepts only a dedicated daemon. The fixture base images are pulled into DinD before the suite.
 - On a 2-core runner the UI suite runs one test file at a time and takes over an hour unsplit; it runs as 4
-  parallel shards, with `npm run test:coverage` passing an optional `TEST_SHARD` (such as `2/4`) to
-  `--test-shard`. Unset, the command is the original one.
+  parallel shards; CI runs `npm test` (the same suite as `test:coverage`, without c8) and passes an
+  optional `TEST_SHARD` (such as `2/4`) to `--test-shard`. Unset, the command is the original one.
+  Coverage is not a CI gate: run `npm run test:coverage` locally or in the QA suite where needed.
 - The untagged Go suite runs in 3 shards of whole packages: `scripts/go_package_shard.sh <i>/<n> ./...` sorts
   the packages `go list` prints by import path and deals them round-robin, which puts the heaviest ones,
   `server/api` and two integrationtest packages, in different shards. L2 runs in 3 shards by `L2_SHARD`, as
@@ -490,7 +491,7 @@ This guide documents testing methods. Put one-off run logs, screenshots, image d
 <!-- translation-source-sha256: 79d788f9b325de50911bbacf523a0afcf302fb0dc53149802e23a6235b44e64b ## Public Access (expose) -->
 <!-- translation-source-sha256: 2358061f84042c82e51270aff833ade51dfe474ae32bf12e8f9724f462206c1f ## Architecture Gates -->
 <!-- translation-source-sha256: 7f453deca452b26014227f08ffdbd3c26237f7024b30a904a4c19e151c4c7278 ## GitLab MR Pipeline Splitting -->
-<!-- translation-source-sha256: 1644fce8cc809697c63fc6bb838d83ce1359a86babf0169b8cd2d8daee93f632 ## GitHub Actions Mirror Gates -->
+<!-- translation-source-sha256: f104c37cdcca0f2872ddc8c02ea4dd41b1c9f3d7b935f66a7ec5c1b7e9a1ba55 ## GitHub Actions Mirror Gates -->
 <!-- translation-source-sha256: 28e38a75599bd1817d3814cfe51fe861536e28931c10233529dd45a328e07e95 ## Cost and Caching -->
 <!-- translation-source-sha256: 7c1af2ddf010d809320c9632f09535598f2492152eee78f5d37742a4f8619b59 ### Alibaba Cloud ECS -->
 <!-- translation-source-sha256: c25b0c9497a51fad3f04b547935b0ff2f420a925369f0e3d35e0623f1e8a3568 ## Evidence -->
