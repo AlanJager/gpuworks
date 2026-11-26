@@ -684,6 +684,7 @@ Failures leave the catalog unchanged. Handle the following errors:
 - All release sources are unreachable: 502 `UPDATE_SOURCES_UNAVAILABLE`; an index exists but no catalog file matches it: 502 `UPDATE_DOWNLOAD_FAILED`.
 - The channel has not published a catalog: 404 `UPDATE_NOT_PUBLISHED`.
 - Invalid content: 400 `IMAGE_MANIFEST_INVALID`; a name or ref conflicts with a community/custom row: 400 `IMAGE_IMPORT_CONFLICT`.
+- Uploading the compatibility catalog for older servers returns 400 `IMAGE_MANIFEST_LEGACY_PROJECTION`. The response parameter `params.path` names the signed index entry `image_catalog_v4.path`. Download the file it points to and upload that file.
 
 `POST /images/sync` over a catalog uploaded by hand, when the channel's catalog differs and `replace_uploaded=true` is absent, returns 409 `IMAGE_CATALOG_UPLOADED` (`params.current` and `params.latest` are the two catalog versions) and leaves the catalog unchanged.
 
@@ -2492,7 +2493,7 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: 5a937a0329b1aabd619bac36afbe45ff963584a7031b8588b3c6d1c9ebabdbe0 ### Register an image already on a node -->
 <!-- translation-source-sha256: 04f403145369bea2e0886af6fd3a84add59d07299152c9a53cc09ef3d598fdf0 ### Storage Configuration and Cache Status -->
 <!-- translation-source-sha256: 76495aa0a302fbe279f354b4207253de032639c11e8498c2041f1b8a373a248c ### Storage File Operation Scope and Errors -->
-<!-- translation-source-sha256: f4f0defdfe3cd167b8c9ac3826dcbaa54ff444000832f56f6b4a360024229c77 ### Catalog Import Results -->
+<!-- translation-source-sha256: b86012415544ff715e6a2bb1731ae68aa7766087f5021f8ab337c6bd1b856394 ### Catalog Import Results -->
 <!-- translation-source-sha256: 0ff3fe24b03ecc7778481ff8a63bf46f7f3be79608de3891c7aed28acb9622ea ## Inference Templates (Inference Catalog/Templates) -->
 <!-- translation-source-sha256: 4b7e28c06adfbce76189556587fc94653baf4749acae30f34cec3772bf431f37 ### Pre-Import Checks -->
 <!-- translation-source-sha256: f3c254df3774c7c48ee5ebf7cc4861e55fd88aed33f8cc457ecb4190f5c41377 ## Deployments / Instances (Deployments and Instances) -->

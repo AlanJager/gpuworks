@@ -111,7 +111,7 @@ and `<sha256>` is the content digest of the corresponding catalog file:
 |---|---|
 | `<channel>/index.json` | An ed25519 signature envelope containing the signed release index; the body lists server archives for each platform, the image catalog, and the inference template catalog package, with a path, size, and sha256 for each file |
 | `<channel>/latest` | The release id as plain text, used to locate the version for the initial download |
-| `<channel>/manifest.json` | The same file as the image catalog in the channel's index, at a fixed address for downloading by hand and uploading in offline environments |
+| `<channel>/manifest.json` | Offline schema 3 catalog matching the signed `image_catalog` entry. Current servers use `image_catalog_v4.path` |
 | `releases/<release_id>/` | Server archives and `SHA256SUMS` |
 | `catalog/images/<sha256>.json` | The image catalog identified by its content digest |
 | `catalog/templates/<sha256>.tar.gz` | The inference template catalog package identified by its content digest |
@@ -263,7 +263,7 @@ embedded seed is generated from the gpuworks-runner build matrix by `make image-
 <!-- translation-source-sha256: 9aadf552a7b17d37e4bb529f3165267cf854b47d6e32bf8cbca5992f5ab761e4 ## Build Artifacts -->
 <!-- translation-source-sha256: 42932b93632fa7546204b34d9107d978394aecabb5dea1d91d77f4aecd28097e ## Release Documentation PDFs -->
 <!-- translation-source-sha256: 92549e86298548097b01b5143a11749f2f5b1871caaf622d2be7463e06adab29 ## Version Numbers -->
-<!-- translation-source-sha256: 45a4d948512339ccdfaa81f1a634562af3a1b2bfe63df90154a64cb86302bee8 ## Distribution Channel -->
+<!-- translation-source-sha256: 611a7c6221dbc54581cd06d5a97d45484b52f7737638cf384c5149177a99af5e ## Distribution Channel -->
 <!-- translation-source-sha256: 43e6e82a406f6474f33b1436024c8e7d2e9a8f5167bc8d4a1ed73cfd15fea161 ### GitHub Actions Releases -->
 <!-- translation-source-sha256: 32a0c93ed7537847e5c6869de4228919ff01e969e898cef1f5f3a268150adfcd ### Kubernetes Agent Image -->
 <!-- translation-source-sha256: 28162a8691fe3e14460cdf3b97b977de5713069ca949be433af79bd0c0473b36 ## Embedded Native Assets -->

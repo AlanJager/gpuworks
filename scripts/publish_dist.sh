@@ -155,6 +155,11 @@ tree="$work/tree"
 "$work/gpuworks-dist" assemble -channel "$channel" -dist "$dist" -out "$tree" -release-id "$release_id" \
   -commit "$commit" -built-at "$built_at" -database-migration "$database_migration" -adopted="$adopted_release" -keep "$keep" -previous-index "$previous_index"
 
+# Refuse a stale seed or a registry tag that no longer serves its matrix pin
+# before uploading the immutable tree or changing any channel pointer.
+go run ./cmd/gpuworks-image-manifest -in build/runner-images/matrix.yaml \
+  -verify internal/server/imagecatalog/catalog-seed.json -pins-only
+
 immutable='Cache-Control: public, max-age=31536000, immutable'
 pointer='Cache-Control: no-cache'
 for remote in $remotes; do
