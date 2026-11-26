@@ -184,6 +184,7 @@ GET /api/v1/instances/{uuid}/launch-facts
 GET /api/v1/instances/{uuid}/logs
 GET /api/v1/kube/clusters
 GET /api/v1/kube/clusters/{uuid}/manifest
+GET /api/v1/kube/clusters/{uuid}/rollout
 GET /api/v1/kube/defaults
 GET /api/v1/logs/context
 GET /api/v1/logs/histogram
@@ -279,6 +280,7 @@ GET /api/v1/updates/server/versions
 GET /api/v1/usage-report
 GET /api/v1/usage-report/preview
 GET /healthz
+GET /kube/check.sh
 GET /kube/manifest.yaml
 GET /slurm/check.sh
 GET /slurm/setup.sh
@@ -359,6 +361,7 @@ POST /api/v1/kube/clusters/{uuid}/apply
 POST /api/v1/kube/clusters/{uuid}/remove
 POST /api/v1/kube/clusters/{uuid}/revoke
 POST /api/v1/kube/enroll
+POST /api/v1/kube/precheck
 POST /api/v1/mcp
 POST /api/v1/models
 POST /api/v1/models/local
