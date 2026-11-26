@@ -92,6 +92,7 @@ change-record:
     - ./scripts/check_ci_yaml.sh
     - python3 -B -m unittest discover -s scripts -p test_check_ci_yaml.py
     - python3 -B -m unittest discover -s scripts -p test_ci_disk_check.py
+    - python3 -B -m unittest discover -s scripts -p test_go_test_shard.py
     - CGO_ENABLED=0 go test -timeout 2m ./scripts/changerecord
     - CGO_ENABLED=0 go run ./scripts/changerecord
 
@@ -439,13 +440,11 @@ core-test:
   # hard-needs this job and gets skipped for the night. Persistent failures
   # still fail the pipeline; the retry only heals one-shot flakes.
   retry: 1
+  # The repository checks (time policy, architecture, CI yaml, the artifacts
+  # index, the coverage inventory) run in core-vet: they take seconds and do
+  # not need the test compile, so the longest job carries tests only.
   script:
     - if [ "${CHECK_CORE_IMAGE_SHELLCHECK:-}" = 1 ]; then ./scripts/test_slurmboot_shellcheck.sh; fi
-    - ./scripts/check_time_policy.sh
-    - ./scripts/check_architecture.sh
-    - ./scripts/check_ci_yaml.sh
-    - CGO_ENABLED=0 go run ./scripts/artifactsindex
-    - make test-e2e-coverage-check
     - test -f internal/server/webui/dist/index.html
     # -timeout: the 10m default is per package binary, and a starved runner
     # (a store package that takes 45 s alone ran 10 min on one) turns it into a
@@ -462,7 +461,10 @@ core-test:
       # the runner's 4 MB trace cap before the last packages report failures.
       mkdir -p .testlogs
       test_status=0
-      CGO_ENABLED=0 go test -v -timeout 30m -coverprofile=coverage-core.out ./... > .testlogs/core-test.log 2>&1 || test_status=$?
+      # -p bounds how many packages build and run at once. The default is one
+      # per CPU, and several jobs share the host; unbound, each of them
+      # competes with the other jobs for memory and makes all of them slower.
+      CGO_ENABLED=0 go test -v -timeout 30m -p 4 -coverprofile=coverage-core.out ./... > .testlogs/core-test.log 2>&1 || test_status=$?
       if [ "$test_status" -ne 0 ]; then
         grep -E '^[[:space:]]*--- FAIL:|^FAIL([[:space:]]|$)|^panic:|^fatal error:' .testlogs/core-test.log || true
         tail -n 120 .testlogs/core-test.log
@@ -487,7 +489,14 @@ core-test:
 core-vet:
   extends: .go-core
   stage: core
+  # vet is a whole-tree compile of its own; the repository checks ride along so
+  # core-test only runs tests, and neither job waits for the other.
   script:
+    - ./scripts/check_time_policy.sh
+    - ./scripts/check_architecture.sh
+    - ./scripts/check_ci_yaml.sh
+    - CGO_ENABLED=0 go run ./scripts/artifactsindex
+    - make test-e2e-coverage-check
     - CGO_ENABLED=0 go vet ./...
     - (cd pkg/extapi && CGO_ENABLED=0 go vet ./...)
 

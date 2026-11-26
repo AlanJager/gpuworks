@@ -529,6 +529,7 @@ check-api-conventions:
 check-ci-yaml:
 	./scripts/check_ci_yaml.sh
 	python3 -B -m unittest discover -s scripts -p test_check_ci_yaml.py
+	python3 -B -m unittest discover -s scripts -p test_go_test_shard.py
 
 .PHONY: check-artifacts
 ## check-artifacts: verify plan-doc frontmatter (status/dates/summary) across
@@ -648,9 +649,13 @@ fake-model:
 ## limit stays well inside the job's own 45m so a real hang still fails here.
 L2_TIMEOUT ?= 30m
 
-## L2_SHARD=<index>/<total> runs one round-robin share of the suite's
-## top-level tests (scripts/go_test_shard.sh); CI splits the suite this way.
+## L2_SHARD=<index>/<total> runs one share of the suite's top-level tests
+## (scripts/go_test_shard.sh); CI splits the suite this way. The share is
+## balanced by measured duration when test/l2/shard-weights.txt is present
+## (GPUWORKS_SHARD_WEIGHTS overrides the file), and round-robin by name
+## otherwise.
 L2_SHARD ?=
+L2_SHARD_WEIGHTS ?= $(if $(wildcard test/l2/shard-weights.txt),test/l2/shard-weights.txt)
 
 .PHONY: test-l2
 test-l2:
@@ -658,7 +663,7 @@ test-l2:
 	mkdir -p $(TEST_LOG_DIR); \
 	run_flag=""; \
 	if [ -n "$(L2_SHARD)" ]; then \
-		pattern="$$(GO="$(GO)" CGO_ENABLED=0 ./scripts/go_test_shard.sh "$(L2_SHARD)" -tags=multiproc ./test/l2/...)"; \
+		pattern="$$(GO="$(GO)" CGO_ENABLED=0 GPUWORKS_SHARD_WEIGHTS="$(L2_SHARD_WEIGHTS)" ./scripts/go_test_shard.sh "$(L2_SHARD)" -tags=multiproc ./test/l2/...)"; \
 		run_flag="-run=$$pattern"; \
 		echo "l2 shard $(L2_SHARD): $$pattern"; \
 	fi; \
