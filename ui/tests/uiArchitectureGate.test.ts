@@ -16,7 +16,7 @@ test("the UI and architecture gates enforce copy budgets", (t) => {
   const page = join(root, "ui/src/Page.tsx");
   writeFileSync(page, "");
   mkdirSync(join(root, "scripts"));
-  for (const file of ["check_architecture.sh", "check_ui_architecture.sh", "ui_copy_audit.mjs", "ui_overlay_imports.mjs", "ui_antd_inventory.mjs"]) {
+  for (const file of ["check_architecture.sh", "check_ui_architecture.sh", "ui_copy_audit.mjs", "ui_overlay_imports.mjs", "ui_antd_inventory.mjs", "ui_locale_changes.mjs"]) {
     copyFileSync(new URL("../../scripts/" + file, import.meta.url), join(root, "scripts", file));
   }
   copyFileSync(new URL("../antd-inventory.json", import.meta.url), join(root, "ui/antd-inventory.json"));

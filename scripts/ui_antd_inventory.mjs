@@ -7,7 +7,8 @@
 //   node scripts/ui_antd_inventory.mjs --write [path]  regenerate the snapshot (default ui/antd-inventory.json)
 //   node scripts/ui_antd_inventory.mjs --check [path]  fail when a file's antd usage grew against the snapshot
 //   node scripts/ui_antd_inventory.mjs --affected <file...>   menu pages to re-check, JSON array
-//   node scripts/ui_antd_inventory.mjs --base <ref>           same, for `git diff --name-only <ref>` + untracked
+//   node scripts/ui_antd_inventory.mjs --base <ref>           same, for `git diff --name-only <ref>` + untracked;
+//                                                             locale JSON that only adds unrendered texts walks nothing
 //
 // Scope, counting rules and the attribution model: scripts/arch-constraints.md
 // (ui_antd_inventory).
@@ -433,7 +434,42 @@ function gitChanged(base) {
   return [...run(["diff", "--name-only", base, "--", "ui"]), ...run(["ls-files", "--others", "--exclude-standard", "--", "ui"])];
 }
 
-function main(argv) {
+// Locale JSON is not in the import graph, so affectedPages walks every page
+// for it. With a base to compare against, drop the locale files when the
+// change only adds texts no existing page can render (ui_locale_changes.mjs);
+// otherwise keep them, and every page is walked as before.
+const localeFile = /^ui\/src\/i18n\/locales\/([^/]+)\/([^/]+)\.json$/;
+async function withoutInertLocaleChanges(base, changed, allFiles) {
+  const locales = changed.filter((path) => localeFile.test(path));
+  if (locales.length === 0) return changed;
+  const { localeChangeImpact } = await import("./ui_locale_changes.mjs");
+  const readBase = (path) => {
+    try {
+      return JSON.parse(execFileSync("git", ["show", `${base}:${path}`], { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }));
+    } catch {
+      return null;
+    }
+  };
+  const changes = locales.map((path) => {
+    const [, language, namespace] = path.match(localeFile);
+    const abs = join(repoRoot, path);
+    return { language, namespace, before: readBase(path), after: existsSync(abs) ? JSON.parse(readFileSync(abs, "utf8")) : null };
+  });
+  const languageRoot = join(srcRoot, "i18n/locales");
+  const languages = readdirSync(languageRoot).filter((name) => statSync(join(languageRoot, name)).isDirectory()).sort();
+  const touched = new Set(changed);
+  const sources = allFiles.map(rel).filter((path) => /\.(tsx?|jsx?|mjs)$/.test(path) && !touched.has(path) && !isTest(path))
+    .map((path) => ({ path, text: readFileSync(join(repoRoot, path), "utf8") }));
+  const impact = localeChangeImpact({ languages, changes, sources });
+  if (!impact.inert) {
+    console.error(`ui-check: locale change walks every page: ${impact.reason}`);
+    return changed;
+  }
+  console.error(`ui-check: locale change only adds texts no existing page renders: ${impact.added.join(", ")}`);
+  return changed.filter((path) => !localeFile.test(path));
+}
+
+async function main(argv) {
   const all = walk(srcRoot);
   const flag = (name) => argv.indexOf(name);
   const optionalPath = (i) => (argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : defaultSnapshot);
@@ -444,7 +480,7 @@ function main(argv) {
     if (flag("--base") >= 0) {
       const ref = argv[flag("--base") + 1];
       if (!ref) throw new Error("--base needs a git ref");
-      changed = gitChanged(ref);
+      changed = await withoutInertLocaleChanges(ref, gitChanged(ref), all);
     }
     if (flag("--affected") >= 0) changed.push(...argv.slice(flag("--affected") + 1).filter((a) => !a.startsWith("--")));
     console.log(JSON.stringify(affectedPages(changed, attribution)));
@@ -486,4 +522,4 @@ function main(argv) {
   return 0;
 }
 
-process.exitCode = main(process.argv.slice(2));
+process.exitCode = await main(process.argv.slice(2));
