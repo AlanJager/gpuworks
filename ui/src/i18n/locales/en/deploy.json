@@ -845,6 +845,7 @@
       "imageUnavailable": "No runtime image is available",
       "imageUnavailableDescription": "No runtime image matches the current model, engine, and accelerator.",
       "imageOptions": "Selectable runtime images",
+      "imageOtherEngines": "Other engines; choosing one switches the engine",
       "imageOptionTitle": {
         "node_cached": "Cached on this node",
         "template_image": "Template image",

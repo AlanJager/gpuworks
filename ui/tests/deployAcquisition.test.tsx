@@ -224,7 +224,7 @@ test("the image field offers catalog images and nothing else about fetching it",
   assert.equal(screen.queryByText(/registry/i), null, "the image row only picks the image; where it is fetched from is not asked");
 });
 
-test("selecting a catalog image chooses its engine when no template is selected", async () => {
+test("each image names its engine, and another engine's image switches the engine", async () => {
   let formInstance: FormInstance | undefined;
   function Harness() {
     const [form] = Form.useForm();
@@ -232,24 +232,39 @@ test("selecting a catalog image chooses its engine when no template is selected"
     return <Form form={form} initialValues={{ engine: "vllm" }}>
       <DeployImageRow
         acquisition={{ image: { image: "catalog/vllm:v1", options: [
-          { image: "catalog/vllm:v1", reason: "catalog_match", compatible: true },
-          { image: "catalog/sglang:v1", reason: "catalog_match", compatible: true },
+          { image: "catalog/vllm:v1", reason: "catalog_match", compatible: true, engine: "vllm", engine_version: "0.30.0" },
+          { image: "catalog/vllm:v2", reason: "catalog_match", compatible: true, engine: "vllm", engine_version: "0.34.0" },
+          { image: "catalog/sglang:v1", reason: "catalog_match", compatible: true, engine: "sglang", engine_version: "0.5.21", selects_engine: "sglang" },
         ] } }}
-        images={[
-          { image_ref: "catalog/vllm:v1", engine: "vllm" },
-          { image_ref: "catalog/sglang:v1", engine: "sglang" },
-        ] as never}
       />
     </Form>;
   }
   render(<I18nextProvider i18n={i18n}><Harness /></I18nextProvider>);
-  fireEvent.mouseDown(screen.getByRole("combobox", { name: text("imageOptions") }));
-  const sglangOptions = await screen.findAllByText("catalog/sglang:v1");
-  fireEvent.click(sglangOptions[sglangOptions.length - 1]);
+  const select = screen.getByRole("combobox", { name: text("imageOptions") });
+  fireEvent.mouseDown(select);
+  const sameEngine = await screen.findByText("catalog/vllm:v2");
+  assert.ok(screen.getByText("vLLM 0.34.0"));
+  assert.ok(screen.getByText("SGLang 0.5.21"));
+  const group = screen.getByText(text("imageOtherEngines"));
+  assert.ok(sameEngine.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING, "the draft's own engine is listed before the others");
+  fireEvent.click(sameEngine);
+  await waitFor(() => assert.equal(formInstance?.getFieldValue("image"), "catalog/vllm:v2"));
+  assert.equal(formInstance?.getFieldValue("engine"), "vllm");
+  fireEvent.mouseDown(select);
+  fireEvent.click(await screen.findByText("catalog/sglang:v1"));
   await waitFor(() => {
     assert.equal(formInstance?.getFieldValue("image"), "catalog/sglang:v1");
     assert.equal(formInstance?.getFieldValue("engine"), "sglang");
   });
+});
+
+test("an image outside the catalog is listed without an engine", async () => {
+  renderRow({ image: { image: "registry.example/custom:v1", options: [
+    { image: "registry.example/custom:v1", reason: "selected_image", compatible: true },
+  ] } });
+  fireEvent.mouseDown(screen.getByRole("combobox", { name: text("imageOptions") }));
+  const option = (await screen.findAllByText("registry.example/custom:v1")).at(-1)!;
+  assert.equal(option.closest(".deploy-image-option")?.textContent, "registry.example/custom:v1");
 });
 
 test("before the first evaluation the image row explains that it is still checking", () => {

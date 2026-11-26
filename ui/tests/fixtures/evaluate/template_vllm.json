@@ -364,22 +364,30 @@
         {
           "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.34.0-r1",
           "reason": "catalog_match",
-          "compatible": true
+          "compatible": true,
+          "engine": "vllm",
+          "engine_version": "0.34.0"
         },
         {
           "image": "gpuworks/gpuworks-runner:cuda12.9-vllm0.31.0-r2",
           "reason": "catalog_match",
-          "compatible": true
+          "compatible": true,
+          "engine": "vllm",
+          "engine_version": "0.31.0"
         },
         {
           "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.30.0-r4",
           "reason": "catalog_match",
-          "compatible": true
+          "compatible": true,
+          "engine": "vllm",
+          "engine_version": "0.30.0"
         },
         {
           "image": "gpuworks/gpuworks-runner:cuda13.0-vllm0.33.0-r1",
           "reason": "catalog_match",
-          "compatible": true
+          "compatible": true,
+          "engine": "vllm",
+          "engine_version": "0.33.0"
         }
       ]
     },
