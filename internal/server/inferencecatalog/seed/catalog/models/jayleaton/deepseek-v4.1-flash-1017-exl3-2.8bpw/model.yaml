@@ -130,10 +130,9 @@ specs:
       sources:
       - modelscope:
           repo_id: gpuworks/DeepSeek-V4.1-Flash-1017-Engram-TP2
-          # Pinned to the repository's head at the time this template was written,
-          # which holds only the README: the rank0/ and rank1/ files are still being
-          # uploaded. Re-pin to the commit that adds them before this ships.
-          revision: 0606ec6552fdac6aba42a683a08c6da6af73c9cd
+          # The commit holding both rank0/ and rank1/ (sha256 of each shard checked
+          # against the files the recipe packed).
+          revision: f9860afbca10b75fa07af24cea00ad4204bd4e86
           subfolder: rank${GPUWORKS_NODE_RANK}
     weight_bytes: 101379729008
     mount_path: /engram
