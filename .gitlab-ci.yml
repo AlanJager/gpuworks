@@ -281,16 +281,11 @@ core-ui-test:
         rm -rf node_modules
         sleep 15
       done
-    - TEST_SHARD="$CI_NODE_INDEX/$CI_NODE_TOTAL" npm run test:coverage
-  artifacts:
-    when: always
-    # Only the reports: coverage/tmp holds c8's raw V8 dumps (one per test
-    # process, node_modules included), which made the archive outgrow the
-    # coordinator's upload limit (413) while adding nothing a reader uses.
-    paths:
-      - ui/coverage/lcov.info
-      - ui/coverage/lcov-report/
-    expire_in: 14 days
+    # Sharded plain run: c8 instrumented every test process and then scanned
+    # the sources for a report no gate reads, and that last step is what a
+    # loaded runner cut at the job timeout. `npm run test:coverage` stays for
+    # local runs and the QA suite.
+    - TEST_SHARD="$CI_NODE_INDEX/$CI_NODE_TOTAL" npm test
 
 # Walks the console in Chromium against a disposable experience environment
 # and fails on what a person would see as broken: covered or overlapping text,
