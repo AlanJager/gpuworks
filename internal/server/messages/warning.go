@@ -27,6 +27,13 @@ const (
 	WarningImageCatalogNoMatchDomestic     = "IMAGE_CATALOG_NO_MATCH_DOMESTIC"
 	WarningImageCatalogUnavailableDomestic = "IMAGE_CATALOG_UNAVAILABLE_DOMESTIC"
 	WarningImageDriverCompatibility        = "IMAGE_DRIVER_COMPATIBILITY"
+	// WarningTemplateImagePinnedByRuntimePatch: the request runs a template
+	// spec that patches its own runtime - a pre-start script or assets
+	// pinned to the engine sources of its own image ({image}) - on another
+	// image ({requested}). The catalog records that such a step exists but
+	// not what it does, so the platform states the risk rather than deciding:
+	// the patch may refuse the other image's sources and fail the start.
+	WarningTemplateImagePinnedByRuntimePatch = "TEMPLATE_IMAGE_PINNED_BY_RUNTIME_PATCH"
 	// WarningExtraArgsEngineUnverified: a residual user flag is documented by
 	// another engine's dictionary, not this target's. It remains passthrough;
 	// dictionary absence is not evidence that the target CLI refuses it.

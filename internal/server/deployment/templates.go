@@ -375,6 +375,9 @@ func (s *Service) applyTemplateDefaults(req *dto.DeployRequest, hardware templat
 	}
 	selection.Diff = flatTemplateRequestDiff(requestedEngine, requestedScenario, requestedImage, requestedSpec, req, selection)
 	selection.Deviated = len(selection.Diff) > 0
+	if warning := patchedImageWarning(requestedImage, spec, selection); warning != nil {
+		selection.Warnings = append(selection.Warnings, *warning)
+	}
 	// The spec's args stay as the author wrote them. Which of them become
 	// configuration values and which stay passthrough tokens is decided once, at
 	// materialization, for the request and the template alike.
