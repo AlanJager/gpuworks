@@ -519,6 +519,12 @@ core-lint:
     # executor slot can clean the worktree, and use -modcacherw for future
     # cache updates.
     - export DOCKER_HOST_CACHE="$HOME/.cache/gpuworks-ci/$CI_PROJECT_ID"
+    # The docker CLI and daemon socket are the ones this runner uses, not
+    # fixed paths: a runner may keep docker outside /usr/bin and point
+    # DOCKER_HOST at a daemon reserved for CI on a host that also serves GPU
+    # workloads, where a bind mount of the default socket would reach the
+    # host's own daemon.
+    - export GPUWORKS_DOCKER_BIN="$(command -v docker)"
     - mkdir -p "$DOCKER_HOST_CACHE/go-mod" "$DOCKER_HOST_CACHE/go-build" "$DOCKER_HOST_CACHE/images" "$CI_PROJECT_DIR/.cache/home" "$CI_PROJECT_DIR/.tmp"
     # Share a short job-owned Unix endpoint with the non-root Go container.
     # Container PTYs require a local socket, and exec pins this exact daemon.
@@ -619,7 +625,7 @@ core-lint:
       --label gpuworks-ci-docker-core
       --network "container:ci-gpuworks-docker-core-dind-$CI_JOB_ID"
       --user "$(id -u):$(id -g)"
-      -v /usr/bin/docker:/usr/bin/docker:ro
+      -v "$GPUWORKS_DOCKER_BIN":/usr/bin/docker:ro
       -v "$CI_PROJECT_DIR:$CI_PROJECT_DIR"
       -v "$GPUWORKS_CI_SOCKET_DIR:/run/gpuworks-e2e"
       --tmpfs /run/gpuworks-full-disk:rw,size=64m,mode=1777
@@ -1043,14 +1049,21 @@ release-agent-image:
         exit 1
       fi
     - export TOOL_CACHE="$HOME/.cache/gpuworks-ci/$CI_PROJECT_ID"
+    # The docker CLI and daemon socket are the ones this runner uses, not
+    # fixed paths: a runner may keep docker outside /usr/bin and point
+    # DOCKER_HOST at a daemon reserved for CI on a host that also serves GPU
+    # workloads, where a bind mount of the default socket would reach the
+    # host's own daemon.
+    - export GPUWORKS_DOCKER_BIN="$(command -v docker)"
+    - export GPUWORKS_HOST_DOCKER_SOCK="${DOCKER_HOST:-unix:///var/run/docker.sock}" && export GPUWORKS_HOST_DOCKER_SOCK="${GPUWORKS_HOST_DOCKER_SOCK#unix://}"
     - mkdir -p "$TOOL_CACHE/go-mod" "$TOOL_CACHE/go-build" "$TOOL_CACHE/tools" "$CI_PROJECT_DIR/.tmp"
     - >
       docker run --rm
       --name "ci-gpuworks-agent-image-$CI_JOB_ID"
       --network host
-      --user "$(id -u):$(id -g)" --group-add "$(stat -c %g /var/run/docker.sock)"
-      -v /usr/bin/docker:/usr/bin/docker:ro
-      -v /var/run/docker.sock:/var/run/docker.sock
+      --user "$(id -u):$(id -g)" --group-add "$(stat -c %g "$GPUWORKS_HOST_DOCKER_SOCK")"
+      -v "$GPUWORKS_DOCKER_BIN":/usr/bin/docker:ro
+      -v "$GPUWORKS_HOST_DOCKER_SOCK":/var/run/docker.sock
       -v "$CI_PROJECT_DIR:$CI_PROJECT_DIR"
       -v "$TOOL_CACHE/go-mod:/go-cache/mod"
       -v "$TOOL_CACHE/go-build:/go-cache/build"
@@ -1065,6 +1078,7 @@ release-agent-image:
       -e NERDCTL_URL_BASE
       -e GPUWORKS_AGENT_IMAGE_REPOS
       -e GPUWORKS_AGENT_IMAGE_DOCKER_CONFIG
+      -e GPUWORKS_HOST_DOCKER_SOCK
       -e GPUWORKS_DOCKER_CLI_IMAGE=docker.m.daocloud.io/library/docker:29-cli
       -e GPUWORKS_BUILDKIT_IMAGE=docker.m.daocloud.io/moby/buildkit:v0.25.2
       "$DOCKER_GO_IMAGE"
