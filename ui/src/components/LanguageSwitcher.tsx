@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { DropdownContent, DropdownMenu, DropdownTrigger } from "@/components/ui/dropdown";
 import { MenuItem } from "@/components/ui/menu-item";
+import { loadConsoleLanguage } from "../i18n";
 import { ConsoleIcon } from "../ui-kit/consoleIcons";
 
 const GlobeIcon = ConsoleIcon.language;
@@ -31,7 +32,7 @@ export default function LanguageSwitcher({ light = false }: { light?: boolean })
             index={i}
             label={language.label}
             checked={language.key === current}
-            onSelect={() => void i18n.changeLanguage(language.key)}
+            onSelect={() => void loadConsoleLanguage(language.key).then(() => i18n.changeLanguage(language.key))}
           />
         ))}
       </DropdownContent>
