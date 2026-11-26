@@ -126,13 +126,36 @@ The agent uses the node's own DNS (`dnsPolicy: Default`), like an agent installe
    - Idle return (takes effect at once when saved): how long a borrowed card is kept after the last instance stops, 60 seconds by default (checked every 30 seconds, so the actual return happens between 60 and 90 seconds); “Keep borrowed cards” means never return them, handing the whole node pool to gpuworks.
    - Priority: the value of the PriorityClass (`gpuworks-inference-<namespace>`) of gpuworks hold and instance Pods, 10000 by default, from 0 to 1000000000; larger runs first, and ordinary Pods are 0. It also sets the eviction order when a node runs short of memory or disk: lower priority is evicted first.
    - Allow preemption: off by default (the PriorityClass says `preemptionPolicy: Never`): a hold Pod that does not fit only waits, and the scheduler never evicts your other Pods for it. On, with HAMi or ACK GPU sharing (where hold Pods go through the scheduler) the scheduler may evict lower-priority Pods; with a plain device plugin the hold Pods, like all instance Pods, are bound to the node without the scheduler and the switch makes no difference.
-3. Click “Connect”; the dialog shows the `kubectl apply` command to run in the cluster (the button becomes “Close”). Copy it and run it in the cluster:
+3. Pre-check (recommended, never required): before clicking “Connect”, click “Pre-check”. With what the form holds now, the dialog gives a script, `gpuworks-precheck.sh`, to copy or download and run on a machine where `kubectl` reaches the cluster:
+
+   ```bash
+   bash gpuworks-precheck.sh
+   ```
+
+   The script starts a temporary pod on every node that would join (DaemonSet `gpuworks-precheck`, with the agents' node selection, tolerations, pull secret, host network and DNS, and no privilege), checks that the node pulls the agent image and opens a TCP connection to the management node address, waits up to 3 minutes, and prints one line per node, “node code detail”, for example:
+
+   ```text
+   gpu-node-1                       OK
+   gpu-node-2                       IMAGE_PULL_FAILED    Failed to pull image "swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1": … dial tcp …: i/o timeout
+   gpu-node-3                       SERVER_UNREACHABLE   10.0.0.5:8800
+   ```
+
+   For a failed pull the detail comes from the kubelet's events, so it is the real cause (a timeout, unauthorized, no such image) rather than the pod's back-off note. The dialog lists what every code means and what to do about it; the other codes say that the selector matches no node, that pods cannot be scheduled or created (PodSecurity, a quota), that the pull secret is missing, or that kubectl cannot reach the cluster. It exits 0 when every node passed. When it ends, also when interrupted, it deletes the DaemonSet it created, and the namespace if it created that too; it carries no connect token and makes no node join. On an offline site, or one that cannot reach SWR, Docker Hub or quay.io, first put the image into a registry the nodes reach and enter it as the agent image (see above), then pre-check. A cluster connected from a cloud account (nodes chosen by node pool) has no pre-check.
+4. Click “Connect”; the dialog shows the `kubectl apply` command to run in the cluster (the button becomes “Close”). Copy it and run it in the cluster:
 
    ```bash
    kubectl apply -f 'https://server.example/kube/manifest.yaml?token=…'
    ```
 
-   The selected nodes appear on the Nodes page automatically, carrying the system labels `gpuworks.ai/kubernetes-cluster` (the value is the cluster UUID, shown as the cluster name) and `gpuworks.ai/kubernetes-node` (the node name in Kubernetes); filter the Nodes page by them, or use them in a deployment's node requirements to keep it on one cluster. Nodes added later by scale-out join automatically as well. The cluster takes one row in the “Connected external platforms” list, with “—” in the “Vendor” column and Kubernetes in the “Platform type” column; the number in the “Nodes joined” column opens the Compute Nodes page listing only these nodes. Expanding the row shows “label value” pairs in two columns: how it was connected (“Connected by”), node selector, namespace, card return, creation time, and nodes joined (the count and the split by vendor, such as “Nodes: 2 · NVIDIA ×2”; once nodes have joined, it opens the Compute Nodes page); while no node has joined, the connect command is below them. A “Shared namespace” badge beside the cluster name means another entry uses the same namespace (see [Coexisting with Other Workloads in the Cluster](#coexisting-with-other-workloads-in-the-cluster) above). In the “Actions” column administrators have “Edit” and “Copy connect command” directly, and the rest in the “More” menu: “View manifest”, then below a rule “Uninstall” (see “Uninstall” below), “Revoke”, and “Delete”; revoking and deleting each ask for confirmation in a dialog. If no node has joined 5 minutes after creation, the “Status” column reads “Not connected for long”, and “Troubleshoot” next to it gives the `kubectl` commands to run and common causes (the agent image cannot be pulled, the node selector selects no node, the agent cannot reach the server).
+   Below it is “Check every node after applying”:
+
+   ```bash
+   curl -fsSL 'https://server.example/kube/check.sh?token=…' | bash
+   ```
+
+   It only reads the cluster and says, in the same format, node by node whether the agent pod runs, whether pulling its image failed (again with the kubelet's reason), and why a pod is not scheduled or its container exited. When every pod is `OK` but a node does not show on the Nodes page, the agent most likely cannot reach the management node address: read the agent's log.
+
+   The selected nodes appear on the Nodes page automatically, carrying the system labels `gpuworks.ai/kubernetes-cluster` (the value is the cluster UUID, shown as the cluster name) and `gpuworks.ai/kubernetes-node` (the node name in Kubernetes); filter the Nodes page by them, or use them in a deployment's node requirements to keep it on one cluster. Nodes added later by scale-out join automatically as well. The cluster takes one row in the “Connected external platforms” list, with “—” in the “Vendor” column and Kubernetes in the “Platform type” column; the number in the “Nodes joined” column opens the Compute Nodes page listing only these nodes. Expanding the row shows “label value” pairs in two columns: how it was connected (“Connected by”), node selector, namespace, card return, creation time, and nodes joined (the count and the split by vendor, such as “Nodes: 2 · NVIDIA ×2”; once nodes have joined, it opens the Compute Nodes page); while no node has joined, the connect command is below them. A “Shared namespace” badge beside the cluster name means another entry uses the same namespace (see [Coexisting with Other Workloads in the Cluster](#coexisting-with-other-workloads-in-the-cluster) above). In the “Actions” column administrators have “Edit” and “Copy connect command” directly, and the rest in the “More” menu: “View manifest”, then below a rule “Uninstall” (see “Uninstall” below), “Revoke”, and “Delete”; revoking and deleting each ask for confirmation in a dialog. If no node has joined 5 minutes after creation, the “Status” column reads “Not connected for long”, and “Troubleshoot” next to it gives the check command above first, then the `kubectl` commands to run and common causes (the agent image cannot be pulled, the node selector selects no node, the agent cannot reach the server).
 
 The command contains the cluster's connect token and is shown only to administrators. After the connect token is revoked, new nodes can no longer join, and nodes already joined are unaffected.
 
@@ -194,7 +217,7 @@ Deleting the DaemonSet deletes the instance Pods and placeholder Pods with it, a
 <!-- translation-source-sha256: c3dac868c063bf015effc769d973ca3fbe8a0315b8bdb143f4f466dbc88891c2 ## Coexisting with Other Workloads in the Cluster -->
 <!-- translation-source-sha256: d1c772d60d54cab145763c6464f7e7666a10676b3be6d75c241e5244c9f5f255 ## Accelerator Vendor: Detected Automatically -->
 <!-- translation-source-sha256: 212fd729bd72e1c98e19dd60dc4688e5091253aa5c6455c26120c574fb5bb0c4 ## When the Cluster Uses HAMi, ACK GPU Sharing, or Other Splits -->
-<!-- translation-source-sha256: 80c327105f0d97fc1b418592f465a86eb815433a12710e77cd139830efadfbdf ## Connect -->
+<!-- translation-source-sha256: a6565ed5e016157f11396a93819824898f89d7d33d33a29ab9a3feccc932b02d ## Connect -->
 <!-- translation-source-sha256: 2a8a0f7547c21e6e0a32290f428c9d8ecceed1b73c9e126e35316e62215d7393 ## Edit a Cluster Entry -->
 <!-- translation-source-sha256: 59a9c21dc813c1598734993676ca61a02fba23151864bf705b6c1b4b2c08927d ## Uninstall -->
 <!-- translation-source-sha256: 6e00804f78349c113c506d99399a3838bad265471f22631949066547abe9e127 ## Day-to-Day Operations -->

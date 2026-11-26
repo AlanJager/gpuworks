@@ -173,6 +173,7 @@ read POST /api/v1/ai/configs/test
 read POST /api/v1/benchmarks/models
 read POST /api/v1/benchmarks/probe
 read POST /api/v1/evaluate
+read POST /api/v1/kube/precheck
 read POST /api/v1/mcp
 read POST /api/v1/models/local/preview
 read POST /api/v1/models/preview-url
@@ -203,6 +204,7 @@ recovery GET /api/v1/updates
 recovery GET /api/v1/updates/server/result
 recovery GET /api/v1/updates/server/versions
 recovery GET /healthz
+recovery GET /kube/check.sh
 recovery GET /slurm/check.sh
 recovery GET /slurm/token-status
 recovery HEAD /*

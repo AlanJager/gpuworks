@@ -21,7 +21,9 @@ func TestKubeDefaultsDictionaryOnTheWire(t *testing.T) {
 	want := `{"namespace":"gpuworks-system","state_dir":"/opt/gpuworks","engine_ports":"40000-42767",` +
 		`"idle_return_seconds":60,"idle_return_keep":-1,"agent_image":"swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1","stalled_after_seconds":300,` +
 		`"agent_image_source":"swr","agent_image_sources":[{"id":"swr","image":"swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-agent:r1"},` +
-		`{"id":"dockerhub","image":"gpuworks/gpuworks-agent:r1"},{"id":"quay","image":"quay.io/gpuworks/gpuworks-agent:r1"}],"priority":10000,"priority_max":1000000000,"allow_preemption":false}`
+		`{"id":"dockerhub","image":"gpuworks/gpuworks-agent:r1"},{"id":"quay","image":"quay.io/gpuworks/gpuworks-agent:r1"}],"priority":10000,"priority_max":1000000000,"allow_preemption":false,` +
+		`"check_codes":{"precheck":["OK","IMAGE_PULL_FAILED","SERVER_UNREACHABLE","PULL_SECRET_MISSING","NO_NODE_SELECTED","NOT_SCHEDULED","POD_CREATE_FAILED","CONTAINER_FAILED","STILL_STARTING","APPLY_FAILED","KUBECTL_MISSING","KUBECTL_FAILED"],` +
+		`"verify":["OK","IMAGE_PULL_FAILED","NO_NODE_SELECTED","NOT_SCHEDULED","POD_CREATE_FAILED","CONTAINER_FAILED","STILL_STARTING","DAEMONSET_MISSING","KUBECTL_MISSING","KUBECTL_FAILED"]}}`
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("defaults = %d %s\nwant %s", rec.Code, rec.Body, want)
 	}
