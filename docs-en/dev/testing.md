@@ -299,7 +299,7 @@ self-hosted runner. Three more workflows cover GitLab's other non-L4 jobs: `docs
 triggered by pull requests that touch the docs; it fetches the OINK theme from the public `gpuworks_website` repository),
 `ui-check.yml` (the UI walk, triggered by pull requests that touch the UI and nightly, with the report
 uploaded as an artifact) and `release.yml` (release packages, see the
-[release guide](release.md#github-actions-releases)). L4 still runs only in GitLab.
+[release guide](release.md#github-actions-发布)). L4 still runs only in GitLab.
 
 The scripts read CI-neutral variable names: `GPUWORKS_BUILD_COMMIT` (the commit built), `GPUWORKS_BUILT_AT`
 (one build time shared by every job of a run) and `GPUWORKS_ARCH_BASELINE` (the merge request's base commit,

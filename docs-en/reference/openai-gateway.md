@@ -1,6 +1,6 @@
 # OpenAI-Compatible Gateway
 
-The server's `/v1/*` endpoints require API key authentication by default; see [Authentication](#authentication) below. The `model` field in the request body specifies the model name exposed for inference (the served model). The server uses it to find the deployment, instance, and node, then forwards the request to the local port through the agent tunnel. Management APIs use JWTs; a management JWT cannot replace a gateway key.
+The server's `/v1/*` endpoints require API key authentication by default; see [Authentication](#认证) below. The `model` field in the request body specifies the model name exposed for inference (the served model). The server uses it to find the deployment, instance, and node, then forwards the request to the local port through the agent tunnel. Management APIs use JWTs; a management JWT cannot replace a gateway key.
 
 ## Authentication
 
@@ -13,7 +13,7 @@ The only exception is an explicit administrator switch: the `inference_open_acce
 - An unreadable setting counts as off: a failed read never lets a request without a key through; the request is treated as one that must carry a key.
 - Revoking a key does not change the decision: revoking the last key does not reopen the gateway, and `/v1` refuses every request until another key is created or an administrator turns the switch on.
 
-The rule covers every `/v1` route, including `/v1/models`, `/v1/files`, `/v1/batches`, `/v1/tokenize`, and `/v1/detokenize`. The 401 code depends on the entry point: gateway routes return `INVALID_API_KEY` (`type` `authentication_error`; see [Errors](#errors)), while Files and Batches return the OpenAI-format `invalid_api_key`.
+The rule covers every `/v1` route, including `/v1/models`, `/v1/files`, `/v1/batches`, `/v1/tokenize`, and `/v1/detokenize`. The 401 code depends on the entry point: gateway routes return `INVALID_API_KEY` (`type` `authentication_error`; see [Errors](#错误)), while Files and Batches return the OpenAI-format `invalid_api_key`.
 
 `GET /v1/models` lists the served names the gateway can route right now (read from the gateway's event-driven route table, not the database): active deployments only, each served name once, in name order; a scoped key sees only the served names of deployments it may call. A deployment just created or stopped appears or disappears once the route table rebuilds: at most about 0.5 s after the deployment's event, and every 2 s regardless.
 
@@ -195,7 +195,7 @@ Errors the gateway gives itself (refusals before forwarding, failed connections 
 | `param` | The request field the error is about, `null` for none |
 | `params` | The values filled into `message`, for clients that localize it; omitted when there are none |
 
-Every `/v1` response, including a request refused before forwarding, carries `X-Request-ID`. The engine's own error responses are forwarded unchanged when that is safe, in the engine's shape; Files and Batches answer in OpenAI's format with its lower-case codes, see [REST API Reference](api.md#batches).
+Every `/v1` response, including a request refused before forwarding, carries `X-Request-ID`. The engine's own error responses are forwarded unchanged when that is safe, in the engine's shape; Files and Batches answer in OpenAI's format with its lower-case codes, see [REST API Reference](api.md#batches批处理任务).
 
 | `code` | Status | `type` | `param` | Meaning |
 |---|---|---|---|---|
@@ -247,9 +247,9 @@ The gateway does not emulate all OpenAI product APIs. For the exact capabilities
 
 | Status code | What to check |
 |---|---|
-| 401 `INVALID_API_KEY` | Check `Authorization: Bearer <key>` first. When no key is sent at all, confirm whether anonymous access is really wanted (see [Authentication](#authentication)); `/v1` refuses every request without a key by default |
+| 401 `INVALID_API_KEY` | Check `Authorization: Bearer <key>` first. When no key is sent at all, confirm whether anonymous access is really wanted (see [Authentication](#认证)); `/v1` refuses every request without a key by default |
 | 404 `MODEL_NOT_FOUND` / `MODEL_ROUTE_NOT_EXPOSED` | Check the `model` name; for Playground, also check the contract |
-| 503 | Look up the `code` in [Errors](#errors): asleep, starting, node offline, or data lane reconnecting |
+| 503 | Look up the `code` in [Errors](#错误): asleep, starting, node offline, or data lane reconnecting |
 | 502 `UPSTREAM_UNAVAILABLE` | Check tunnel and engine logs |
 
 Streaming SSE and binary responses (such as WAV) are forwarded with their original content type without truncation.

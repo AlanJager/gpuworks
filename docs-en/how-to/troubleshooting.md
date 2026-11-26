@@ -574,7 +574,7 @@ gets its identities filled in by a migration when the server is upgraded, and th
 
 **For the card to take the platform's deployments you must consent, in one of two ways**:
 
-- **Enable scheduling on the card** (the "Scheduling" entry in the [previous section](#enabling-or-disabling-scheduling-on-a-card-by-hand)): automatic placement may then use the card, and always tries cards without such processes first (on the node and across nodes).
+- **Enable scheduling on the card** (the "Scheduling" entry in the [previous section](#手动启用或禁用一张卡的调度)): automatic placement may then use the card, and always tries cards without such processes first (on the node and across nodes).
   Enabling scheduling is your explicit decision about this card, and the platform no longer guards it for you: a whole-card deployment, a card whose outside use is unknown and a node whose agent is older are all placed on.
   With an older agent, once a platform instance is on the card the agent stops reporting the outside processes that were already there, so the card reads as free and its memory may be handed out twice; upgrade the agent before enabling.
 - **Pick the card yourself when deploying** (in the deploy form, or `placement.gpus` in the request): this admits only a dGPU deployment with a memory limit, and only when every condition below holds.
@@ -1049,7 +1049,7 @@ the `POST /api/v1/evaluate` response and in `DEPLOYMENT_UNSCHEDULABLE` deploymen
 | `sleep_residue_blocks_startup` | Residual GPU memory from sleeping instances blocks startup |
 | `engine_ports_exhausted` | The node's engine port range is exhausted |
 | `insufficient_disk` / `insufficient_runtime_disk` | Insufficient space on the weights disk / runtime disk |
-| `insufficient_managed_dir_disk` | The disk the node keeps managed directories on cannot hold the ceilings the template's `dirs` declare plus the disk reserve (and the weights and image when they share it); the parameters give the needed, available, declared and reserved bytes and the path; see [Managed Writable Directories](../reference/inference-catalog-spec.md#dirs-managed-writable-directories) |
+| `insufficient_managed_dir_disk` | The disk the node keeps managed directories on cannot hold the ceilings the template's `dirs` declare plus the disk reserve (and the weights and image when they share it); the parameters give the needed, available, declared and reserved bytes and the path; see [Managed Writable Directories](../reference/inference-catalog-spec.md#dirs托管的可写目录) |
 | `RUNTIME_UNAVAILABLE` / `serving_unavailable` | The node has no container runtime / no network capable of carrying serving traffic |
 | `image_source_forbidden` | The pull source rules applicable to the node leave no source from which to pull the image (parameters `node` and `image`); see [Image Pull Failures](#镜像拉取失败) |
 | `partition_unavailable` | A dGPU backend is required, but none is ready on the node; see the dGPU section |
@@ -1216,7 +1216,7 @@ After retrying, check events and logs again and confirm that the new instance en
 
 ## Gateway Returns 401, 404, or 503
 
-The gateway error body has the OpenAI shape: `{"error":{"message":"…","type":"…","code":"…","param":…}}`. Identify the error by `code`; `message` is an English description. Every response carries `X-Request-ID`, which you can look up in the request records. For the code table, see [OpenAI-Compatible Gateway](../reference/openai-gateway.md#errors).
+The gateway error body has the OpenAI shape: `{"error":{"message":"…","type":"…","code":"…","param":…}}`. Identify the error by `code`; `message` is an English description. Every response carries `X-Request-ID`, which you can look up in the request records. For the code table, see [OpenAI-Compatible Gateway](../reference/openai-gateway.md#错误).
 
 | Status | code | Cause and action |
 |---|---|---|
@@ -1454,7 +1454,7 @@ When you cannot log in to the customer's servers, have an administrator work in 
 |---|---|
 | `manifest.json` | The collection's scope, the server version, and each part's check result: `pass` collected whole, `warn` cut at its size limit, `skip` not read (node offline, agent version without support), `fail` the read failed (with its error text) |
 | `server/disk.json` | The server's data, log and backup directories and SQLite's temporary directory: their filesystems' size and free space, and the size of each entry in every directory (largest first) |
-| `server/host-identity.json` | The identity of the server's machine (system UUID, board serial, machine-id, root file system UUID), each only as a salted digest `h` and the raw value's last four characters `tail`, absent when unreadable; the salt is fixed, so one machine has the same digests in every collection; see [Extension points](../dev/extensions.md#the-management-servers-host-identity) |
+| `server/host-identity.json` | The identity of the server's machine (system UUID, board serial, machine-id, root file system UUID), each only as a salted digest `h` and the raw value's last four characters `tail`, absent when unreadable; the salt is fixed, so one machine has the same digests in every collection; see [Extension points](../dev/extensions.md#管理-server-的主机身份) |
 | `server/gpuworks-server.log` | The server log in the time range (info included; the Logs page has warn and above only) |
 | `server/stalls/stall-<time>.txt` | The [stall reports](#server-卡住或偶发变慢时卡顿报告与现场堆栈) in the time range, as written |
 | `nodes/<uuid>/agent.log`, `doctor.json` | The chosen nodes' (without a choice, the nodes of the chosen deployments' instances) agent logs and diagnosis reports |
