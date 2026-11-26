@@ -137,8 +137,8 @@ func TestReadsThatActAndReadsThatReachOutside(t *testing.T) {
 			}
 		}
 	}
-	if n := len(platformChangingReads) + len(platformReachingReads); n != 19 {
-		t.Errorf("platform_limit.go names %d reads that act or reach outside; this table has 19: add the new one here", n)
+	if n := len(platformChangingReads) + len(platformReachingReads); n != 20 {
+		t.Errorf("platform_limit.go names %d reads that act or reach outside; this table has 20: add the new one here", n)
 	}
 }
 

@@ -86,6 +86,7 @@ read GET /api/v1/instances/{uuid}/events
 read GET /api/v1/instances/{uuid}/launch-facts
 read GET /api/v1/instances/{uuid}/logs
 read GET /api/v1/kube/clusters
+read GET /api/v1/kube/clusters/{uuid}/rollout
 read GET /api/v1/kube/defaults
 read GET /api/v1/logs/context
 read GET /api/v1/logs/histogram

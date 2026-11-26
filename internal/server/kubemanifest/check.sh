@@ -38,6 +38,15 @@ events() {
 		--allow-missing-template-keys=true -o go-template="$MESSAGES_TEMPLATE" 2>/dev/null
 }
 
+# longest prints the longest line of its input, the last of equal ones.
+longest() {
+	local line best=
+	while IFS= read -r line; do
+		[ "${#line}" -ge "${#best}" ] && best=$line
+	done
+	printf '%s' "$best"
+}
+
 pull_failed() {
 	case "$1" in ErrImagePull | ImagePullBackOff | InvalidImageName | ErrImageNeverPull) return 0 ;; esac
 	return 1
@@ -101,8 +110,10 @@ report() {
 		if [ -n "$UNREACHABLE_EXIT" ] && [ "$code" = "$UNREACHABLE_EXIT" ]; then
 			say "$node" SERVER_UNREACHABLE "$SERVER"
 		elif pull_failed "$reason"; then
-			# The waiting message only says it backs off; the event says why.
-			detail=$(events Pod "$name" Failed | grep -v '^Error: ' | tail -n 1)
+			# The waiting message only says it backs off; the kubelet's event
+			# says why, and is the longest of them ("Error: ErrImagePull" only
+			# repeats the reason).
+			detail=$(events Pod "$name" Failed | longest)
 			say "$node" IMAGE_PULL_FAILED "${detail:-$reason: $msg}"
 		elif [ -n "$sched" ]; then
 			say "$node" NOT_SCHEDULED "$sched"
