@@ -33,6 +33,14 @@ Some vLLM patches under patches/ carry third-party attribution; see [NOTICE](NOT
    `<id>-<revision>` as the authoritative tag, plus a bare `<id>` as a human-friendly alias.
    The inference catalog (seed catalog) only references revisioned tags. When a recipe changes, bump the revision; never overwrite in place —
    a node that already has an image with the same name will not re-pull it, so overwriting in place means the change never takes effect.
+   The system catalog offers the newest release for each engine per framework version, chip variant and CPU architecture.
+   Engine version takes precedence over recipe revision. A multi-platform tag keeps its full platform list and can win automatic selection on just one CPU. Older tags used by built-in templates remain selectable with their original pull sources.
+   Prebuilt releases use the same matrix id and revision as recipes. Pin the source
+   repository in `artifact: repository@sha256:…`. For releases with limited distribution,
+   set `registry_sources` to their additional verified copies (or `[]` for none).
+   The artifact repository then supplies the primary pull reference. Publication checks
+   the source tag against the pin. The full manifest verifier also compares the copies' platform manifests.
+   A release marked `manual_only: true` remains selectable without competing for automatic selection.
 2. **The matrix `base` is always a reproducible upstream source**. When the vendor registry is unreachable or only provides a tar,
    use the build machine's local `base-mirrors.local` (not checked into the repo) to map it to a mirror explicitly:
 

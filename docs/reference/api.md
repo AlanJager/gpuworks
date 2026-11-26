@@ -683,6 +683,7 @@ const importBody = {
 - 发布源均不可达：502 `UPDATE_SOURCES_UNAVAILABLE`；有索引但没有与索引一致的目录文件：502 `UPDATE_DOWNLOAD_FAILED`。
 - 通道未发布目录：404 `UPDATE_NOT_PUBLISHED`。
 - 内容非法：400 `IMAGE_MANIFEST_INVALID`；与社区/自定义行同名或同 ref 冲突：400 `IMAGE_IMPORT_CONFLICT`。
+- 上传旧版服务的兼容目录时返回 400 `IMAGE_MANIFEST_LEGACY_PROJECTION`。响应中的 `params.path` 为 `image_catalog_v4.path`，请下载签名渠道索引中该字段指向的文件再上传。
 
 版本行的 `rolling_tag`、`deprecated`、`deprecated_since` 描述滚动 tag 与弃用状态；
 `reference_count` 统计引用该 ref 的部署、未结束实例与模型数。
@@ -2430,7 +2431,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
   `internal/server/api/router_inventory_test.go` 中的 `TestRouterInventoryMatchesCompleteContract` 逐条断言实际路由树，
   新增或删除路由时必须同步更新该测试。
 - 管理鉴权由 `internal/server/api/auth.go` 的 `managementAuth` 校验，管理员操作再经过 `managementAdmin`。
-  产品错误使用 `messages.ProductError`；130+ 个稳定错误码定义在 `internal/server/api/errors.go`，本文不逐一罗列。
+  产品错误使用 `messages.ProductError`；130+ 个稳定错误码定义在 `internal/server/api/errors*.go`，本文不逐一罗列。
 - `make check-api-conventions` 从类型上检查字段命名和列表结构，详见 [API 规范](api-conventions.md)。
 - `internal/server/app` 在生产装配时始终为 `/v1/*`、`/v1/models`、`/api/v1/playground/v1/*` 注入非空
   `ProxyV1`、`ProxyModels`、`PlaygroundV1` handler。路由清单测试使用零值 `Deps{}`，因此这三个网关路由

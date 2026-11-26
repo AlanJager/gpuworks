@@ -683,6 +683,7 @@ Failures leave the catalog unchanged. Handle the following errors:
 - All release sources are unreachable: 502 `UPDATE_SOURCES_UNAVAILABLE`; an index exists but no catalog file matches it: 502 `UPDATE_DOWNLOAD_FAILED`.
 - The channel has not published a catalog: 404 `UPDATE_NOT_PUBLISHED`.
 - Invalid content: 400 `IMAGE_MANIFEST_INVALID`; a name or ref conflicts with a community/custom row: 400 `IMAGE_IMPORT_CONFLICT`.
+- Uploading the compatibility catalog for older servers returns 400 `IMAGE_MANIFEST_LEGACY_PROJECTION`. The response parameter `params.path` names the signed index entry `image_catalog_v4.path`. Download the file it points to and upload that file.
 
 The version row's `rolling_tag`, `deprecated`, and `deprecated_since` describe rolling tags and deprecation status;
 `reference_count` counts deployments, unfinished instances, and models that reference the ref.
@@ -2420,7 +2421,7 @@ The following conventions maintain the endpoint inventory; they are not prerequi
   `TestRouterInventoryMatchesCompleteContract` in `internal/server/api/router_inventory_test.go` asserts each entry in the actual route tree;
   update this test whenever you add or remove a route.
 - Management authentication is checked by `managementAuth` in `internal/server/api/auth.go`; administrator operations also pass through `managementAdmin`.
-  Product errors use `messages.ProductError`; 130+ stable error codes are defined in `internal/server/api/errors.go` and are not listed individually here.
+  Product errors use `messages.ProductError`; 130+ stable error codes are defined in `internal/server/api/errors*.go` and are not listed individually here.
 - `make check-api-conventions` checks field naming and list structures at the type level; see [API Conventions](api-conventions.md).
 - During production assembly, `internal/server/app` always injects non-nil
   `ProxyV1`, `ProxyModels`, and `PlaygroundV1` handlers for `/v1/*`, `/v1/models`, and `/api/v1/playground/v1/*`. Route inventory tests use zero-value `Deps{}`, so these three gateway routes
@@ -2486,7 +2487,7 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: 5a937a0329b1aabd619bac36afbe45ff963584a7031b8588b3c6d1c9ebabdbe0 ### Register an image already on a node -->
 <!-- translation-source-sha256: 04f403145369bea2e0886af6fd3a84add59d07299152c9a53cc09ef3d598fdf0 ### Storage Configuration and Cache Status -->
 <!-- translation-source-sha256: 76495aa0a302fbe279f354b4207253de032639c11e8498c2041f1b8a373a248c ### Storage File Operation Scope and Errors -->
-<!-- translation-source-sha256: 28ab68c5e446f16a186a6ea1ad5e2fe940b67e51a2098b9d556108ede3a22d09 ### Catalog Import Results -->
+<!-- translation-source-sha256: a6445bd3de39a7eedb26426af6697cf046cac806efe88dfe1895c40a72126fe1 ### Catalog Import Results -->
 <!-- translation-source-sha256: c162aaa85f62dfb49b9c18ed8540144b49d74ede563ca77a776b437d0b8a1125 ## Inference Templates (Inference Catalog/Templates) -->
 <!-- translation-source-sha256: 4b7e28c06adfbce76189556587fc94653baf4749acae30f34cec3772bf431f37 ### Pre-Import Checks -->
 <!-- translation-source-sha256: f3c254df3774c7c48ee5ebf7cc4861e55fd88aed33f8cc457ecb4190f5c41377 ## Deployments / Instances (Deployments and Instances) -->
@@ -2549,6 +2550,6 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: fab893a3efb3fa86d45b0a6e875f1cebad71738dc6424310e5af4b801fa794f4 ### Console Endpoints `/api/v1/batches` -->
 <!-- translation-source-sha256: d90c2a891f76775aec3f7b48248481bd52e0751724b4a75648d8f62318cd8799 ### OpenAI-Compatible Files and Batches Endpoints -->
 <!-- translation-source-sha256: a896a5dab1c99b94dd8ffc62b82650f6309812d3ef0bf90b28daeb38d7cc2c25 ## Out of Scope -->
-<!-- translation-source-sha256: a065b875b11936222db3d33c7671feb5120f5ed464965d91d9278a81bb51ecb0 ## Route and Contract Maintenance -->
+<!-- translation-source-sha256: c4754e1c0339b7b8667346967d3065633f65a4f92b8e5c978e7d78101e64be0e ## Route and Contract Maintenance -->
 <!-- translation-source-sha256: 80b54349c7eba5eae5d68c6d10b866b4e8ce09eedd085a88f2c6f680421b9697 ### Console manifest and extension routes -->
 <!-- translation-source-sha256: 3b39ae121cdbd7a4964c45d1deacffa4a4772f5ddd32c4530ca202ffcd247aef ### Whether GPU capacity is known -->

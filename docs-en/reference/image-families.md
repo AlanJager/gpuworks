@@ -104,7 +104,8 @@ There are only two update paths for the system catalog, both on the Images page'
   `UPDATE_SOURCES_UNAVAILABLE`. If the index is usable but no source provides a catalog file matching it, it returns 502 `UPDATE_DOWNLOAD_FAILED`
   (both include each source's reason in `detail`). If the channel has not published an image catalog, it returns 404 `UPDATE_NOT_PUBLISHED`. The database remains unchanged in all these cases.
 - **Upload manifest**: `POST /api/v1/images/import`, with the manifest JSON itself as the request body. Use this when the server cannot access the internet:
-  on a machine with internet access, download the current channel's `<channel>/manifest.json` from any release source (such as `https://dl.gpuworks.ai/release/manifest.json`, the same file as the image catalog in the channel's index), then upload it.
+  On a connected machine, download the file at `image_catalog_v4.path` in the signed channel index. For schema 3 servers use `<channel>/manifest.json`.
+  Published compatibility catalogs have versions such as `2026-11-26.0123abcd-schema3`. Uploading one to a current server returns 400 `IMAGE_MANIFEST_LEGACY_PROJECTION` and preserves the active catalog and its update source. Use `params.path` to locate the current catalog in the signed index, then download and upload that file.
 
 Both paths record the imported `catalog_version` as the current catalog version. The settings page's Version and updates section uses it to show whether updates are available.
 
@@ -131,13 +132,12 @@ Response (the startup sync log uses these same counters):
 
 ### Manifest Format
 
-The embedded seed and upstream `manifest.json` are the same file. `schema_version` must be `3` (`2` is also accepted for compatibility; other values return 400
-`IMAGE_MANIFEST_INVALID`). `catalog_version` is required, takes the form `<date>.<first-8-content-hash-characters>`, and is used only for display and logging,
-not comparisons. The optional `sha256` is a content integrity hash (calculated over canonical JSON with the `sha256` field set to an empty value); if present, a mismatch causes rejection.
+The embedded seed uses schema 4. The server also imports schemas 2 and 3. Unsupported schemas return HTTP 400
+`IMAGE_MANIFEST_INVALID`. `catalog_version` is required, takes the form `<date>.<first-8-content-hash-characters>` with the date as `YYYY-MM-DD` (the generator refuses any other format), and is used for display, logging and equality checks. The optional `sha256` is a content integrity hash (calculated over canonical JSON with the `sha256` field set to an empty value); if present, a mismatch causes rejection.
 
 ```json
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "catalog_version": "2026-10-09.f085e40b",
   "sha256": "<content-sha256-optional>",
   "series": [
@@ -252,10 +252,10 @@ runtime explanation.
 <!-- translation-source-sha256: 883ab9f8b2d790c67dcf7570053662a81dc49f9ffb70f511ff169cbee4275bd2 ## Node Image Identity and Periodic Inventory -->
 <!-- translation-source-sha256: e2b838cefca66793fc982b53cee60799b35fbb3f686107db9c5ee6d098b8afed ## System Images -->
 <!-- translation-source-sha256: 39168c329fca1b60b4dac45940c92fb95a7eac8dab8b30e86e9ea76fcc060e2a ### Startup Sync -->
-<!-- translation-source-sha256: 9c257d0e90fb08b1d44411cbd6b9f9ea179b57560836ea3c1cd6ae87603a805d ### Updating the Catalog -->
-<!-- translation-source-sha256: 08cbd3a68161bac743ed7d8cb6f162c396865921af93b019a514f113f24a1a3a ### Manifest Format -->
+<!-- translation-source-sha256: 34883677d84cbd11a86d5b48b163bf9f90e7b0121dc3ee16b3a22dbff8631d84 ### Updating the Catalog -->
+<!-- translation-source-sha256: 397515e4600d2a33b15a7f7f56b11e66783f00d6cfd310d01031a84f766215d9 ### Manifest Format -->
 <!-- translation-source-sha256: da92f9dfca846e8a1b55ab4708a4b1f01f97ccd6dd44145d4619b20fd54ee18e ## Community Images -->
 <!-- translation-source-sha256: 77522a45a9d473abc1fd18744cbf1bd083213fe1c1c54f96fe725d892d366f57 ## Custom Images -->
 <!-- translation-source-sha256: 805025bcb72e52bd5d6cb9496e9072b968df6e5021ac6078fd9fad2a474dd203 ## Rolling Tags -->
 <!-- translation-source-sha256: 742e7f615036b822e5ef95a1f1bd9050876ecbf7c9cbc7bd221682d7a78b7748 ## Automatic Image Selection, Pull Addresses, and Command Modes -->
-<!-- translation-localized-code-block: 33dc668ac5b0d9b2a0cfa8da37a7788f4ecfcf62c3fc515c19751dd7eb192fa9 410f13f2684f9c121d60a95145d5030433a0f81edaec77f7421b35c3c4604973 Translate illustrative sha256 placeholder -->
+<!-- translation-localized-code-block: 20758ce1e6109bfe09d69c6cf104f6aab15bd20ce96ee93a9c41d47557a4adad c245b1b21a10fa51d3d810cc9c8b30acc7b4d0e0ed6391111086f7685a9354a4 -->
