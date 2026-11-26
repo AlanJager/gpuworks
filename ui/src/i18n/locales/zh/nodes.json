@@ -1104,10 +1104,16 @@
     "removed": "已移除",
     "lastChecked": "{{ago}}检查",
     "banner": {
-      "offline": "节点离线，下面是最后已知的结果。",
-      "stale": "超过两个上报周期没有新的上报，下面的结果可能已过时。",
-      "noReports": "该节点的 agent 版本过旧，不上报卡的健康检查。升级 agent 后可以看到全部检查。",
-      "waiting": "还没有收到该节点的上报。"
+      "CARD_CHECKS_OFFLINE": "节点离线，下面是最后已知的结果。",
+      "CARD_CHECKS_STALE": "超过两个上报周期没有新的上报，下面的结果可能已过时。",
+      "CARD_CHECKS_UNSUPPORTED": "该节点的 agent 版本过旧，不上报卡的健康检查。升级 agent 后可以看到全部检查。",
+      "unavailable": "暂时无法获取健康检查状态。",
+      "CARD_CHECKS_NO_CARDS": "没有可执行健康检查的 GPU。",
+      "CARD_CHECKS_NO_USABLE_CARDS": "没有可供宿主机执行健康检查的 GPU。",
+      "CARD_CHECKS_HELD_ELSEWHERE": "GPU 被其他驱动占用，宿主机无法执行健康检查。",
+      "CARD_CHECKS_NO_DRIVER": "GPU 未安装或加载厂商驱动，宿主机无法执行健康检查。",
+      "CARD_CHECKS_PASSTHROUGH": "GPU 已配置直通，宿主机不执行这些卡的健康检查。",
+      "CARD_CHECKS_WAITING": "还没有收到该节点的上报。"
     },
     "summary": "{{cards}} 张卡 · {{fail}} 项失败 · {{warn}} 项告警 · {{skip}} 项未检查",
     "recheck": "重新检查这张卡",
@@ -1129,7 +1135,7 @@
     },
     "records": {
       "title": "失败记录（最近 {{days}} 天）",
-      "empty": "最近 {{days}} 天没有发现失败。这表示期间没有检查报出问题；节点离线的时段没有检查。",
+      "empty": "最近 {{days}} 天没有失败记录。",
       "ongoing": "持续中",
       "flapping": "抖动",
       "count": "共 {{count}} 次",

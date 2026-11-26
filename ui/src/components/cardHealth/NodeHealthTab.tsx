@@ -10,14 +10,22 @@ import { useCardHealthChecks, useCardHealthRecords } from "./useCardHealth";
 
 type Selection = { card: CardHealthCard; check: string };
 
-/** What holds the whole table back: offline, stale, an old agent, no report yet. */
+const noticeKeys: Record<string, string> = {
+  CARD_CHECKS_OFFLINE: "cardHealth.banner.CARD_CHECKS_OFFLINE",
+  CARD_CHECKS_WAITING: "cardHealth.banner.CARD_CHECKS_WAITING",
+  CARD_CHECKS_UNSUPPORTED: "cardHealth.banner.CARD_CHECKS_UNSUPPORTED",
+  CARD_CHECKS_STALE: "cardHealth.banner.CARD_CHECKS_STALE",
+  CARD_CHECKS_PASSTHROUGH: "cardHealth.banner.CARD_CHECKS_PASSTHROUGH",
+  CARD_CHECKS_NO_DRIVER: "cardHealth.banner.CARD_CHECKS_NO_DRIVER",
+  CARD_CHECKS_HELD_ELSEWHERE: "cardHealth.banner.CARD_CHECKS_HELD_ELSEWHERE",
+  CARD_CHECKS_NO_USABLE_CARDS: "cardHealth.banner.CARD_CHECKS_NO_USABLE_CARDS",
+  CARD_CHECKS_NO_CARDS: "cardHealth.banner.CARD_CHECKS_NO_CARDS",
+};
+
+/** Display the server's availability explanation without inferring capability. */
 export function HealthBanner({ data }: { data: CardHealthChecks }) {
   const { t } = useTranslation("nodes");
-  if (!data.online) return <Alert type="warning" showIcon message={t("cardHealth.banner.offline")} />;
-  if (!data.received_at) return <Alert type="info" showIcon message={t("cardHealth.banner.waiting")} />;
-  if (!data.reports) return <Alert type="info" showIcon message={t("cardHealth.banner.noReports")} />;
-  if (data.stale) return <Alert type="warning" showIcon message={t("cardHealth.banner.stale")} />;
-  return null;
+  return data.notice ? <Alert type={data.notice.level} showIcon message={t(noticeKeys[data.notice.code] ?? "cardHealth.banner.unavailable")} /> : null;
 }
 
 // NodeHealthTab is the node's health checks: a table of cards by checks on
