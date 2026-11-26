@@ -479,6 +479,11 @@ core-test:
     # Build-tag suites are reported separately; compile them here so a
     # refactor cannot silently break an opt-in lane while core remains green.
     - make check-tagged-build
+    # Provider API/SSH contracts are tagged L4 code but use only faithful
+    # local fixtures: no cloud credentials, no allocation, no cleanup. They run
+    # here instead of in a job of their own, which had to build the server and
+    # four agents for the one test that inspects those binaries.
+    - make test-l4-compshare-offline-contracts GO_TEST_FLAGS='-coverpkg=./internal/...,./pkg/... -coverprofile=coverage-compshare-contracts.out'
   artifacts:
     when: always
     paths:
@@ -856,20 +861,6 @@ l2-fleet-redeploy-churn:
   rules:
     - if: '$FLEET_REDEPLOY_CHURN == "1" && ($CI_PIPELINE_SOURCE == "schedule" || $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api")'
 
-# Provider API/SSH contracts are tagged L4 code but use only faithful local
-# fixtures. Run them as an automatic hermetic gate without cloud credentials or
-# cleanup calls; real CompShare allocation remains in explicit cloud jobs.
-core-compshare-offline-contracts:
-  extends: .go-core
-  stage: core
-  script:
-    - make test-l4-compshare-offline-contracts GO_TEST_FLAGS='-coverpkg=./internal/...,./pkg/... -coverprofile=coverage-compshare-contracts.out'
-  artifacts:
-    when: always
-    paths:
-      - coverage-compshare-contracts.out
-    expire_in: 14 days
-
 release-docs-pdf:
   extends: .go-core
   stage: release
@@ -919,7 +910,6 @@ release-docs-pdf:
     - job: core-test
     - job: core-vet
     - job: core-lint
-    - job: core-compshare-offline-contracts
   script:
     # The zstd CLI packs the embedded agents ~10% smaller than the Go
     # encoder make falls back to; a mirror hiccup only costs that, not the build.
@@ -941,6 +931,16 @@ release-docs-pdf:
       fi
       dpkg -i "$ZSTD_DEBS"/zstd_*.deb >/dev/null 2>&1 || dpkg -i /var/cache/apt/archives/zstd_*.deb >/dev/null 2>&1 || echo "zstd unavailable; embedding the agents with the Go encoder"
     - make release-packages
+    # The build contract the offline provider tests used to carry: the server
+    # and agent binaries a hosted control plane uploads must be static x86-64.
+    # They exist only where this job built them, so the macOS and arm64
+    # builds report the check as not applicable instead of skipping silently.
+    - |
+      if [ -x bin/gpuworks-linux-amd64 ] && [ -x bin/dl/gpuworks-agent-linux-amd64 ]; then
+        CGO_ENABLED=0 go test -tags=cloudgpu,compshare -run '^TestBuiltRunnerBinariesAreStaticAMD64$' -timeout=5m ./test/l4
+      else
+        echo "static-binary contract: not applicable, this job built no linux/amd64 binaries"
+      fi
   artifacts:
     paths:
       - dist/
@@ -1194,7 +1194,6 @@ release-agent-image:
     - job: core-test
     - job: core-vet
     - job: core-lint
-    - job: core-compshare-offline-contracts
   rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule" && $CLOUD_FULL == "1"'
       when: on_success
@@ -1348,7 +1347,6 @@ l4-ascend-pool-partition-inference:
     - job: core-test
     - job: core-vet
     - job: core-lint
-    - job: core-compshare-offline-contracts
   environment:
     name: cloud-test/ascend-primary
     action: prepare
