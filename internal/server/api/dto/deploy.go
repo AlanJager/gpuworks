@@ -49,6 +49,8 @@ type Model struct {
 
 // Deployment is the API view of a deployment.
 type Deployment struct {
+	// Warnings is populated on create when the launch has an advisory.
+	Warnings                 []messages.Warning    `json:"warnings,omitempty"`
 	Operations               []DeploymentOperation `json:"operations"`
 	ID                       uint                  `json:"id"`
 	TemplateID               uint                  `json:"template_id,omitempty"`

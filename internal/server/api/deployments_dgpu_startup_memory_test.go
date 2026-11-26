@@ -24,8 +24,9 @@ func TestAscendDGPUStartupMemoryWarning(t *testing.T) {
 	for _, tc := range []struct {
 		name, placement, quick, extra, command string
 		quota                                  int
-		busy, warn                             bool
+		busy, warn, direct                     bool
 	}{
+		{name: "direct_create", placement: "manual", quick: `{"gpu_memory_utilization":0.90}`, quota: 8, warn: true, direct: true},
 		{name: "manual_quick", placement: "manual", quick: `{"gpu_memory_utilization":0.90}`, quota: 8, warn: true},
 		{name: "auto_extra", placement: "auto", quick: "{}", extra: "--mem-fraction-static=0.90", quota: 8, warn: true},
 		{name: "manual_safe", placement: "manual", quick: `{"gpu_memory_utilization":0.88}`, quota: 8},
@@ -79,36 +80,52 @@ func TestAscendDGPUStartupMemoryWarning(t *testing.T) {
 			body := fmt.Sprintf(`{"name":%q,"model_id":%d,"template_id":%d,"template_spec_source":%q,"template_spec_name":%q,"engine":"sglang","image":%q,"node_uuid":%q,"placement_mode":%q,"target_vendor":"ascend","placement":{"tp":1},"vram_limit_gib":%d,"quick_params":%s,"extra_args":%q,"container_overrides":%s}`,
 				tc.name, model.ID, template.ID, spec.Source, spec.Name, spec.Image, node, tc.placement, tc.quota, tc.quick, tc.extra, command)
 
-			wire := evaluateWire(t, h, body)
+			if !tc.direct {
+				wire := evaluateWire(t, h, body)
+				assertDGPUStartupWarning(t, wire["warnings"], tc.warn)
+				if string(wire["ok"]) != fmt.Sprint(!tc.busy) || len(wire["errors"]) != 0 {
+					t.Fatalf("evaluate = %s, errors = %s, plan = %s; busy = %v", wire["ok"], wire["errors"], wire["plan"], tc.busy)
+				}
+			}
 			created := httptest.NewRecorder()
 			h.createDeployment(created, httptest.NewRequest(http.MethodPost, "/api/v1/deployments", strings.NewReader(body)))
-			var warnings []messages.Warning
-			if err := json.Unmarshal(wire["warnings"], &warnings); err != nil {
-				t.Fatal(err)
-			}
-			warnings = slices.DeleteFunc(warnings, func(w messages.Warning) bool {
-				return w.Code != messages.WarningDGPUStartupMemory
-			})
-			if tc.warn {
-				got, err := json.Marshal(warnings)
-				if err != nil {
-					t.Fatal(err)
-				}
-				wantJSON(t, string(got), `[{"code":"DGPU_STARTUP_MEMORY","params":{"quota_gib":8,"utilization":0.9,"max_utilization":0.88}}]`)
-			} else if len(warnings) != 0 {
-				t.Fatalf("unexpected dGPU warnings: %v", warnings)
-			}
-			if string(wire["ok"]) != fmt.Sprint(!tc.busy) || len(wire["errors"]) != 0 {
-				t.Fatalf("evaluate = %s, errors = %s, plan = %s; busy = %v", wire["ok"], wire["errors"], wire["plan"], tc.busy)
-			}
 			if created.Code != http.StatusCreated {
 				t.Fatalf("create = %d %s, want accepted", created.Code, created.Body)
 			}
+			var response map[string]json.RawMessage
+			if err := json.Unmarshal(created.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			assertDGPUStartupWarning(t, response["warnings"], tc.warn)
 			if rows, err := st.ListDeployments(); err != nil || len(rows) != wantDeployments+1 {
 				t.Fatalf("created request did not persist a deployment: %v %v", rows, err)
 			}
 		})
 	}
+}
+
+func assertDGPUStartupWarning(t *testing.T, body json.RawMessage, want bool) {
+	t.Helper()
+	var warnings []messages.Warning
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &warnings); err != nil {
+			t.Fatal(err)
+		}
+	}
+	warnings = slices.DeleteFunc(warnings, func(w messages.Warning) bool {
+		return w.Code != messages.WarningDGPUStartupMemory
+	})
+	if !want {
+		if len(warnings) != 0 {
+			t.Fatalf("unexpected dGPU warnings: %v", warnings)
+		}
+		return
+	}
+	got, err := json.Marshal(warnings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantJSON(t, string(got), `[{"code":"DGPU_STARTUP_MEMORY","params":{"quota_gib":8,"utilization":0.9,"max_utilization":0.88}}]`)
 }
 
 func builtinDGPUStartupSpec(t *testing.T, modelID string) (store.InferenceModel, store.InferenceSpecRow) {

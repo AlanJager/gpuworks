@@ -152,6 +152,7 @@
     "storage_not_found": "Storage {{storage}}, which the deployment is limited to, no longer exists. Change the deployment’s storage node condition."
   },
   "schedule": {
+    "dgpu_startup_memory": "Deployment was refused at {{utilization}}: Decode graph capture needs more headroom in this {{quota_gib}} GiB dGPU slice. Use {{max_utilization}} or lower.",
     "runtime_unavailable": "The node has no available container runtime; install and start Docker (with NVIDIA Container Toolkit for NVIDIA GPUs). The built-in runveil needs a Linux node on x86_64 or arm64.",
     "serving_unavailable": "The node has no network that may carry serving traffic: it is on no serving network, and its management network may not carry serving. Allow serving on the node's management network, attach a serving network, or select another node.",
     "dtype_unsupported": "The current GPU architecture does not support the selected precision or quantization method. Adjust the precision or quantization method, or choose another GPU.",

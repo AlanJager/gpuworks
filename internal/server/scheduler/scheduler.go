@@ -380,6 +380,8 @@ const (
 	// {idle_sec} or, taking turns, at the end of {max_serve_sec}); the
 	// residency arbiter puts them to sleep by those terms.
 	ReasonWaitingForYield = "waiting_for_yield"
+	// ReasonDGPUStartupMemory remains a wire code for persisted scheduling history.
+	ReasonDGPUStartupMemory = "dgpu_startup_memory"
 	// ReasonReservedForSleepers: the replica would fit on {node}'s cards
 	// {gpus} but deployments asleep there ({sleepers}: each one's {deployment}
 	// and yield {policy}) keep them for a request's wake, and the replica's

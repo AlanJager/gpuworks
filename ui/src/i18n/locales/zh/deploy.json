@@ -152,6 +152,7 @@
     "storage_not_found": "部署限定的存储 {{storage}} 已不存在；请修改部署的“存储”节点条件。"
   },
   "schedule": {
+    "dgpu_startup_memory": "当时已拒绝部署：显存利用率为 {{utilization}} 时，{{quota_gib}} GiB 的 dGPU 配额可能不足以完成 Decode 计算图捕获。建议使用 {{max_utilization}} 或更低。",
     "runtime_unavailable": "节点没有可用的容器运行时；请安装并启动 Docker（NVIDIA GPU 还需 NVIDIA Container Toolkit），内置 runveil 只支持 x86_64 或 arm64 的 Linux 节点。",
     "serving_unavailable": "该节点没有可承担服务流量的网络：它不在任何服务网络上，管理网也不允许承担服务。请在节点上允许管理网承担服务、加载服务网络，或选择其他节点。",
     "dtype_unsupported": "当前 GPU 架构不支持所选精度或量化方式；请调整精度或量化方式，或更换 GPU。",
