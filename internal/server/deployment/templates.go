@@ -241,21 +241,21 @@ func (s *Service) resolveTemplateComponentModels(selection *templateSelection, f
 		if component.Role == "primary" {
 			component.StoreModelID = fallbackPrimary.ID
 			component.Provider, component.RepoID = fallbackPrimary.Source, fallbackPrimary.SourceID
-			component.Revision, component.Subfolder = fallbackPrimary.Revision, fallbackPrimary.ArtifactSubfolder
+			component.Revision = fallbackPrimary.Revision
+			// A rank-scoped primary keeps the template, as the selection's
+			// own weights do: its ranks are the deployment's RankWeights.
+			if !deploy.RankScopedSubfolder(component.Subfolder) {
+				component.Subfolder = fallbackPrimary.ArtifactSubfolder
+			}
 			continue
 		}
 		original, err := s.d.Store.InferenceModelByModelID(component.OriginalModelID)
 		if err != nil {
 			return fmt.Errorf("component %s original model %s: %w", component.Name, component.OriginalModelID, err)
 		}
-		model, err := s.selectionWeightModel(selection,
-			weightSource{Provider: component.Provider, RepoID: component.RepoID, Revision: component.Revision, Subfolder: component.Subfolder}, original,
-			selection.Spec.Engine, component.Quantization, component.WeightBytes, 0, selection.StoragePins, false, selection.ExplicitComponents[component.Name],
-		)
-		if err != nil {
-			return fmt.Errorf("component %s weights: %w", component.Name, err)
+		if err := s.resolveComponentModel(selection, component, original); err != nil {
+			return err
 		}
-		component.StoreModelID = model.ID
 	}
 	return nil
 }

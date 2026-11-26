@@ -1539,7 +1539,7 @@ PD 请求（`placement.pd`）：单元可以不写 `node_uuid`，写了的单元
 
 | 字段 | 语义 |
 |---|---|
-| `name`、`role`、`model`、`size_bytes` | 组件名、角色、模型（仓库 ID）与模板声明的大小 |
+| `name`、`role`、`model`、`size_bytes` | 组件名、角色、模型（仓库 ID）与模板声明的大小；[按 rank 拆分](inference-catalog-spec.md#按-rank-拆分的权重)的组件每个 rank 一项，`model` 带该 rank 的子目录（如 `org/repo/rank1`），`size_bytes` 是一个 rank 的大小，`nodes` 只计该 rank 的节点 |
 | `plan` | `ready` 目标节点都已有；`shared_download` 创建时由一个节点下载一份到共享存储 `storage`（`storage_id`），目标节点读这一份，`follows_primary` 为真表示请求没选「保存到」、这是主模型所在的共享存储；`node_download` 缺它的节点各自下载到自己的存储 |
 | `nodes`、`ready_nodes` | 目标节点数与已经读得到它的节点数 |
 
