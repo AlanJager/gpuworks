@@ -119,7 +119,8 @@ func (c *createState) resolveImage() error {
 	}
 	c.req.Image = imageResolution.Image
 	c.reqs = planning.WithNodeVendor(c.reqs, c.node)
-	if err := c.s.checkCreateCanEverFit(c.ctx, c.req, c.pdReq != nil, c.reqs, c.eng, c.model, c.selection, c.placement, c.quick, c.launch.UserResidual, c.modelMount, c.componentMounts); err != nil {
+	warnings, err := c.s.checkCreateCanEverFit(c.ctx, c.req, c.pdReq != nil, c.reqs, c.eng, c.model, c.selection, c.placement, c.quick, c.launch.UserResidual, c.modelMount, c.componentMounts)
+	if err != nil {
 		return invalid(err)
 	}
 	// An automatically placed create re-runs the plan the evaluation answered
@@ -127,8 +128,14 @@ func (c *createState) resolveImage() error {
 	// conflict the client handles for stale labels - not a doomed row.
 	if IsAutomaticPlacement(c.req) && c.req.NNodes <= 1 && c.pdReq == nil {
 		requestOverrides, _ := RequestContainerOverrides(c.req.ContainerOverrides)
-		if err := c.s.revalidateAutomaticPlacement(c.ctx, c.req, c.eng, c.model, c.selection, c.placement, c.quick, c.launch.UserResidual, strings.TrimSpace(c.req.ServedName), c.node, c.modelMount, c.componentMounts, requestOverrides, c.saveTo); err != nil {
+		warnings, err = c.s.revalidateAutomaticPlacement(c.ctx, c.req, c.eng, c.model, c.selection, c.placement, c.quick, c.launch.UserResidual, strings.TrimSpace(c.req.ServedName), c.node, c.modelMount, c.componentMounts, requestOverrides, c.saveTo)
+		if err != nil {
 			return conflict(err)
+		}
+	}
+	for _, warning := range warnings {
+		if warning.Code == messages.WarningDGPUStartupMemory {
+			c.warnings = append(c.warnings, warning)
 		}
 	}
 	return nil

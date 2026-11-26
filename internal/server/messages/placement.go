@@ -18,9 +18,6 @@ const (
 	// absent) says the refusal is the weight-derived memory estimate alone,
 	// which a template's placement contract could replace.
 	ErrorDeploymentNeverFits = "DEPLOYMENT_NEVER_FITS"
-	// ErrorDGPUStartupMemory: the {quota_gib} GiB quota needs startup
-	// headroom. Lower {utilization} to {max_utilization} or less.
-	ErrorDGPUStartupMemory = "DGPU_STARTUP_MEMORY"
 	// ErrorNodeRequirementsNotEditable: the deployment's replicas are not
 	// placed from a pool ({shape}: multi_node or pd), so it has no node
 	// requirements to edit.

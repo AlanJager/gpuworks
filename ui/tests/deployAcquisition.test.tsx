@@ -112,6 +112,27 @@ test("an uncertain KV estimate stays a successful startup evaluation", () => {
 });
 
 for (const language of ["en", "zh"] as const) {
+  test(`a dGPU startup memory warning leaves an accepted plan visible in ${language}`, async () => {
+    const locale = JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/${language}/deploy.json`, import.meta.url), "utf8"));
+    const localized = createInstance();
+    await localized.use(initReactI18next).init({
+      lng: language, fallbackLng: language,
+      resources: { [language]: { deploy: locale } }, defaultNS: "deploy",
+      interpolation: { escapeValue: false },
+    });
+    render(<I18nextProvider i18n={localized}><Form><DeployStepSummary result={{
+      ok: true,
+      plan: { ok: true, plan: { tp: 1, gpu_indexes: [0] } },
+      warnings: [{ code: "DGPU_STARTUP_MEMORY", params: { quota_gib: 8, utilization: 0.9, max_utilization: 0.88 } }],
+    } as never} error={null} loading={false} /></Form></I18nextProvider>);
+    const warning = screen.getByRole("alert");
+    assert.ok(warning.classList.contains("ant-alert-warning"));
+    assert.match(warning.textContent ?? "", /0\.9/);
+    assert.match(warning.textContent ?? "", /0\.88/);
+    assert.match(warning.textContent ?? "", language === "en" ? /You can continue/ : /可以继续部署/);
+    assert.equal(document.querySelector(".ant-alert-error"), null);
+  });
+
   test(`a KV context warning leaves a successful plan visible in ${language}`, async () => {
     const locale = JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/${language}/deploy.json`, import.meta.url), "utf8"));
     const localized = createInstance();
