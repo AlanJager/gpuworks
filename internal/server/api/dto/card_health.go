@@ -21,6 +21,12 @@ type CardHealthChecks struct {
 	Notice  *CardHealthNotice `json:"notice,omitempty"`
 }
 
+// CardHealthNoticeInfo and CardHealthNoticeWarning are the notice's wire levels.
+const (
+	CardHealthNoticeInfo    = "info"
+	CardHealthNoticeWarning = "warning"
+)
+
 // CardHealthNotice explains why current checks are unavailable.
 type CardHealthNotice struct {
 	Code  string `json:"code"`

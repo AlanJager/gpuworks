@@ -1110,8 +1110,8 @@
       "unavailable": "Health check status is unavailable.",
       "CARD_CHECKS_NO_CARDS": "No GPUs are available for health checks.",
       "CARD_CHECKS_NO_USABLE_CARDS": "No GPU is available to this host for health checks.",
-      "CARD_CHECKS_HELD_ELSEWHERE": "The GPUs are bound to another driver; host health checks are unavailable.",
-      "CARD_CHECKS_NO_DRIVER": "The GPUs have no vendor driver; host health checks are unavailable.",
+      "CARD_CHECKS_HELD_ELSEWHERE": "The GPUs are bound to another driver. To run host health checks, bind them to the GPU vendor driver.",
+      "CARD_CHECKS_NO_DRIVER": "Install and load the GPU vendor driver to enable host health checks.",
       "CARD_CHECKS_PASSTHROUGH": "GPU passthrough is configured; the host does not run health checks for these cards.",
       "CARD_CHECKS_WAITING": "No report from this node yet."
     },

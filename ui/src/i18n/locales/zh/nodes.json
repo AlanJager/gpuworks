@@ -1110,8 +1110,8 @@
       "unavailable": "暂时无法获取健康检查状态。",
       "CARD_CHECKS_NO_CARDS": "没有可执行健康检查的 GPU。",
       "CARD_CHECKS_NO_USABLE_CARDS": "没有可供宿主机执行健康检查的 GPU。",
-      "CARD_CHECKS_HELD_ELSEWHERE": "GPU 被其他驱动占用，宿主机无法执行健康检查。",
-      "CARD_CHECKS_NO_DRIVER": "GPU 未安装或加载厂商驱动，宿主机无法执行健康检查。",
+      "CARD_CHECKS_HELD_ELSEWHERE": "GPU 被其他驱动占用；如需宿主机执行健康检查，请将卡绑定到厂商驱动。",
+      "CARD_CHECKS_NO_DRIVER": "请安装并加载 GPU 厂商驱动，以启用宿主机健康检查。",
       "CARD_CHECKS_PASSTHROUGH": "GPU 已配置直通，宿主机不执行这些卡的健康检查。",
       "CARD_CHECKS_WAITING": "还没有收到该节点的上报。"
     },

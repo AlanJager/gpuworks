@@ -68,6 +68,32 @@ const record = {
 const show = (ui: React.ReactNode) => render(<I18nextProvider i18n={i18n}>{ui}</I18nextProvider>);
 const fill = (template: string, values: Record<string, unknown>) => template.replace(/{{(\w+)}}/g, (_, k) => String(values[k]));
 
+test("every server card-health notice has English and Chinese copy", () => {
+  const source = fs.readFileSync(new URL("../../internal/server/messages/card_health.go", import.meta.url), "utf8");
+  const codes = [...source.matchAll(/=\s*"(CARD_CHECKS_[A-Z_]+)"/g)].map((match) => match[1]);
+  assert.ok(codes.length > 0, "server notice codes must be discovered");
+  for (const locale of ["en", "zh"]) {
+    const messages = JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/${locale}/nodes.json`, import.meta.url), "utf8"));
+    for (const code of codes) {
+      assert.equal(typeof messages.cardHealth.banner[code], "string", `${locale}: ${code}`);
+      assert.ok(messages.cardHealth.banner[code].trim().length > 0, `${locale}: ${code}`);
+    }
+  }
+});
+
+test("missing-driver and occupied-driver notices explain the recovery action", async () => {
+  for (const [code, message] of [
+    ["CARD_CHECKS_NO_DRIVER", "Install and load the GPU vendor driver to enable host health checks."],
+    ["CARD_CHECKS_HELD_ELSEWHERE", "The GPUs are bound to another driver. To run host health checks, bind them to the GPU vendor driver."],
+  ]) {
+    apiAny.nodeHealthChecks = async () => table({ notice: { code, level: "info" } });
+    apiAny.nodeHealthRecords = async () => records();
+    show(<NodeHealthTab nodeUUID="n-1" />);
+    assert.equal((await screen.findByRole("alert")).textContent, message);
+    cleanup();
+  }
+});
+
 test("passthrough checks use the server notice without suggesting an Agent upgrade", async () => {
   apiAny.nodeHealthChecks = async () => table({
     reports: false, cards: [], checks: [], summary: {},
@@ -96,6 +122,14 @@ test("missing reports alone do not imply an old Agent", async () => {
   await screen.findByRole("alert");
   assert.equal(screen.getByRole("alert").textContent, ch.banner.CARD_CHECKS_WAITING);
   assert.equal(screen.queryByText(ch.banner.CARD_CHECKS_UNSUPPORTED), null);
+});
+
+test("an unknown notice code shows the localized fallback", async () => {
+  apiAny.nodeHealthChecks = async () => table({ notice: { code: "CARD_CHECKS_NEW_REASON", level: "info" } });
+  apiAny.nodeHealthRecords = async () => records();
+  show(<NodeHealthTab nodeUUID="n-1" />);
+  assert.equal((await screen.findByRole("alert")).textContent, ch.banner.unavailable);
+  assert.equal(screen.queryByText("cardHealth.banner.CARD_CHECKS_NEW_REASON"), null);
 });
 
 test("unavailable devices display their specific server reason", async () => {

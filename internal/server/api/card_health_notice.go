@@ -10,17 +10,19 @@ import (
 
 func cardHealthNotice(cards []store.GPU, selected string, snap cardhealth.NodeSnapshot, view cardhealth.View, supported bool) *dto.CardHealthNotice {
 	notice := func(code string) *dto.CardHealthNotice {
-		return &dto.CardHealthNotice{Code: code, Level: "info"}
+		return &dto.CardHealthNotice{Code: code, Level: dto.CardHealthNoticeInfo}
 	}
-	switch {
-	case !snap.Online:
-		return &dto.CardHealthNotice{Code: messages.CardChecksOffline, Level: "warning"}
-	case !supported:
-		return notice(messages.ErrorCardChecksUnsupported)
-	case snap.ReceivedAt.IsZero():
+	if !snap.Online {
+		return &dto.CardHealthNotice{Code: messages.CardChecksOffline, Level: dto.CardHealthNoticeWarning}
+	}
+	if snap.ReceivedAt.IsZero() || view.Stale {
+		if !supported {
+			return notice(messages.ErrorCardChecksUnsupported)
+		}
+		if !snap.ReceivedAt.IsZero() && view.Stale {
+			return &dto.CardHealthNotice{Code: messages.CardChecksStale, Level: dto.CardHealthNoticeWarning}
+		}
 		return notice(messages.CardChecksWaiting)
-	case view.Stale:
-		return &dto.CardHealthNotice{Code: messages.CardChecksStale, Level: "warning"}
 	}
 
 	count, usable := 0, 0
@@ -53,6 +55,9 @@ func cardHealthNotice(cards []store.GPU, selected string, snap cardhealth.NodeSn
 		default:
 			return notice(messages.CardChecksNoUsableCards)
 		}
+	}
+	if !supported {
+		return notice(messages.ErrorCardChecksUnsupported)
 	}
 	for _, card := range snap.Cards {
 		if len(card.Checks) > 0 {

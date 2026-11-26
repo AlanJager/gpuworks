@@ -548,7 +548,9 @@ would report nonexistent additional faulty cards, so inside a container it recog
 
 The upper half of the “Health checks” tab in node details is a table of cards by checks, and the lower half is the node's failure records; the “Health checks” tab of a GPU's details has the same two halves for that card alone.
 
-When cards are configured for passthrough, have no vendor driver, or are bound to another driver, the host does not check them; the page explains their ownership. Missing reports do not mean that the Agent is old. An upgrade is suggested only when the connected Agent does not declare support for card health checks. The page distinguishes waiting for reports from having no applicable GPUs. No failure records does not mean that checks ran and passed.
+When the node is online and its report is current, the page first explains the selected cards' ownership: the host does not check cards configured for passthrough, without a vendor driver, or bound to another driver. If none of the selected cards can be checked by the host, missing Agent capability does not prompt an upgrade. Install and load the GPU vendor driver for driverless cards; if cards bound to another driver need host checks, bind them to the vendor driver.
+
+Missing reports do not mean that the Agent is old. An Agent that supports card health checks but has not reported yet shows a waiting notice. For an online Agent, missing capability prompts an upgrade unless a current report confirms that all selected cards are unavailable to the host. Offline or stale reports do not establish current ownership; a current report with no GPUs shows no applicable cards. No failure records does not mean that checks ran and passed.
 
 **The checks**: vendor health (the vendor tool's verdict), vendor tool answering, use outside the platform, PCIe link, PCIe errors, Xid (NVIDIA), NVLink (NVIDIA), GPUDirect RDMA (NVIDIA, PPU) and the runtime check.
 The first five, Xid and GPUDirect RDMA run once with every report (about a minute), NVLink every 5 minutes and the runtime check every 15 minutes.
@@ -1576,7 +1578,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: c40739d95375b5423c001d772cdeb5770f2f8c11f507b388a3810a77b6d18f98 ### A Card Is Unusable by the Runtime or Fails Driver Initialization -->
 <!-- translation-source-sha256: 7ebf5c9174ef8583f382fdc9479446b523c3851af93fa26195569e89ad2a8a6c ### Host Sees the Card but Container Does Not -->
 <!-- translation-source-sha256: c82ecdd35a71817d12d7d211f000826eb7579542a79020dc17542ddaf09e7e33 ### Card Is Passed Through, Has an Unavailable Vendor Driver, or Is Held by Another Driver -->
-<!-- translation-source-sha256: 56afb42d6121c4f347fcd96bcdc35e82d3335c243818943d2aa4e851d4ed7c0f ### Card Health Checks -->
+<!-- translation-source-sha256: 84ed9834f5fe373c63f23e0f1213537fc016979bcf791704b582f3665483b7e1 ### Card Health Checks -->
 <!-- translation-source-sha256: f21b0e1066763e69c4b7a21b31d457963df4ad672a72d602f692c25d3260ec54 ### Enabling or Disabling Scheduling on a Card by Hand -->
 <!-- translation-source-sha256: ea953d23612e21c2dd6138b94e0c8e87f6b306c392842579fed602afacdcca64 ### Card Is in Use by Processes Outside the Platform -->
 <!-- translation-source-sha256: 13f5bcd92b822ca98eee304c3b8abb770dc00adaaf99922bfd175f416305b74f ### Diagnosis Finds an Unrecognized Accelerator -->

@@ -10,22 +10,10 @@ import { useCardHealthChecks, useCardHealthRecords } from "./useCardHealth";
 
 type Selection = { card: CardHealthCard; check: string };
 
-const noticeKeys: Record<string, string> = {
-  CARD_CHECKS_OFFLINE: "cardHealth.banner.CARD_CHECKS_OFFLINE",
-  CARD_CHECKS_WAITING: "cardHealth.banner.CARD_CHECKS_WAITING",
-  CARD_CHECKS_UNSUPPORTED: "cardHealth.banner.CARD_CHECKS_UNSUPPORTED",
-  CARD_CHECKS_STALE: "cardHealth.banner.CARD_CHECKS_STALE",
-  CARD_CHECKS_PASSTHROUGH: "cardHealth.banner.CARD_CHECKS_PASSTHROUGH",
-  CARD_CHECKS_NO_DRIVER: "cardHealth.banner.CARD_CHECKS_NO_DRIVER",
-  CARD_CHECKS_HELD_ELSEWHERE: "cardHealth.banner.CARD_CHECKS_HELD_ELSEWHERE",
-  CARD_CHECKS_NO_USABLE_CARDS: "cardHealth.banner.CARD_CHECKS_NO_USABLE_CARDS",
-  CARD_CHECKS_NO_CARDS: "cardHealth.banner.CARD_CHECKS_NO_CARDS",
-};
-
 /** Display the server's availability explanation without inferring capability. */
 export function HealthBanner({ data }: { data: CardHealthChecks }) {
   const { t } = useTranslation("nodes");
-  return data.notice ? <Alert type={data.notice.level} showIcon message={t(noticeKeys[data.notice.code] ?? "cardHealth.banner.unavailable")} /> : null;
+  return data.notice ? <Alert type={data.notice.level} showIcon message={t(`cardHealth.banner.${data.notice.code}`, { defaultValue: t("cardHealth.banner.unavailable") })} /> : null;
 }
 
 // NodeHealthTab is the node's health checks: a table of cards by checks on

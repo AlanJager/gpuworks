@@ -30,6 +30,10 @@ func TestNodeHealthNoticeDistinguishesCapabilityOwnershipAndReports(t *testing.T
 		wantCards                int
 	}{
 		{name: "all passthrough", cards: []proto.GPUInfo{passed}, code: "CARD_CHECKS_PASSTHROUGH", level: "info"},
+		{name: "old agent with all passthrough", cards: []proto.GPUInfo{passed}, unsupported: true, code: "CARD_CHECKS_PASSTHROUGH", level: "info"},
+		{name: "old agent without driver", cards: []proto.GPUInfo{noDriver}, unsupported: true, code: "CARD_CHECKS_NO_DRIVER", level: "info"},
+		{name: "old agent with mixed unavailable ownership", cards: []proto.GPUInfo{passed, held}, unsupported: true, code: "CARD_CHECKS_NO_USABLE_CARDS", level: "info"},
+		{name: "old agent selected passthrough beside host card", cards: []proto.GPUInfo{pending, passed}, unsupported: true, query: "?pcie_bdf=0000:09:00.0&uuid=GPU-passed", code: "CARD_CHECKS_PASSTHROUGH", level: "info"},
 		{name: "without driver", cards: []proto.GPUInfo{noDriver}, code: "CARD_CHECKS_NO_DRIVER", level: "info"},
 		{name: "held by another driver", cards: []proto.GPUInfo{held}, code: "CARD_CHECKS_HELD_ELSEWHERE", level: "info"},
 		{name: "mixed unavailable ownership", cards: []proto.GPUInfo{passed, noDriver}, code: "CARD_CHECKS_NO_USABLE_CARDS", level: "info"},
@@ -45,6 +49,7 @@ func TestNodeHealthNoticeDistinguishesCapabilityOwnershipAndReports(t *testing.T
 		{name: "selected usable in mixed node", cards: []proto.GPUInfo{owned, passed}, query: "?pcie_bdf=0000:08:00.0&uuid=GPU-owned", wantCards: 1},
 		{name: "offline even without capability", cards: []proto.GPUInfo{passed}, offline: true, unsupported: true, code: "CARD_CHECKS_OFFLINE", level: "warning"},
 		{name: "stale report", cards: []proto.GPUInfo{owned}, stale: true, code: "CARD_CHECKS_STALE", level: "warning", wantCards: 1},
+		{name: "old agent stale ownership stays unconfirmed", cards: []proto.GPUInfo{passed}, stale: true, unsupported: true, code: "CARD_CHECKS_UNSUPPORTED", level: "info"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
