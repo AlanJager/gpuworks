@@ -359,7 +359,8 @@ func (r *routeTable) build() (*routeSnapshot, error) {
 		if nodeUUID == "" {
 			continue
 		}
-		c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: nodeUUID, port: in.APIPort, modelName: instanceModelName(rd.dep, in, planning.HostTranslatesModelPaths(drivers[in.NodeID])), uuidHash: fnv64([]byte(in.UUID)), routedAt: routedAt}
+		name, slots := instanceLaunchFacts(rd.dep, in, planning.HostTranslatesModelPaths(drivers[in.NodeID]))
+		c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: nodeUUID, port: in.APIPort, modelName: name, uuidHash: fnv64([]byte(in.UUID)), routedAt: routedAt, slots: slots}
 		if rd.pd != nil {
 			var ok bool
 			if c, ok = rd.pd.admit(in, c); !ok {

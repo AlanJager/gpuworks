@@ -123,9 +123,9 @@ func mix64(x uint64) uint64 {
 	return x ^ (x >> 31)
 }
 
-func (b *balancer) pickAffinity(candidates []candidate, key string, excluded map[string]bool, online func(string) bool) *lease {
+func (b *balancer) pickAffinity(candidates []candidate, key string, excluded map[string]bool, online func(string) bool, adm admission) *lease {
 	if strings.TrimSpace(key) == "" {
-		return b.pick(candidates, excluded, online)
+		return b.pick(candidates, excluded, online, adm)
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -145,7 +145,7 @@ func (b *balancer) pickAffinity(candidates []candidate, key string, excluded map
 		}
 		s := b.state(c.instanceUUID)
 		if s.cooldownUntil.IsZero() || nowFn().After(s.cooldownUntil) {
-			total += s.inflight
+			total += s.inflight.total
 		}
 		uuidHash := c.uuidHash
 		if uuidHash == 0 {
@@ -164,24 +164,17 @@ func (b *balancer) pickAffinity(candidates []candidate, key string, excluded map
 	}
 	for _, item := range items {
 		s := b.state(item.c.instanceUUID)
-		if (s.cooldownUntil.IsZero() || nowFn().After(s.cooldownUntil)) && s.inflight < limit {
-			s.inflight++
-			l := &lease{c: item.c}
-			l.releaseFn = func(o attemptOutcome) { b.release(l, o) }
-			return l
+		if (s.cooldownUntil.IsZero() || nowFn().After(s.cooldownUntil)) && s.inflight.total < limit {
+			return b.take(item.c, adm)
 		}
 	}
 	best := items[0]
 	for _, item := range items[1:] {
-		if b.state(item.c.instanceUUID).inflight < b.state(best.c.instanceUUID).inflight {
+		if b.state(item.c.instanceUUID).inflight.total < b.state(best.c.instanceUUID).inflight.total {
 			best = item
 		}
 	}
-	s := b.state(best.c.instanceUUID)
-	s.inflight++
-	l := &lease{c: best.c}
-	l.releaseFn = func(o attemptOutcome) { b.release(l, o) }
-	return l
+	return b.take(best.c, adm)
 }
 
 func (p *Proxy) affinityKey(modelName string, r *http.Request) string {

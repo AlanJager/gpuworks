@@ -29,6 +29,9 @@ type routeAttempt struct {
 	affinity     string
 	deploymentID uint
 	accountant   *Accountant
+	// admission is the request's, which every replica it tries is leased
+	// for.
+	admission admission
 }
 
 type retryTransport struct {
@@ -138,7 +141,7 @@ func (a *routeAttempt) releaseRenamed() {
 // which needs the public name the client asked for.
 func (t *retryTransport) pickNext(a *routeAttempt, rename bool) *lease {
 	return leaseUntil(func(excluded map[string]bool) *lease {
-		return t.balancer.pickBy(a.policy, a.candidates, a.affinity, excluded, t.hub.Online)
+		return t.balancer.pickBy(a.policy, a.candidates, a.affinity, excluded, t.hub.Online, a.admission)
 	}, a.tried, func(l *lease) bool {
 		if l.c.modelName != a.modelName && !rename {
 			return false

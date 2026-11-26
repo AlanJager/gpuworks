@@ -22,11 +22,15 @@ type candidate struct {
 	// candidate read another way: while the generation has not moved, the
 	// candidate's row is still what it was read as (instanceRowsUnchanged).
 	routedAt uint64
+	// slots is the replica's run slots, the concurrent-sequence cap its
+	// launch states (deploy.RunSlots); 0 when it states none.
+	slots int
 }
 
 type instanceState struct {
-	inflight, failStreak int
-	cooldownUntil        time.Time
+	inflight      inflightCounts
+	failStreak    int
+	cooldownUntil time.Time
 }
 type balancer struct {
 	mu     sync.Mutex
@@ -45,7 +49,10 @@ const (
 )
 
 type lease struct {
-	c         candidate
+	c candidate
+	// priority is the value the lease was counted under (admission), and
+	// is given back under.
+	priority  int
 	once      sync.Once
 	releaseFn func(attemptOutcome)
 }
@@ -71,7 +78,7 @@ func (b *balancer) inflight(uuid string) int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if s, ok := b.states[uuid]; ok {
-		return s.inflight
+		return s.inflight.total
 	}
 	return 0
 }
@@ -80,13 +87,13 @@ func (b *balancer) gc(active map[string]bool) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for uuid, state := range b.states {
-		if !active[uuid] && state.inflight == 0 {
+		if !active[uuid] && state.inflight.total == 0 {
 			delete(b.states, uuid)
 		}
 	}
 }
 
-func (b *balancer) pick(candidates []candidate, excluded map[string]bool, online func(string) bool) *lease {
+func (b *balancer) pick(candidates []candidate, excluded map[string]bool, online func(string) bool, adm admission) *lease {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	nowFn := b.now
@@ -120,7 +127,7 @@ func (b *balancer) pick(candidates []candidate, excluded map[string]bool, online
 	bestScore := 0.0
 	for _, c := range pool {
 		s := b.state(c.instanceUUID)
-		score := float64(s.inflight)
+		score := float64(s.inflight.total)
 		if b.load != nil {
 			if g, ok := b.load.gauge(c.instanceUUID); ok {
 				score += g.waiting
@@ -141,14 +148,10 @@ func (b *balancer) pick(candidates []candidate, excluded map[string]bool, online
 	if len(best) > 1 {
 		c = best[randFn(len(best))]
 	}
-	s := b.state(c.instanceUUID)
-	s.inflight++
-	l := &lease{c: c}
-	l.releaseFn = func(outcome attemptOutcome) { b.release(l, outcome) }
-	return l
+	return b.take(c, adm)
 }
 
-func (b *balancer) pickFailover(candidates []candidate, excluded map[string]bool, online func(string) bool) *lease {
+func (b *balancer) pickFailover(candidates []candidate, excluded map[string]bool, online func(string) bool, adm admission) *lease {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	nowFn := b.now
@@ -168,20 +171,12 @@ func (b *balancer) pickFailover(candidates []candidate, excluded map[string]bool
 		if now.Before(b.state(c.instanceUUID).cooldownUntil) {
 			continue
 		}
-		s := b.state(c.instanceUUID)
-		s.inflight++
-		l := &lease{c: *c}
-		l.releaseFn = func(o attemptOutcome) { b.release(l, o) }
-		return l
+		return b.take(*c, adm)
 	}
 	if fallback == nil {
 		return nil
 	}
-	s := b.state(fallback.instanceUUID)
-	s.inflight++
-	l := &lease{c: *fallback}
-	l.releaseFn = func(o attemptOutcome) { b.release(l, o) }
-	return l
+	return b.take(*fallback, adm)
 }
 
 func (b *balancer) release(l *lease, outcome attemptOutcome) {
@@ -192,9 +187,7 @@ func (b *balancer) release(l *lease, outcome attemptOutcome) {
 		b.mu.Lock()
 		defer b.mu.Unlock()
 		s := b.state(l.c.instanceUUID)
-		if s.inflight > 0 {
-			s.inflight--
-		}
+		s.inflight.remove(l.priority)
 		switch outcome {
 		case outcomeOK:
 			s.failStreak = 0

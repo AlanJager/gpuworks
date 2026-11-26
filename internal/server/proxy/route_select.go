@@ -22,14 +22,15 @@ func (p *Proxy) selectDeploymentInstance(modelName string) (*store.Deployment, t
 }
 
 func (p *Proxy) selectDeploymentInstanceWithKey(modelName, affinity string) (*store.Deployment, target, *refusal, bool) {
-	return p.selectScopedDeploymentInstance(nil, modelName, affinity)
+	return p.selectScopedDeploymentInstance(nil, modelName, affinity, admission{})
 }
 
 // selectScopedDeploymentInstance is selectDeploymentInstanceWithKey over the
 // deployments the caller's API key may call (nil: all). A name served only by
 // deployments outside the scope is 403; deployments outside it are never
-// touched, so a scoped caller cannot wake or load them.
-func (p *Proxy) selectScopedDeploymentInstance(scope *store.APIKeyIdentity, modelName, affinity string) (*store.Deployment, target, *refusal, bool) {
+// touched, so a scoped caller cannot wake or load them. The replica is leased
+// for adm.
+func (p *Proxy) selectScopedDeploymentInstance(scope *store.APIKeyIdentity, modelName, affinity string, adm admission) (*store.Deployment, target, *refusal, bool) {
 	allowed := func(id uint) bool { return scope == nil || scope.Allows(id) }
 	if p.routes != nil {
 		deployments, ok := p.routes.snapshot(modelName)
@@ -38,7 +39,7 @@ func (p *Proxy) selectScopedDeploymentInstance(scope *store.APIKeyIdentity, mode
 				if !allowed(rd.dep.ID) {
 					continue
 				}
-				if tgt, ok := p.pickRouted(rd, modelName, affinity, p.hold.drainingOf(rd.dep.ID)); ok {
+				if tgt, ok := p.pickRouted(rd, modelName, affinity, p.hold.drainingOf(rd.dep.ID), adm); ok {
 					return rd.dep, tgt, nil, false
 				}
 			}
@@ -72,7 +73,7 @@ func (p *Proxy) selectScopedDeploymentInstance(scope *store.APIKeyIdentity, mode
 	asleep := false
 	for index := range deployments {
 		dep := &deployments[index]
-		tgt, candidate, candidateAsleep := p.selectDeploymentInstances(dep, modelName, affinity)
+		tgt, candidate, candidateAsleep := p.selectDeploymentInstances(dep, modelName, affinity, adm)
 		if candidate == nil {
 			return dep, tgt, nil, false
 		}
@@ -85,7 +86,7 @@ func (p *Proxy) selectScopedDeploymentInstance(scope *store.APIKeyIdentity, mode
 	return attempted, target{}, rejection, asleep
 }
 
-func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string, draining map[string]bool) (target, bool) {
+func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string, draining map[string]bool, adm admission) (target, bool) {
 	if draining != nil && rd.nnodes > 1 {
 		return target{}, false
 	}
@@ -95,22 +96,22 @@ func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string, drai
 		// snapshot still supplies the node UUID map, avoiding one NodeByID
 		// query for every rank.
 		insts, _ := p.store.InstancesForDeployment(rd.id)
-		tgt, rejection, _ := p.selectDistributedInstanceWithNodes(rd.dep, insts, modelName, affinity, rd.nodes, rd.drivers)
+		tgt, rejection, _ := p.selectDistributedInstanceWithNodes(rd.dep, insts, modelName, affinity, rd.nodes, rd.drivers, adm)
 		return tgt, rejection == nil
 	}
 	candidates := withoutDraining(rd.candidates, draining)
 	if len(candidates) == 0 {
 		return target{}, false
 	}
-	lease := p.pickAwake(candidates, rd.policy, affinity, false)
+	lease := p.pickAwake(candidates, rd.policy, affinity, false, adm)
 	if lease == nil {
 		return target{}, false
 	}
-	attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: rd.policy, affinity: affinity, deploymentID: rd.id, accountant: p.acct}
+	attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: rd.policy, affinity: affinity, deploymentID: rd.id, accountant: p.acct, admission: adm}
 	return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, pd: rd.pd, affinity: affinity}, true
 }
 
-func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affinity string) (target, *refusal, bool) {
+func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affinity string, adm admission) (target, *refusal, bool) {
 	// Draining replicas take no new request; with none other left, the
 	// request is held as if the deployment slept (drain.go).
 	draining := p.hold.drainingOf(dep.ID)
@@ -119,7 +120,7 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 	}
 	insts, _ := p.store.InstancesForDeployment(dep.ID)
 	if dep.NNodes > 1 {
-		return p.selectDistributedInstance(dep, insts, modelName, affinity)
+		return p.selectDistributedInstance(dep, insts, modelName, affinity, adm)
 	}
 	candidates := make([]candidate, 0, len(insts))
 	anyAsleep := false
@@ -151,7 +152,8 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 				nodeOffline = true
 				continue
 			}
-			c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: node.UUID, port: in.APIPort, modelName: instanceModelName(dep, &in, planning.HostTranslatesModelPaths(node.RuntimeDriver)), uuidHash: fnv64([]byte(in.UUID))}
+			name, slots := instanceLaunchFacts(dep, &in, planning.HostTranslatesModelPaths(node.RuntimeDriver))
+			c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: node.UUID, port: in.APIPort, modelName: name, uuidHash: fnv64([]byte(in.UUID)), slots: slots}
 			if pd != nil {
 				var ok bool
 				if c, ok = pd.admit(&in, c); !ok {
@@ -178,8 +180,8 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 	}
 	if len(candidates) > 0 {
 		policy := deploy.NormalizeRoutingPolicy(dep.RoutingPolicy)
-		if lease := p.pickAwake(candidates, policy, affinity, true); lease != nil {
-			attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: policy, affinity: affinity, deploymentID: dep.ID, accountant: p.acct}
+		if lease := p.pickAwake(candidates, policy, affinity, true, adm); lease != nil {
+			attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: policy, affinity: affinity, deploymentID: dep.ID, accountant: p.acct, admission: adm}
 			return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, pd: pd, affinity: affinity}, nil, false
 		}
 	}
@@ -226,13 +228,13 @@ func instancesGaveUp(insts []store.Instance) bool {
 // the deployment's routing policy, as for single-node replicas. A deployment
 // may list several multi-node replicas; each generation is its own group.
 // The final bool return is asleep; see selectDeploymentInstance.
-func (p *Proxy) selectDistributedInstance(dep *store.Deployment, insts []store.Instance, modelName, affinity string) (target, *refusal, bool) {
-	return p.selectDistributedInstanceWithNodes(dep, insts, modelName, affinity, nil, nil)
+func (p *Proxy) selectDistributedInstance(dep *store.Deployment, insts []store.Instance, modelName, affinity string, adm admission) (target, *refusal, bool) {
+	return p.selectDistributedInstanceWithNodes(dep, insts, modelName, affinity, nil, nil, adm)
 }
 
 // nodes and drivers are the route snapshot's node UUIDs and runtime drivers by
 // node ID; nil reads each node from the store.
-func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts []store.Instance, modelName, affinity string, nodes, drivers map[uint]string) (target, *refusal, bool) {
+func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts []store.Instance, modelName, affinity string, nodes, drivers map[uint]string, adm admission) (target, *refusal, bool) {
 	nodeUUID := func(id uint) string {
 		if nodes != nil {
 			return nodes[id]
@@ -289,7 +291,8 @@ func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts 
 		if in.APIPort <= 0 || incomplete[in.UUID] || (legacy && ranks < dep.NNodes-1) || !reachable {
 			continue
 		}
-		candidates = append(candidates, candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: nodeUUID(in.NodeID), port: in.APIPort, modelName: instanceModelName(dep, in, planning.HostTranslatesModelPaths(nodeDriver(in.NodeID))), uuidHash: fnv64([]byte(in.UUID))})
+		name, slots := instanceLaunchFacts(dep, in, planning.HostTranslatesModelPaths(nodeDriver(in.NodeID)))
+		candidates = append(candidates, candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: nodeUUID(in.NodeID), port: in.APIPort, modelName: name, uuidHash: fnv64([]byte(in.UUID)), slots: slots})
 	}
 	if len(candidates) == 0 {
 		if anySleeping {
@@ -298,11 +301,11 @@ func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts 
 		return target{}, refuse(ErrorDistributedNotReady, map[string]any{"model": modelName}), false
 	}
 	policy := deploy.NormalizeRoutingPolicy(dep.RoutingPolicy)
-	lease := p.pickAwake(candidates, policy, affinity, true)
+	lease := p.pickAwake(candidates, policy, affinity, true, adm)
 	if lease == nil {
 		return target{}, refuse(ErrorDistributedLeaderOffline, map[string]any{"model": modelName}), false
 	}
-	attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: policy, affinity: affinity, deploymentID: dep.ID, accountant: p.acct}
+	attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: policy, affinity: affinity, deploymentID: dep.ID, accountant: p.acct, admission: adm}
 	return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, affinity: affinity}, nil, false
 }
 
