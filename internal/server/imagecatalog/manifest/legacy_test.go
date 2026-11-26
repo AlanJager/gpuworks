@@ -44,6 +44,10 @@ func TestLegacyProjectionMarkers(t *testing.T) {
 		want    bool
 	}{
 		{3, old, true},
+		{3, "2026-11-26.0123abcd-schema3", true},
+		{3, "local-release-schema3", false},
+		{3, "2026-11-26.0123abcg-schema3", false},
+		{3, "2026-11-26.0123abcde-schema3", false},
 		{3, "schema3." + strings.Repeat("g", 64), false},
 		{3, "2026-11-26.0123abcd", false},
 		{4, old, false},
@@ -53,5 +57,19 @@ func TestLegacyProjectionMarkers(t *testing.T) {
 		if got := m.IsLegacyProjection(); got != tc.want {
 			t.Errorf("schema %d version %q: got %t, want %t", tc.schema, tc.version, got, tc.want)
 		}
+	}
+}
+
+func TestLegacyCatalogWithCustomVersion(t *testing.T) {
+	body, err := LegacyCatalog([]byte(`{"schema_version":4,"catalog_version":"local","series":[{"name":"runner","versions":[{"image_ref":"runner:local"}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := Parse(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.IsLegacyProjection() {
+		t.Fatalf("unrecognized generated projection %q", m.CatalogVersion)
 	}
 }

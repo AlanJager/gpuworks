@@ -396,7 +396,7 @@ func TestUploadLegacyProjectionLeavesActiveCatalogUntouched(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if rec.Code != http.StatusBadRequest || response.Code != "IMAGE_MANIFEST_LEGACY_PROJECTION" || response.Params["field"] != "image_catalog_v4.path" {
+	if rec.Code != http.StatusBadRequest || response.Code != "IMAGE_MANIFEST_LEGACY_PROJECTION" || len(response.Params) != 1 || response.Params["path"] != "image_catalog_v4.path" {
 		t.Fatalf("rejection %d: %s", rec.Code, rec.Body.String())
 	}
 	state, err := run.store.OfficialCatalogState()
@@ -421,7 +421,7 @@ func TestImportedSelectionPolicyUpdatesExistingLegacyRow(t *testing.T) {
 		if tc.policy != "" {
 			field = fmt.Sprintf(`,"auto_select":%q`, tc.policy)
 		}
-		body := fmt.Sprintf(`{"schema_version":%d,"catalog_version":"normal","series":[{"name":"vLLM · CUDA","engine":"vllm","versions":[{"image_ref":%q,"arch":"multi"%s}]}]}`, tc.schema, ref, field)
+		body := fmt.Sprintf(`{"schema_version":%d,"catalog_version":"local-release-schema3","series":[{"name":"vLLM · CUDA","engine":"vllm","versions":[{"image_ref":%q,"arch":"multi"%s}]}]}`, tc.schema, ref, field)
 		rec := run.do(http.MethodPost, "/api/v1/images/import", "application/json", body)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("schema %d: %d %s", tc.schema, rec.Code, rec.Body.String())

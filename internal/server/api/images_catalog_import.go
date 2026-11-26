@@ -123,7 +123,7 @@ func (a *apiHandlers) applyOfficialManifest(w http.ResponseWriter, body []byte, 
 	result, err := imagecatalog.ImportManifest(a.d.Store, body)
 	switch {
 	case errors.Is(err, imagecatalog.ErrLegacyProjection):
-		writeProductError(w, http.StatusBadRequest, ErrorImageManifestLegacyProjection, "this catalog is for older servers; upload the file at image_catalog_v4.path in the signed channel index", map[string]any{"field": "image_catalog_v4.path"})
+		writeProductError(w, http.StatusBadRequest, ErrorImageManifestLegacyProjection, "this catalog is for older servers; upload the file at image_catalog_v4.path in the signed channel index", map[string]any{"path": "image_catalog_v4.path"})
 		return
 	case errors.Is(err, imagecatalog.ErrManifestInvalid):
 		writeProductError(w, http.StatusBadRequest, ErrorImageManifestInvalid, err.Error(), map[string]any{"detail": err.Error()})

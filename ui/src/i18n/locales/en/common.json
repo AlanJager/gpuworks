@@ -551,7 +551,7 @@
     "EXPERIENCE_FAILED": "Experience mode operation failed: {{reason}}",
     "EXPERIENCE_PORT_IN_USE": "Port {{port}} is held by another program: free it, or move this server's console port (the experience environment uses the console port + 10).",
     "NOTICE_IDS_INVALID": "Name between 1 and 128 notices to mark as read.",
-    "IMAGE_MANIFEST_LEGACY_PROJECTION": "This schema 3 catalog is for older servers. Download the file at {{field}} in the signed channel index and upload it here.",
+    "IMAGE_MANIFEST_LEGACY_PROJECTION": "This schema 3 catalog is for older servers. Download the file at {{path}} in the signed channel index and upload it here.",
     "IMAGE_MANIFEST_INVALID": "The image manifest is invalid: {{detail}}",
     "IMAGE_IMPORT_CONFLICT": "The manifest conflicts with a community or custom image: {{detail}}",
     "IMAGE_CATALOG_UPLOADED": "The system image catalog in force, {{current}}, was uploaded by hand. Replacing it with the channel's catalog {{latest}} needs confirming: image versions that only the upload has are deleted, or kept as old versions while still in use.",

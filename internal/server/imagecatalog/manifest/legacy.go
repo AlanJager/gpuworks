@@ -4,18 +4,22 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"regexp"
 	"strings"
 )
 
 const legacyVersionSuffix = "-schema3"
+
+// The runner catalog generator identifies releases with a date and eight hex digits.
+var publishedCatalogVersion = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}\.[0-9a-f]{8}$`)
 
 // IsLegacyProjection identifies the lossy catalog emitted for older readers.
 func (m Manifest) IsLegacyProjection() bool {
 	if m.SchemaVersion != 3 {
 		return false
 	}
-	if strings.HasSuffix(m.CatalogVersion, legacyVersionSuffix) {
-		return true
+	if version, ok := strings.CutSuffix(m.CatalogVersion, legacyVersionSuffix); ok {
+		return publishedCatalogVersion.MatchString(version)
 	}
 	// Previously published projections used schema3.<SHA-256>.
 	suffix, ok := strings.CutPrefix(m.CatalogVersion, "schema3.")
@@ -46,8 +50,13 @@ func LegacyCatalog(body []byte) ([]byte, error) {
 			v.RegistryDigest = ""
 		}
 	}
-	m.CatalogVersion += legacyVersionSuffix
 	m.Signature = ""
+	if publishedCatalogVersion.MatchString(m.CatalogVersion) {
+		m.CatalogVersion += legacyVersionSuffix
+	} else {
+		// A custom source version must still produce a recognizable projection.
+		m.CatalogVersion = "schema3." + ComputeSHA256(m)
+	}
 	m.SHA256 = ComputeSHA256(m)
 	body, err = json.MarshalIndent(m, "", "  ")
 	return append(body, '\n'), err

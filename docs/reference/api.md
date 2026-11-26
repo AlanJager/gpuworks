@@ -684,6 +684,7 @@ const importBody = {
 - 发布源均不可达：502 `UPDATE_SOURCES_UNAVAILABLE`；有索引但没有与索引一致的目录文件：502 `UPDATE_DOWNLOAD_FAILED`。
 - 通道未发布目录：404 `UPDATE_NOT_PUBLISHED`。
 - 内容非法：400 `IMAGE_MANIFEST_INVALID`；与社区/自定义行同名或同 ref 冲突：400 `IMAGE_IMPORT_CONFLICT`。
+- 上传旧版服务的兼容目录时返回 400 `IMAGE_MANIFEST_LEGACY_PROJECTION`。响应中的 `params.path` 为 `image_catalog_v4.path`，请下载签名渠道索引中该字段指向的文件再上传。
 
 `POST /images/sync` 遇到手工上传的目录且渠道目录与它不同、又没带 `replace_uploaded=true` 时返回 409 `IMAGE_CATALOG_UPLOADED`（`params.current`、`params.latest` 是两个目录版本），目录不变。
 

@@ -105,7 +105,7 @@ There are only two update paths for the system catalog, both on the Images page'
   (both include each source's reason in `detail`). If the channel has not published an image catalog, it returns 404 `UPDATE_NOT_PUBLISHED`. The database remains unchanged in all these cases.
 - **Upload manifest**: `POST /api/v1/images/import`, with the manifest JSON itself as the request body. Use this when the server cannot access the internet:
   On a connected machine, download the file at `image_catalog_v4.path` in the signed channel index. For schema 3 servers use `<channel>/manifest.json`.
-  Current servers reject this compatibility copy and keep the active catalog and its update source.
+  Published compatibility catalogs have versions such as `2026-11-26.0123abcd-schema3`. Uploading one to a current server returns 400 `IMAGE_MANIFEST_LEGACY_PROJECTION` and preserves the active catalog and its update source. Use `params.path` to locate the current catalog in the signed index, then download and upload that file.
 
 Both paths record the imported `catalog_version` as the current catalog version. The settings page's Version and updates section uses it to show whether updates are available.
 An uploaded catalog that differs from the channel's is not an available update; its row reads "Uploaded". "Check for updates" and "Use the channel's catalog" then both ask for confirmation first; only after it does the channel's catalog replace the upload under the rules below, and versions that only the uploaded catalog has are deleted or become old versions. Without `replace_uploaded=true` the API answers 409 `IMAGE_CATALOG_UPLOADED`.
@@ -254,7 +254,7 @@ runtime explanation.
 <!-- translation-source-sha256: 883ab9f8b2d790c67dcf7570053662a81dc49f9ffb70f511ff169cbee4275bd2 ## Node Image Identity and Periodic Inventory -->
 <!-- translation-source-sha256: e2b838cefca66793fc982b53cee60799b35fbb3f686107db9c5ee6d098b8afed ## System Images -->
 <!-- translation-source-sha256: 39168c329fca1b60b4dac45940c92fb95a7eac8dab8b30e86e9ea76fcc060e2a ### Startup Sync -->
-<!-- translation-source-sha256: 69c2e273f8ee6fecfa530f2bd92aae48f74d86b2bc0163c2aabc6dd35e40b0e1 ### Updating the Catalog -->
+<!-- translation-source-sha256: 571821954b1f6897853432ab61d81d5f2ebe445bd78f9bd8e944f7766cf73f4c ### Updating the Catalog -->
 <!-- translation-source-sha256: 350e814cf682e2ae1de88e80ea7ef93b75ece3210572861146ecc5470a1e49b0 ### Manifest Format -->
 <!-- translation-source-sha256: da92f9dfca846e8a1b55ab4708a4b1f01f97ccd6dd44145d4619b20fd54ee18e ## Community Images -->
 <!-- translation-source-sha256: 77522a45a9d473abc1fd18744cbf1bd083213fe1c1c54f96fe725d892d366f57 ## Custom Images -->
