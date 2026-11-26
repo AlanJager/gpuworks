@@ -115,6 +115,23 @@ export interface KubePrecheckRequest {
   image_pull_secret?: string;
 }
 
+/** How the agents of an entry made from a cloud cluster stand, node by node (dto.KubeRollout); ask again after poll_after_seconds while not done. */
+export interface KubeRollout {
+  done: boolean;
+  poll_after_seconds?: number;
+  /** Agent pods the DaemonSet wants; null until counted or without a DaemonSet. */
+  desired: number | null;
+  rows: KubeCheckRow[];
+}
+
+/** One line of a check: a node and its pod (neither for the DaemonSet as a whole), a code of check_codes.verify, and Kubernetes' detail (dto.KubeCheckRow). */
+export interface KubeCheckRow {
+  node?: string;
+  pod?: string;
+  code: string;
+  detail?: string;
+}
+
 /** The pre-check script and what it checks (dto.KubePrecheck). */
 export interface KubePrecheck {
   script: string;

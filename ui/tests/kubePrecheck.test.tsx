@@ -129,13 +129,14 @@ test("the pre-check needs a server address it can test, and asks nothing of the 
 });
 
 test("a pre-check the server refuses says why in its dialog", async () => {
-  stubApi(new APIError(400, "node_selector: bad", "KUBE_CLUSTER_INVALID", { field: "node_selector", reason: "want key=value label pairs" }));
+  stubApi(new APIError("KUBE_CLUSTER_INVALID", { field: "node_selector", reason: "want key=value label pairs" }, "node_selector: want key=value label pairs", 400));
   const user = openForm();
   const form = within(screen.getByRole("dialog"));
   await form.findByLabelText(field(k.drawer.serverUrl));
   await user.click(form.getByRole("button", { name: k.precheck.open }));
   const modal = precheckDialog();
   assert.ok(await modal.findByText(k.precheck.failed));
+  assert.ok(modal.getByText(/want key=value label pairs/), "the server's reason, in the reader's words");
   assert.equal(modal.queryAllByRole("button", { name: k.precheck.copy }).length, 0, "nothing to copy");
   assert.equal(modal.queryAllByRole("button", { name: k.precheck.download }).length, 0);
 });
