@@ -115,8 +115,7 @@ make demo       # 起 server + agent，验证接入/心跳/重连
 - **矩阵去重**：同一断言只保留一个权威 case。单 VM 双逻辑节点验证同机 GPU/容器隔离；跨 VM Docker 验证网络/NCCL；跨 VM udocker 仅显式低频回归，不能把语义不同的场景合并成一个测试。
 - **测试命名**：真实环境测试统一命名为 `l4-<provider或资源池>-<行为>-<拓扑或外部依赖>`；Go case、Make target、GitLab job 必须一一对应。名称直接写 `node-onboarding`、`public-download`、`deploy-chat`、`provisioning-matrix`、`one-vm-two-logical-nodes` 或 `two-vm-docker-distributed` 等可验证行为，禁止使用含义模糊的 `basic`、`full`、`suite`、`provider`、`nnode2`。nightly/manual 只属于 CI 触发策略，不进入 case 名称。
 - **Make 目标只给多步流程和被引用的入口**：多于一条命令（先构建再跑、串多个检查）或被 CI/其他目标引用时才加 Make 目标；只是包一层 `go test -run`（外加环境变量/超时/tag）的单用例不加目标，把完整 `go test` 命令写进该测试函数的注释。例外：L4 用例仍按下文「测试命名」的一一对应规则保留 Make target。
-- **本地定向检查，GitLab 全量验收**：提交前按改动选择相关 Go 单测与 race/vet、RTL、类型/静态检查及问题的端到端验证；纯文档改动检查链接、翻译与相关索引。本地默认不重复全仓测试；定位故障、CI 不可用或用户明确要求本地全量时，记录原因。最终以对应提交的 GitLab CI PASS 为准，定向通过不代替全量验收。
-- **CI 完整测试走 Makefile，不要只跑 `go test`**。`go test ./...` 只覆盖 untagged 包，会漏掉 lint、架构约束、artifacts 一致性、时间策略、i18n 与前端，以及带 build tag 的 suite。完整验收入口（CI 执行，必要时本地复现）：
+- **完整测试走 Makefile，不要只跑 `go test`**。`go test ./...` 只覆盖 untagged 包，会漏掉 lint、架构约束、artifacts 一致性、时间策略、i18n 与前端，以及带 build tag 的 suite。完整的一轮：
 
   ```bash
   make test        # test-unit（ui + check-time-policy + check-architecture
@@ -127,6 +126,6 @@ make demo       # 起 server + agent，验证接入/心跳/重连
   make test-l3     # -tags=docker，容器级用例
   ```
 
-  `make test` 本身**不包含** l2/l3。改动涉及调度、部署、agent 运行时或容器行为时，CI 验收还必须包含 l2/l3；本地按故障复现需要选择相关场景。
-- **带外部依赖的 suite 要看清是真跑了还是跳过了**。`test-l3` 的容器用例在没有 docker daemon 时整组 `t.Skip`，`make` 仍然退出 0 —— 把这种结果当成"l3 通过"是假绿。从同一次运行的 verbose/JSON 日志统计 SKIP/TODO 并记录未执行范围，不为统计跳过数再跑一遍套件。
-- **提交前检查**：完成上述本地定向检查及 `git diff --check`，推送后跟踪对应提交的 GitLab 全量验收；涉及带标签路径时，本地定向编译受影响套件。相关包的 `go test -race` 一律加 `-timeout 40m`，避免 server 大包超过默认 10 分钟（实测 store ≈17 分钟、controller ≈16 分钟，api 见 `known-issues.md` T54）；超时只表示未跑完，不算通过。云端测试结束必须按 scoped run-id 确认实例/转发/临时文件无泄漏，绝不执行无范围的全账号清理。
+  `make test` 本身**不包含** l2/l3，必须显式再跑。改动涉及调度、部署、agent 运行时或容器行为时，l2/l3 不是可选项。
+- **带外部依赖的 suite 要看清是真跑了还是跳过了**。`test-l3` 的容器用例在没有 docker daemon 时整组 `t.Skip`，`make` 仍然退出 0 —— 把这种结果当成"l3 通过"是假绿。跑完用 `go test -tags=docker -v ./test/l3/ | grep -c '^--- SKIP'` 确认跳过数，并在变更说明里写明哪些用例没真跑。
+- **提交前检查**：完整的一轮（见上）、相关包 `go test -race`、`go vet` 和 `git diff --check`。`-race` 下 server 大包远超 `go test` 默认 10 分钟超时（实测 store ≈17 分钟、controller ≈16 分钟，api 见 `known-issues.md` T54），一律加 `-timeout 40m`；默认超时触发的 panic 只说明没跑完，既不算失败也不算通过；云端测试结束必须按 scoped run-id 确认实例/转发/临时文件无泄漏，绝不执行无范围的全账号清理。

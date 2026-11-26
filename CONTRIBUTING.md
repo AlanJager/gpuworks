@@ -91,27 +91,27 @@ More detail: [docs/dev/setup.md](docs/dev/setup.md).
 
 ## Build and test
 
-Select focused local pre-commit checks using the [project testing rules](CLAUDE.md#测试与验收规约). GitLab performs full acceptance for the exact commit SHA. These are full acceptance and on-demand local reproduction entry points:
-
 ```bash
 make test            # UI build + static checks + go test + frontend tests
 make vet             # go vet
 make test-integration  # product-level tests with fake agent/runtime
 ```
 
-`make test` **does not** include the layered suites. GitLab acceptance must also include them when your change touches
-scheduling, deployment, agent runtime, or container behaviour. Locally, select the scenarios needed to reproduce the issue:
+`make test` **does not** include the layered suites. Run them when your change touches
+scheduling, deployment, agent runtime, or container behaviour — in those areas the layered
+suites are not optional:
 
 ```bash
 make test-l2         # multi-process: real server and agent binaries, fake GPUs
 make test-l3         # container-level, needs a local Docker daemon
 ```
 
-Focused local checks for a Go change (select UI, documentation, and tagged-path checks using the project rules):
+Before you push, the full round is:
 
 ```bash
+make test
 go test -race -timeout 40m ./<package you touched>/...
-go vet ./<package you touched>/...
+go vet ./...
 git diff --check
 ```
 
@@ -124,7 +124,7 @@ Notes that cost people time if skipped:
   over-subscribed machine) and count the change as verified only after a clean re-run.
 - Lint is configured in [.golangci.yml](.golangci.yml) (`govet`, `errcheck`, `staticcheck`,
   `unused`, `ineffassign`, `misspell`, `gofmt`, `goimports`, `revive`, `bodyclose`, `nilerr`).
-  CI runs full `make lint`; use the same target locally when reproducing a full lint result. It builds
+  Run `make lint` before submitting; CI runs the same target. It builds
   golangci-lint v1.64.8 with the repository's Go version into `bin/tools`,
   preserving the complete rule set and reporting all findings. The first run
   downloads the development tool and builds the embedded UI if it is missing.
