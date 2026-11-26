@@ -44,6 +44,13 @@ func instanceLaunchFacts(dep *store.Deployment, instance *store.Instance, hostPr
 	return launchModelName(dep, desired, args, scriptArgs, hostProcess), slots
 }
 
+// instanceRunSlots is the instance's run slots alone (instanceLaunchFacts):
+// where its node runs does not change them.
+func instanceRunSlots(dep *store.Deployment, instance *store.Instance) int {
+	_, slots := instanceLaunchFacts(dep, instance, false)
+	return slots
+}
+
 func launchModelName(dep *store.Deployment, desired proto.InstanceDesiredState, args, scriptArgs []string, hostProcess bool) string {
 	engineName := func(name string) string {
 		if hostProcess {

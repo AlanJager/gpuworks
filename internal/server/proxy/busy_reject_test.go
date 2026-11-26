@@ -70,8 +70,8 @@ func TestTwoDeclaredRequestsRaceForTheLastSlot(t *testing.T) {
 	}
 }
 
-// Only the requests of the declaring one's class or above hold its slots:
-// the engine runs a lower one after it.
+// On a replica that schedules by priority only the requests of the declaring
+// one's class or above hold its slots: the engine runs a lower one after it.
 func TestBusyCountsTheRequestsOfItsClassOrAbove(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
@@ -88,7 +88,7 @@ func TestBusyCountsTheRequestsOfItsClassOrAbove(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			b := newBalancer(nil)
-			replica := []candidate{{instanceUUID: "a", nodeUUID: "n", slots: 2}}
+			replica := []candidate{{instanceUUID: "a", nodeUUID: "n", slots: 2, prioritized: true}}
 			for _, v := range tc.inflight {
 				if l, busy := b.pick(replica, nil, allOnline, admission{priority: v}); l == nil || busy {
 					t.Fatal("an undeclared request was not taken")
@@ -196,6 +196,7 @@ func TestResendAfterAConnectionFailureIsNotRefused(t *testing.T) {
 //	two    vLLM, one replica of --max-num-seqs 2
 //	bare   vLLM, one replica stating no cap
 //	mixed  vLLM, a replica of --max-num-seqs 1 and one stating no cap
+//	prio   vLLM with priority scheduling, one replica of --max-num-seqs 2
 //	nap    vLLM, one replica of --max-num-seqs 2, ordered to sleep
 //	wide   vLLM over two nodes (a leader of --max-num-seqs 1 and its follower)
 //	idle   vLLM of --max-num-seqs 2 with no running instance
@@ -250,15 +251,17 @@ func newBusyRig(t *testing.T) *busyRig {
 		name   string
 		nnodes int
 		insts  []store.Instance
+		prio   bool
 	}{
-		{"two", 1, []store.Instance{{DesiredStateJSON: capped("2")}}},
-		{"bare", 1, []store.Instance{{DesiredStateJSON: launchSpec(t, "vllm", "serve", "/models/m")}}},
-		{"mixed", 1, []store.Instance{{DesiredStateJSON: capped("1")}, {DesiredStateJSON: launchSpec(t, "vllm", "serve", "/models/m")}}},
-		{"nap", 1, []store.Instance{{DesiredStateJSON: capped("2")}}},
-		{"wide", 2, []store.Instance{{DesiredStateJSON: capped("1")}, {DesiredStateJSON: capped("1"), Headless: true, NodeID: other.ID}}},
-		{"idle", 1, nil},
+		{"two", 1, []store.Instance{{DesiredStateJSON: capped("2")}}, false},
+		{"prio", 1, []store.Instance{{DesiredStateJSON: launchSpec(t, "vllm", "serve", "/models/m", "--max-num-seqs", "2", "--scheduling-policy", "priority")}}, true},
+		{"bare", 1, []store.Instance{{DesiredStateJSON: launchSpec(t, "vllm", "serve", "/models/m")}}, false},
+		{"mixed", 1, []store.Instance{{DesiredStateJSON: capped("1")}, {DesiredStateJSON: launchSpec(t, "vllm", "serve", "/models/m")}}, false},
+		{"nap", 1, []store.Instance{{DesiredStateJSON: capped("2")}}, false},
+		{"wide", 2, []store.Instance{{DesiredStateJSON: capped("1")}, {DesiredStateJSON: capped("1"), Headless: true, NodeID: other.ID}}, false},
+		{"idle", 1, nil, false},
 	} {
-		dep, err := st.CreateDeployment(&store.Deployment{Name: d.name, ModelID: model.ID, NodeID: node.ID, ServedName: d.name, Engine: "vllm", State: "active", NNodes: d.nnodes})
+		dep, err := st.CreateDeployment(&store.Deployment{Name: d.name, ModelID: model.ID, NodeID: node.ID, ServedName: d.name, Engine: "vllm", State: "active", NNodes: d.nnodes, PriorityScheduling: d.prio})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -433,26 +436,27 @@ func TestBusyModelRefusesADeclaredRequestAtOnce(t *testing.T) {
 	}
 }
 
-// The class a request runs at reaches the busy judgement: two batch
-// requests leave both slots to normal ones, and two normal ones both slots
-// to high ones, but two high ones none to a high one.
+// The class a request runs at reaches the busy judgement on a replica that
+// schedules by priority: two batch requests leave both slots to normal ones,
+// and two normal ones both slots to high ones, but two high ones none to a
+// high one.
 func TestBusyJudgesAtTheRequestsClass(t *testing.T) {
 	rig := newBusyRig(t)
 	key := rig.key(t, store.APIKeyPriority{Class: priority.Normal, Ceiling: priority.Critical})
-	accepted := []chan *httptest.ResponseRecorder{rig.hold(t, key, "two", priority.Batch, "", 2)}
+	accepted := []chan *httptest.ResponseRecorder{rig.hold(t, key, "prio", priority.Batch, "", 2)}
 	for _, class := range []string{"", ""} {
-		accepted = append(accepted, rig.forwarded(t, key, "two", class, "reject"))
+		accepted = append(accepted, rig.forwarded(t, key, "prio", class, "reject"))
 	}
-	if rec := rig.chat(key, "two", "", "reject"); rec.Code != http.StatusTooManyRequests {
+	if rec := rig.chat(key, "prio", "", "reject"); rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("a normal with two batch and two normal held = %d, want 429", rec.Code)
 	}
 	for _, class := range []string{priority.High, priority.High} {
-		accepted = append(accepted, rig.forwarded(t, key, "two", class, "reject"))
+		accepted = append(accepted, rig.forwarded(t, key, "prio", class, "reject"))
 	}
-	if rec := rig.chat(key, "two", priority.High, "reject"); rec.Code != http.StatusTooManyRequests {
+	if rec := rig.chat(key, "prio", priority.High, "reject"); rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("a high with two high held = %d, want 429", rec.Code)
 	}
-	accepted = append(accepted, rig.forwarded(t, key, "two", priority.Critical, "reject"))
+	accepted = append(accepted, rig.forwarded(t, key, "prio", priority.Critical, "reject"))
 	rig.letAll()
 	answers := 0
 	for _, done := range accepted {
@@ -486,8 +490,10 @@ func TestDeploymentsThatNeverRefuseForBusy(t *testing.T) {
 		for range 3 {
 			rig.forwarded(t, key, "mixed", "", "reject")
 		}
-		if got := rig.p.balancer.counts("mixed-b").total; got < 4 {
-			t.Fatalf("the replica of unknown slots holds %d, want the declared ones on it", got)
+		// The declaration changes nothing on a deployment that does not
+		// refuse: the requests spread as undeclared ones would.
+		if got := rig.p.balancer.counts("mixed-a").total + rig.p.balancer.counts("mixed-b").total; got != 5 {
+			t.Fatalf("the replicas hold %d leases, want all 5 requests", got)
 		}
 	})
 	t.Run("asleep", func(t *testing.T) {
@@ -554,6 +560,7 @@ func TestKeyInfoSaysWhichModelsRefuseWhenBusy(t *testing.T) {
 		`{"id":"idle","priority_scheduling":"none","busy_reject":false},` +
 		`{"id":"mixed","priority_scheduling":"none","busy_reject":false},` +
 		`{"id":"nap","priority_scheduling":"none","busy_reject":true},` +
+		`{"id":"prio","priority_scheduling":"all","busy_reject":true},` +
 		`{"id":"two","priority_scheduling":"none","busy_reject":true},` +
 		`{"id":"wide","priority_scheduling":"none","busy_reject":false}]`
 	if got != want {

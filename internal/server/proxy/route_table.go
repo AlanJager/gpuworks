@@ -334,7 +334,7 @@ func (r *routeTable) build() (*routeSnapshot, error) {
 		name, slots, launchRead := "", 0, false
 		if in.State == proto.InstRunning {
 			running[in.UUID] = true
-			if rd.dep.PriorityScheduling && deploy.SpecRunsPriority(in.DesiredStateJSON) {
+			if runsPriority(rd.dep, in) {
 				prioritized[in.UUID] = true
 			}
 			if !in.Headless {
@@ -381,7 +381,7 @@ func (r *routeTable) build() (*routeSnapshot, error) {
 		if !launchRead {
 			name, slots = instanceLaunchFacts(rd.dep, in, planning.HostTranslatesModelPaths(drivers[in.NodeID]))
 		}
-		c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: nodeUUID, port: in.APIPort, modelName: name, uuidHash: fnv64([]byte(in.UUID)), routedAt: routedAt, slots: slots}
+		c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: nodeUUID, port: in.APIPort, modelName: name, uuidHash: fnv64([]byte(in.UUID)), routedAt: routedAt, slots: slots, prioritized: prioritized[in.UUID]}
 		if rd.pd != nil {
 			var ok bool
 			if c, ok = rd.pd.admit(in, c); !ok {

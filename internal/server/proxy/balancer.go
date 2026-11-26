@@ -25,6 +25,10 @@ type candidate struct {
 	// slots is the replica's run slots, the concurrent-sequence cap its
 	// launch states (deploy.RunSlots); 0 when it states none.
 	slots int
+	// prioritized: the replica was launched with the engine's priority
+	// scheduling, so the gateway writes request priorities to it
+	// (runsPriority) and its engine runs a higher class first.
+	prioritized bool
 }
 
 type instanceState struct {

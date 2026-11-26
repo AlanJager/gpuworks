@@ -98,7 +98,7 @@ Afterwards, call `GET /v1/key` with the gateway's key to check (see [Key Informa
 - In vLLM, a new high-priority request does not displace running requests; it waits for a slot under `--max-num-seqs`. Only when KV cache runs short is the lowest-priority, latest-arriving request preempted. A preempted streaming request pauses for a few seconds and then continues with complete output.
 - In SGLang, a new request whose priority exceeds a running request's by more than 10 (the default `--priority-scheduling-preemption-threshold`, strictly greater) preempts it at once; the preempted request resumes from the prefix cache.
 - Both engines use strict priority with no aging by waiting time: under sustained saturation, low-priority requests can wait without bound.
-- Priority only takes effect inside one replica; the gateway does not consider it when choosing among replicas. Requests with the busy declaration are the exception: when judging whether a replica has room the gateway counts only the in-flight requests at this request's priority or above, but it still chooses among the replicas with room by the deployment's routing policy.
+- Priority only takes effect inside one replica; the gateway does not consider it when choosing among replicas. Requests with the busy declaration are the exception: when judging whether a replica that schedules by priority has room the gateway counts only the in-flight requests at this request's priority or above (any other replica runs requests in arrival order, so all of them count), but it still chooses among the replicas with room by the deployment's routing policy.
 - Measured on a single NVIDIA card, turning it on changed throughput, time to first token and prefix-cache hit rate for same-priority load by no more than measurement noise.
 
 <!-- translation-source-sha256: d7e74375c5cd59bb288240923a8a8f631dac536b5e4f4511c9f8d60b5ba72683 # Request Priority -->
@@ -109,4 +109,4 @@ Afterwards, call `GET /v1/key` with the gateway's key to check (see [Key Informa
 <!-- translation-source-sha256: ad69b3aed66393ea5f9b0dd604ead45756bffa34984279967de5b7bbf42a6151 ## How the Gateway Writes the Priority -->
 <!-- translation-source-sha256: 01165cd92505eddcfc41e12f3f1b2759daed743432a39e7cb6e4dbd6fe26919c ## Observation -->
 <!-- translation-source-sha256: 6be6137f5187a29d1a1852aba1bce2c31de0f3d6c7e58de3377f051b4f88e2d6 ## Connecting an Upstream Gateway -->
-<!-- translation-source-sha256: 65b9962e5e790ca2a90184681bb953e3e16d92ac2d29a26c7fced6deeb617fcc ## Effects and Limits -->
+<!-- translation-source-sha256: 245f7e46fb3f64ff70d4f3565e372fe1260ec1aeeb39f40ee88a85361bb15526 ## Effects and Limits -->

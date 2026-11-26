@@ -126,14 +126,20 @@ func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string, drai
 	if len(candidates) == 0 {
 		return target{}, false, false
 	}
-	if rd.pd != nil {
+	if !rd.rejectsBusy() {
+		// Reported busy_reject:false by /v1/key, and so never refused for
+		// being busy, whichever of its replicas are left to pick from.
 		adm = adm.waiting()
 	}
 	lease, busy := p.pickAwake(candidates, rd.policy, affinity, false, adm)
 	if lease == nil {
-		return target{}, false, busy
+		// Busy is judged before a lease's awake check, so it is the
+		// snapshot's word only while no instance change has passed it: a
+		// full replica since ordered to sleep is asleep, not busy, and the
+		// rows read for the request tell which.
+		return target{}, false, busy && instanceRowsUnchanged(p.store, candidates[0].routedAt)
 	}
-	attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: rd.policy, affinity: affinity, deploymentID: rd.id, accountant: p.acct, admission: adm}
+	attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: rd.policy, affinity: affinity, deploymentID: rd.id, accountant: p.acct, admission: adm, prioritized: lease.c.prioritized}
 	return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, pd: rd.pd, affinity: affinity}, true, false
 }
 
@@ -158,10 +164,16 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 		p.log.Warn("PD deployment not routed: placement cannot be read", "dep", dep.ID, "err", err)
 		return target{}, refuse(ErrorPDPlacementUnreadable, nil), false
 	}
-	if pd != nil {
-		adm = adm.waiting()
-	}
+	// replicas and slotted count the running replicas and those whose launch
+	// states run slots, as the route snapshot does (rejectsBusy).
+	replicas, slotted := 0, 0
 	for _, in := range insts {
+		if in.State == proto.InstRunning && !in.Headless {
+			replicas++
+			if instanceRunSlots(dep, &in) > 0 {
+				slotted++
+			}
+		}
 		// An instance ordered to sleep, or still asleep, is "running" but cannot
 		// serve: the offloaded engine would hang the request. Only when no awake
 		// instance is left is the caller told to wake the model.
@@ -182,7 +194,7 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 				continue
 			}
 			name, slots := instanceLaunchFacts(dep, &in, planning.HostTranslatesModelPaths(node.RuntimeDriver))
-			c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: node.UUID, port: in.APIPort, modelName: name, uuidHash: fnv64([]byte(in.UUID)), slots: slots}
+			c := candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: node.UUID, port: in.APIPort, modelName: name, uuidHash: fnv64([]byte(in.UUID)), slots: slots, prioritized: runsPriority(dep, &in)}
 			if pd != nil {
 				var ok bool
 				if c, ok = pd.admit(&in, c); !ok {
@@ -191,6 +203,11 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 			}
 			candidates = append(candidates, c)
 		}
+	}
+	if pd != nil || slotted < replicas {
+		// Never refused for being busy (rejectsBusy), whichever replicas
+		// are left to pick from.
+		adm = adm.waiting()
 	}
 	if pd != nil {
 		nodes := map[uint]string{}
@@ -211,7 +228,7 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 		policy := deploy.NormalizeRoutingPolicy(dep.RoutingPolicy)
 		lease, busy := p.pickAwake(candidates, policy, affinity, true, adm)
 		if lease != nil {
-			attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: policy, affinity: affinity, deploymentID: dep.ID, accountant: p.acct, admission: adm}
+			attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: policy, affinity: affinity, deploymentID: dep.ID, accountant: p.acct, admission: adm, prioritized: lease.c.prioritized}
 			return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, pd: pd, affinity: affinity}, nil, false
 		}
 		if busy {
@@ -327,7 +344,7 @@ func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts 
 			continue
 		}
 		name, slots := instanceLaunchFacts(dep, in, planning.HostTranslatesModelPaths(nodeDriver(in.NodeID)))
-		candidates = append(candidates, candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: nodeUUID(in.NodeID), port: in.APIPort, modelName: name, uuidHash: fnv64([]byte(in.UUID)), slots: slots})
+		candidates = append(candidates, candidate{instanceID: in.ID, instanceUUID: in.UUID, nodeUUID: nodeUUID(in.NodeID), port: in.APIPort, modelName: name, uuidHash: fnv64([]byte(in.UUID)), slots: slots, prioritized: runsPriority(dep, in)})
 	}
 	if len(candidates) == 0 {
 		if anySleeping {
@@ -340,7 +357,7 @@ func (p *Proxy) selectDistributedInstanceWithNodes(dep *store.Deployment, insts 
 	if lease == nil {
 		return target{}, refuse(ErrorDistributedLeaderOffline, map[string]any{"model": modelName}), false
 	}
-	attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: policy, affinity: affinity, deploymentID: dep.ID, accountant: p.acct, admission: adm}
+	attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: policy, affinity: affinity, deploymentID: dep.ID, accountant: p.acct, admission: adm, prioritized: lease.c.prioritized}
 	return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, affinity: affinity}, nil, false
 }
 

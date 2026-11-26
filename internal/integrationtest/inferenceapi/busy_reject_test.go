@@ -69,18 +69,14 @@ func chatDeclared(t *testing.T, env *testenv.Env, key string, declare bool) answ
 	return answer{status: resp.StatusCode, retryAfter: resp.Header.Get("Retry-After"), body: body}
 }
 
-// A deployment launched with two run slots, both held by the engine: a
-// third request that asked not to wait is refused with 429 MODEL_BUSY well
-// inside 100 ms, through the real router, key authentication, route table
-// and agent tunnel; once one slot frees, the next declared request is taken.
-//
-//	go test ./internal/integrationtest/inferenceapi/ -run TestBusyDeploymentRefusesADeclaredRequestThroughTheControlPlane -count=1
-func TestBusyDeploymentRefusesADeclaredRequestThroughTheControlPlane(t *testing.T) {
-	engine := &heldEngine{entered: make(chan struct{}, 8), release: make(chan struct{})}
+// deployBusyModel deploys busy-model, vLLM of two run slots with request
+// priority on (the default), on one node
+// whose engine is engine, and waits until its instance runs. It returns the
+// deployment's id.
+func deployBusyModel(t *testing.T, env *testenv.Env, engine *heldEngine) uint {
+	t.Helper()
 	driver := testenv.NewFakeDriver("docker")
 	driver.SetEngineHandler(engine.handler)
-	env := testenv.New(t)
-	t.Cleanup(engine.letAll)
 	env.AddNode("busy-node", testenv.WithGPUs(1, testenv.GPUSpec{Model: "A100", VRAMMB: 24576}), testenv.WithDriver(driver))
 	env.WaitNodeOnline(t, "busy-node")
 	nodes, err := env.Store().ListNodes()
@@ -111,11 +107,32 @@ func TestBusyDeploymentRefusesADeclaredRequestThroughTheControlPlane(t *testing.
 		created.Body.Close()
 		t.Fatalf("create deployment status=%d body=%s", created.StatusCode, data)
 	}
+	var dep struct {
+		ID uint `json:"id"`
+	}
+	err = json.NewDecoder(created.Body).Decode(&dep)
 	created.Body.Close()
+	if err != nil || dep.ID == 0 {
+		t.Fatalf("created deployment = %+v %v", dep, err)
+	}
 	env.Eventually(t, 30*time.Second, func() bool {
 		instances, err := env.Store().ListInstances()
 		return err == nil && len(instances) == 1 && instances[0].State == proto.InstRunning && instances[0].APIPort != 0
 	})
+	return dep.ID
+}
+
+// A deployment launched with two run slots, both held by the engine: a
+// third request that asked not to wait is refused with 429 MODEL_BUSY well
+// inside 100 ms, through the real router, key authentication, route table
+// and agent tunnel; once one slot frees, the next declared request is taken.
+//
+//	go test ./internal/integrationtest/inferenceapi/ -run TestBusyDeploymentRefusesADeclaredRequestThroughTheControlPlane -count=1
+func TestBusyDeploymentRefusesADeclaredRequestThroughTheControlPlane(t *testing.T) {
+	engine := &heldEngine{entered: make(chan struct{}, 8), release: make(chan struct{})}
+	env := testenv.New(t)
+	t.Cleanup(engine.letAll)
+	deployBusyModel(t, env, engine)
 	key, err := env.Store().CreateAPIKey("busy", 0)
 	if err != nil {
 		t.Fatal(err)

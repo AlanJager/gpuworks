@@ -58,11 +58,21 @@ func (a admission) waiting() admission {
 
 // hasRoom reports whether c may take a request of adm: always without the
 // declaration, and with it when c's launch states no run slots (the gateway
-// does not guess an engine's default) or fewer of its leases than its slots
-// are held at adm's value or above. Requests of a lower class do not count:
-// the engine runs this one before them. The caller holds b.mu.
+// does not guess an engine's default) or fewer of the leases it waits behind
+// than c's slots are held. On a replica that schedules by priority those are
+// the leases at adm's value or above, since the engine runs this request
+// before lower ones; on any other the engine runs requests in arrival order,
+// so every lease counts. The caller holds b.mu.
 func (b *balancer) hasRoom(c candidate, adm admission) bool {
-	return !adm.rejectBusy || c.slots <= 0 || b.state(c.instanceUUID).inflight.atLeast(adm.priority) < c.slots
+	if !adm.rejectBusy || c.slots <= 0 {
+		return true
+	}
+	counts := &b.state(c.instanceUUID).inflight
+	ahead := counts.total
+	if c.prioritized {
+		ahead = counts.atLeast(adm.priority)
+	}
+	return ahead < c.slots
 }
 
 // withRoom is cs without the candidates that have no room for adm,

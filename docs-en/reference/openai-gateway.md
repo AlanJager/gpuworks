@@ -79,7 +79,7 @@ The gateway decides a request's priority: from the priority class its API key is
 
 For a deployment with request priority on, the gateway writes the class value into the body's `priority` in the engine's direction; otherwise it sets an existing `priority` to `0`. A client's own `priority` field and `X-Vllm-Priority` header never reach the engine, whether the model is named in the body, in `?model=` or in `X-GPUWorks-Model`, and whatever Content-Type the body declares; a body declared as JSON or text must be UTF-8, or the request gets a 400. See [Request Priority](../explanation/request-priority.md).
 
-The response header `X-GPUWorks-Priority-Scheduling` says whether the engine scheduled the request by that class: `on` when the instance that took the request was launched with priority scheduling, the request is on a generating path and the gateway wrote the engine's `priority`; `off` otherwise (the deployment has it off, the instance was launched without it, an auxiliary route such as `/v1/tokenize`, or a body the gateway does not rewrite such as a multipart upload). The gateway writes it when it chooses the instance; a resend to another replica after a connection failure keeps the value of the first choice.
+The response header `X-GPUWorks-Priority-Scheduling` says whether the engine scheduled the request by that class: `on` when the instance that took the request was launched with priority scheduling, the request is on a generating path and the gateway wrote the engine's `priority`; `off` otherwise (the deployment has it off, the instance was launched without it, an auxiliary route such as `/v1/tokenize`, or a body the gateway does not rewrite such as a multipart upload). The gateway writes it when it chooses the instance; a resend after a connection failure goes only to a replica that schedules as the first choice does, so the value always describes the instance that actually took the request.
 
 ### Key Information
 
@@ -117,7 +117,7 @@ The response header `X-GPUWorks-Priority-Scheduling` says whether the engine sch
 | `models[].priority_scheduling` | How many running replicas schedule by priority: `all`, `some` or `none` (also `none` with no running replica) |
 | `models[].busy_reject` | Whether a request with the busy declaration is refused when the model is busy: `true` when no deployment of the model the key may call is PD-disaggregated or multi-node and every running replica has known run slots (its launch arguments state a concurrent-sequence cap and a data-parallel size of 1); `false` with no running replica |
 
-A caller resolves a class by one rule: as named when it is in `reachable`, at `ceiling` otherwise; it does not need to reimplement the gateway's policies. Fields are only added, never changed, and a caller should ignore fields it does not know. An older server without this route treats it as a model request that names no model and, with a valid key, answers 400 `MODEL_REQUIRED`. Changes to classes and key bindings take effect as for requests (see [Request Priority](../explanation/request-priority.md)).
+A caller resolves a class by one rule: as named when it is in `reachable`, at `ceiling` otherwise; it does not need to reimplement the gateway's policies. Fields are only added, never changed, and a caller should ignore fields it does not know. An older server without this route treats it as a model request that names no model and, with a valid key, answers 400 `MODEL_REQUIRED`: a caller takes a 404, and a 400 whose `error.code` is `MODEL_REQUIRED`, both as "this version does not provide it", a 401 or 403 as an invalid or unauthorized key, and any other failure as temporarily unreadable. Changes to classes and key bindings take effect as for requests (see [Request Priority](../explanation/request-priority.md)).
 
 ### Busy Rejection
 
@@ -129,11 +129,11 @@ A caller with somewhere else to send a request (a gateway in front of GPUWorks, 
 
 A caller recognizes the refusal by the status and `error.code` only, never by matching `message`, and does not rely on the rule below: it may become more precise between versions while the meaning stays.
 
-The current rule: the gateway judges at the moment it chooses a replica and takes a place on it, so two concurrent requests never both get the last free place. A replica's run slots are the concurrent-sequence cap its instance's launch arguments state (vLLM `--max-num-seqs`, SGLang `--max-running-requests`); a replica has no free place when its in-flight requests of this request's priority or higher reach its run slots. Lower-priority ones do not count, since the engine runs this request first. When the replica the deployment's routing policy (`least_request`, `prefix_affinity`, `failover`) prefers has no free place but another eligible one does, the request goes to that one; it is refused only when no eligible replica has a free place.
+The current rule: the gateway judges at the moment it chooses a replica and takes a place on it, so two concurrent requests never both get the last free place. A replica's run slots are the concurrent-sequence cap its instance's launch arguments state (vLLM `--max-num-seqs`, SGLang `--max-running-requests`); a replica has no free place when the in-flight requests this one would wait behind reach its run slots. On a replica that schedules by priority those are the ones of this request's priority or higher (the engine runs this request first, so lower ones do not count); any other replica runs requests in arrival order, so every in-flight request counts. When the replica the deployment's routing policy (`least_request`, `prefix_affinity`, `failover`) prefers has no free place but another eligible one does, the request goes to that one; it is refused only when no eligible replica has a free place.
 
 These are never refused, and are forwarded or handled by the existing rules:
 
-- a replica whose launch arguments state no concurrent-sequence cap (GPUWorks does not guess the engine's default), or state a data-parallel size above 1;
+- a deployment with a running replica whose launch arguments state no concurrent-sequence cap (GPUWorks does not guess the engine's default), or state a data-parallel size above 1: its `models[].busy_reject` is `false`, and it is not refused even when that replica drains or its node is offline and only replicas that state a cap are left to choose from;
 - PD-disaggregated and multi-node deployments;
 - a deployment that sleeps or is waking: it waits for the wake or gets 503 `MODEL_ASLEEP` as before;
 - the resend to another replica after a connection failure, and the replay after preemption;
@@ -324,9 +324,9 @@ Streaming SSE and binary responses (such as WAV) are forwarded with their origin
 <!-- translation-source-sha256: 7bf01655b1c8196029d9b3ac65802f9f07b54314ee15dfcd83cb02319629c518 ## Replica Selection and Retries -->
 <!-- translation-source-sha256: 6acb770e47b044aaa2f5ae020be8de5399e18f1c1a2ca8766b6335625d6cff3b ## Batches (Files and Batches) -->
 <!-- translation-source-sha256: 475124ec8de50b9072b50ee962f92870520b5df325b80187af159d220745f2a7 ## Tokenization (tokenize) -->
-<!-- translation-source-sha256: 268eb45d34b0b5cc56820c7b8c2e43aa7de21ceadc07c0b804befbe8d8cc9ef0 ## Request Priority -->
-<!-- translation-source-sha256: f80543a00f9698b41620aff843c77a9096612b8267d49bf64c8f08c52cbb3ab0 ### Key Information -->
-<!-- translation-source-sha256: def6b84468123b8aa473ff723ab9cfc4626178aad57ec2006da3a7b54f87c20c ### Busy Rejection -->
+<!-- translation-source-sha256: 6707b9b4bec6dd88b719c1d260bc22dba78d2352b88c2d96573d3dd3dea27d8b ## Request Priority -->
+<!-- translation-source-sha256: 26998c9ef1e302a2a4ddbd6f45429e1725c54581e43ba8378da32b4e5a24cfff ### Key Information -->
+<!-- translation-source-sha256: 6e97ae6f455ad45d0470eb7705c8eafdd48053c7e80c02db70da3b91a77f8373 ### Busy Rejection -->
 <!-- translation-source-sha256: 91d6198ea9bcfb40d784f10fa77320acb27b0b45bcb8fdb958cf4d46554ea647 ## Trace Context -->
 <!-- translation-source-sha256: 2b9c4f0c8955d7d09cb9fc312559725988923ab947e97e8e4f21fbe931ef9cdf ### Trace Identifiers and Request IDs -->
 <!-- translation-source-sha256: 19589bf0b20be8387b262c114cb369861640ef81042c8ac4039bd2b51d39dafe ### Connect to the Caller's Trace -->
