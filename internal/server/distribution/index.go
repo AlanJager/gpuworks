@@ -267,6 +267,24 @@ func (r ServerRelease) OlderThan(releaseID, builtAt string) bool {
 	return ok && order < 0
 }
 
+// Unpublished reports whether a server built for this channel (its build
+// channel, release id and build time) is later than the channel's newest
+// release without being one of the releases the channel lists: a build from
+// a branch or a working tree. Build time does not place such a build against
+// the channel's releases, since it can lack what an earlier-built release
+// has, so it is neither up to date nor ahead. A build of another channel and
+// two version tags keep the order compareBuilds gives them.
+func (x Index) Unpublished(buildChannel, releaseID, builtAt string) bool {
+	if buildChannel != x.Channel || !x.Server.OlderThan(releaseID, builtAt) {
+		return false
+	}
+	if IsReleaseVersion(releaseID) && IsReleaseVersion(x.Server.ReleaseID) {
+		return false
+	}
+	_, listed := x.FindServer(releaseID)
+	return !listed
+}
+
 // VersionChange classifies a replacement using only the two reported IDs.
 func VersionChange(current, target string) string {
 	if current == target {

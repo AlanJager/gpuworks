@@ -339,7 +339,7 @@ var routeDocs = map[string]string{
 
 	"/api/v1/updates/server/result": "传入本次升级的 `attempt` 或已接受响应的 `backup`，核对下载、等待重启、失败或已确认回滚。无匹配证据时返回 `unknown`。",
 
-	"/api/v1/updates/server/versions": "传入当前保存的 `channel`，返回已验证的服务端版本、当前主机平台、各版本的 Git 提交号（如有）、包摘要与不可安装原因。清单按发布顺序排列，同渠道与跨渠道都只保留当前版本和更新的构建；`latest` 标识渠道索引的最新构建。",
+	"/api/v1/updates/server/versions": "传入当前保存的 `channel`，返回已验证的服务端版本、当前主机平台、各版本的 Git 提交号（如有）、包摘要与不可安装原因。清单按发布顺序排列，同渠道与跨渠道都只保留当前版本和更新的构建，当前构建不是该渠道发布的版本（`server.unpublished_build`）时列出渠道的全部版本；`latest` 标识渠道索引的最新构建。所选版本的数据库结构比本机数据库旧（索引里的数据库迁移编号更小）时带 `downgrades_schema: true`，见[服务端升级限制](#服务端升级限制)。",
 
 	"/api/v1/usage-report": "用户体验改进计划状态 `{enabled, editable, last_day?, last_attempt?: {at, day, ok, error?}, next_due_at?}`：是否加入（`server.yaml` 的 `usage_report`）、能否在控制台修改、最近一份送达的报告覆盖的 UTC 日、本进程最近一次投递、下一份报告的预计时间（[用户体验改进计划](usage-report.md)）",
 
