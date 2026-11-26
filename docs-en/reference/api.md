@@ -1524,7 +1524,7 @@ Single-node automatic placement does not provide per-node estimates before the s
 
 | Field | Meaning |
 |---|---|
-| `name`, `role`, `model`, `size_bytes` | Component name, role, model (repository ID) and the size the template declares |
+| `name`, `role`, `model`, `size_bytes` | Component name, role, model (repository ID) and the size the template declares; a [rank-scoped](inference-catalog-spec.md#按-rank-拆分的权重) component has one entry per rank, whose `model` carries that rank's subfolder (such as `org/repo/rank1`), whose `size_bytes` is one rank's size, and whose `nodes` count only that rank's node |
 | `plan` | `ready`: every target node has it; `shared_download`: the create downloads one copy into the shared storage `storage` (`storage_id`) through one node, and the target nodes read it; `follows_primary` is true when the request selected no **Save to** and this is the shared storage the primary model is on; `node_download`: each node without it downloads it into its own storage |
 | `nodes`, `ready_nodes` | Number of target nodes, and of those that can read it already |
 
@@ -2509,7 +2509,7 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: 78d17e39c2b506870d03fceafef3b739ee794a40aba7b1d2aafb3fbf73d6f0dd ### Configuration Fields for Evaluation and Creation -->
 <!-- translation-source-sha256: 6ddc68a02f5cb22b8e620e368c46524ef8c9626138d69e78a25e2a7a68fab526 ### Health Checks -->
 <!-- translation-source-sha256: e7d8e9be1155b1cfb96a1b2f3ce361296581c5a25ffcd642194d34d4e6790bf0 ### Automatically Placed Multi-Node and PD Deployments -->
-<!-- translation-source-sha256: 42d2614a5ddf9143c7f9872842403db29553e091bd5b4279675696e2e1b99419 ### Evaluation Requests and Acquisition Estimates -->
+<!-- translation-source-sha256: 4746449fc90f7cb2d9e16e5561c9f3741478453fa0b9ef38fbeb11182ab55bf9 ### Evaluation Requests and Acquisition Estimates -->
 <!-- translation-source-sha256: 7dc71e6b90d4dbf5934073cc9e8db4e6604b8b5068d599dc3056ebb243c4e1c9 ### Evaluation Field Errors (`errors[]`) and `ok=false` Semantics -->
 <!-- translation-source-sha256: 88cb849dfd035df08ee25bd8d0c73481757feb4d58dfb56df3c289608515e1b7 ### PD Disaggregation Deployments (`placement.pd`) -->
 <!-- translation-source-sha256: 12626c939c377f3d9b6d4039f0c8e5e179d8e8daecfc32db0218d7b5dcb4a510 ## Benchmarks -->
