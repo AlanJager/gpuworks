@@ -33,4 +33,7 @@ const (
 	// ErrorAutoPlacementPDMultiNode: an automatic PD request has a role whose
 	// units span nodes ({role}); those name their nodes.
 	ErrorAutoPlacementPDMultiNode = "AUTO_PLACEMENT_PD_MULTI_NODE"
+	// ErrorPlacementGPUNotOnNode: the request names GPU index {gpu_index},
+	// which node {node} ({node_gpus} usable GPUs) does not have.
+	ErrorPlacementGPUNotOnNode = "PLACEMENT_GPU_NOT_ON_NODE"
 )

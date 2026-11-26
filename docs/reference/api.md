@@ -1560,17 +1560,18 @@ PD 请求（`placement.pd`）：单元可以不写 `node_uuid`，写了的单元
 
 - 快捷参数直接使用字典 key（即表单字段名），如 `max_model_len`、`gpu_memory_utilization`；
 - 请求级字段使用请求 JSON 中的名称：`replicas`、`nnodes`、`engine`、`target_vendor`、`extra_args`、
-  `quick_params_unset`、`master_port`、`placement`、`placement.tp`、`placement.pp`、`node_requirements`、
+  `quick_params_unset`、`master_port`、`placement`、`placement.gpus`、`placement.tp`、`placement.pp`、`node_requirements`、
   `placement_strategy`、`partition_backend`、`start_timeout_sec`、`health_check_threshold_sec`；
 - `node_uuids`（多机节点列表）在表单里对应 `distributed_nodes` 控件；自动放置的多机请求在挑不出节点或缺 `placement.tp` 时，错误归到 `placement_mode`；
 - 额外挂载行统一归到 `container_mount_rows`（请求只携带用户新增的挂载，不含行号）；
 - docker 参数错误归到 `container_docker_args`，共享内存大小错误归到 `container_shm_gib`；
 - **`field` 为空串的错误不归属任何控件**：启动装配/放置试算等与单个参数无关的失败
-  （如节点没有该 GPU 序号、没有可用运行时镜像）以此承载，客户端应将其合并进页面级
+  （如没有可用运行时镜像）以此承载，客户端应将其合并进页面级
   提示，不得挂在参数控件旁。
 
 涉及的规则：副本形状（`REPLICAS_NEGATIVE`/`REPLICAS_TOO_MANY`/`DISTRIBUTED_REPLICA_COUNT`）、
 节点条件（`NODE_REQUIREMENTS_INVALID`/`NODE_REQUIREMENTS_UNMET`）、放置策略（`PLACEMENT_STRATEGY_INVALID`）、
+指定的卡（`PLACEMENT_GPU_NOT_ON_NODE`：`placement.gpus` 写了所选节点没有的序号，`params.node`/`gpu_index`/`node_gpus`）、
 厂商（`TARGET_VENDOR_INVALID`）、引擎（`ENGINE_INVALID`）、
 extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`MOUNT_HOST_PATH`/
 `MOUNT_TARGET_DUPLICATE`/`MOUNT_TARGET_NESTED`/`MOUNT_VOLUME_INVALID`）、json 型参数（`QUICK_PARAM_JSON_INVALID`）、
