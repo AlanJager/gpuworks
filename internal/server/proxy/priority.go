@@ -142,8 +142,9 @@ func (p *Proxy) decidePriority(w http.ResponseWriter, r *http.Request) (*http.Re
 	return r.WithContext(context.WithValue(r.Context(), priorityDecisionKey{}, decision)), true
 }
 
-// applyRequestPriority says the request's class in the answer's header and
-// writes the engine's priority field: the class's value, in the engine's
+// applyRequestPriority says the request's class in the answer's header, and
+// in another whether the engine schedules by it, and writes the engine's
+// priority field: the class's value, in the engine's
 // direction, when the target instance runs priority scheduling and the path
 // generates, and the neutral 0 otherwise (only rewriting a body that names
 // the field; named says whether it does). It writes the error itself when it
@@ -157,11 +158,16 @@ func (p *Proxy) applyRequestPriority(w http.ResponseWriter, r *http.Request, dep
 	w.Header().Set(priorityClassHeader, decision.Class.Name)
 	r = r.WithContext(context.WithValue(r.Context(), priorityClassKey{}, decision.Class.Name))
 	r.Header.Del(priorityHeader)
-	value := 0
+	value, scheduled := 0, false
 	if dep := p.routedDeployment(deploymentID); dep != nil && tgt.upstreamPath == "" && p.instanceRunsPriority(tgt.instanceUUID) {
-		if v, engineHas := deploy.PriorityFieldValue(dep.Engine, decision.Class.Value); engineHas {
-			value = v
-		}
+		value, scheduled = deploy.PriorityFieldValue(dep.Engine, decision.Class.Value)
+	}
+	// On only when the engine gets the class: a body the gateway does not
+	// own (a multipart upload) is sent as it came.
+	if scheduled && owned {
+		w.Header().Set(priorityScheduling, "on")
+	} else {
+		w.Header().Set(priorityScheduling, "off")
 	}
 	if !owned || (value == 0 && !named) {
 		return r, func() {}, true

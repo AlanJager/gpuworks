@@ -13,7 +13,7 @@ server 的 `/v1/*` 默认要求 API key 鉴权，规则见下文[认证](#认证
 - 读不到设置时按关闭处理：设置读取失败不会放行不带 key 的请求，只按「要求 key」处理。
 - 吊销 key 不改变这个判定：吊销最后一个 key 不会重新打开网关，`/v1` 会拒绝所有请求，直到再创建一个 key，或管理员打开上面这个开关。
 
-这条规则覆盖全部 `/v1` 路由，包括 `/v1/models`、`/v1/files`、`/v1/batches`、`/v1/tokenize` 与 `/v1/detokenize`。401 的码按入口不同：网关路由返回 `INVALID_API_KEY`（`type` 为 `authentication_error`，见[错误](#错误)），Files 与 Batches 返回 OpenAI 格式的 `invalid_api_key`。
+这条规则覆盖全部 `/v1` 路由，包括 `/v1/models`、`/v1/key`、`/v1/files`、`/v1/batches`、`/v1/tokenize` 与 `/v1/detokenize`。401 的码按入口不同：网关路由返回 `INVALID_API_KEY`（`type` 为 `authentication_error`，见[错误](#错误)），Files 与 Batches 返回 OpenAI 格式的 `invalid_api_key`。
 
 `GET /v1/models` 列出网关此刻能路由的服务名（来自网关按事件更新的路由表，不读数据库）：只含活跃部署，每个服务名一次，按名字排序；带范围的 key 只看到它能调用的部署的服务名。刚创建或刚停止的部署在路由表重建后出现或消失：部署事件后最多约 0.5 秒，没有事件时也每 2 秒刷新一次。
 
@@ -78,6 +78,46 @@ server 的 `/v1/*` 默认要求 API key 鉴权，规则见下文[认证](#认证
 请求的优先级由网关决定：按 API 令牌绑定的优先级类，以及客户端用请求头 `X-GPUWorks-Priority-Class: <名称>` 在令牌允许范围内的指定；批处理请求使用任务创建时选的类，通过 `/v1/batches` 创建的任务固定为 `batch` 类。名称不存在时返回 400。响应头 `X-GPUWorks-Priority-Class` 给出请求实际使用的类。
 
 部署开启了请求优先级时，网关把类的数值按引擎方向写进请求体的 `priority`；否则把已有的 `priority` 改为 `0`。客户端自带的 `priority` 字段和 `X-Vllm-Priority` 请求头都不会到达引擎，无论模型写在请求体、`?model=` 还是 `X-GPUWorks-Model` 里，也无论请求体声明的 Content-Type；声明为 JSON 或文本的请求体须为 UTF-8 编码，否则返回 400。详见[请求优先级](../explanation/request-priority.md)。
+
+响应头 `X-GPUWorks-Priority-Scheduling` 说明引擎是否按这个类调度了请求：接收请求的实例是带着优先级调度启动的、请求走生成路径且网关写入了引擎的 `priority` 时为 `on`，其他情况（部署没有开启、实例启动时没带上、`/v1/tokenize` 等辅助接口、网关不改写的请求体如 multipart 上传）为 `off`。网关在选定实例时写这个头；连接失败后换副本重发时仍是第一次选定的实例的值。
+
+### 令牌信息
+
+`GET /v1/key` 返回调用它的 API 令牌的令牌信息，供放在 GPUWorks 前面的网关在转发之前判断该怎么带优先级请求头。鉴权、令牌范围与匿名访问的处理同 `/v1/models`；其他方法返回 405 `METHOD_NOT_ALLOWED` 并带 `Allow: GET`。它不是推理流量：不计入网关请求数，不留请求记录，从路由表与优先级类快照回答，不读部署表。
+
+```json
+{
+  "object": "key",
+  "features": ["priority_scheduling_header"],
+  "priority": {
+    "own": {"name": "normal", "value": 0},
+    "ceiling": {"name": "critical", "value": 40},
+    "reachable": [
+      {"name": "critical", "value": 40},
+      {"name": "high", "value": 20},
+      {"name": "normal", "value": 0},
+      {"name": "low", "value": -20},
+      {"name": "batch", "value": -40}
+    ]
+  },
+  "models": [
+    {"id": "qwen3-8b", "priority_scheduling": "all", "busy_reject": false}
+  ]
+}
+```
+
+| 字段 | 含义 |
+|---|---|
+| `features` | 本 server 支持的网关能力，只增不减。`priority_scheduling_header`：响应带 `X-GPUWorks-Priority-Scheduling` |
+| `priority` | 令牌的优先级绑定；不带令牌的匿名访问为 `null` |
+| `priority.own` | 不带 `X-GPUWorks-Priority-Class` 时请求使用的类 |
+| `priority.reachable` | 请求头能用到的全部类（含 `own`），按数值从高到低 |
+| `priority.ceiling` | 请求头指定了不在 `reachable` 里的类时实际使用的类。策略为「固定」或「只降不升」时等于 `own` |
+| `models` | 令牌有权调用的模型，与 `/v1/models` 的 `id` 相同，按名字排序 |
+| `models[].priority_scheduling` | 运行中的副本里按优先级调度的有多少：`all`、`some` 或 `none`（没有运行中的副本也是 `none`） |
+| `models[].busy_reject` | 当前恒为 `false` |
+
+调用方解析一个类只用一条规则：在 `reachable` 里就按它，否则按 `ceiling`；网关的策略逻辑不必在调用方重写。字段只增不改，调用方应忽略不认识的字段。没有这个接口的旧版本 server 把它当作没写模型的模型请求，带有效令牌时返回 400 `MODEL_REQUIRED`。类与令牌绑定的改动生效时间同请求本身（见[请求优先级](../explanation/request-priority.md)）。
 
 ## Trace context
 

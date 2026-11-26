@@ -13,7 +13,7 @@ The only exception is an explicit administrator switch: the `inference_open_acce
 - An unreadable setting counts as off: a failed read never lets a request without a key through; the request is treated as one that must carry a key.
 - Revoking a key does not change the decision: revoking the last key does not reopen the gateway, and `/v1` refuses every request until another key is created or an administrator turns the switch on.
 
-The rule covers every `/v1` route, including `/v1/models`, `/v1/files`, `/v1/batches`, `/v1/tokenize`, and `/v1/detokenize`. The 401 code depends on the entry point: gateway routes return `INVALID_API_KEY` (`type` `authentication_error`; see [Errors](#错误)), while Files and Batches return the OpenAI-format `invalid_api_key`.
+The rule covers every `/v1` route, including `/v1/models`, `/v1/key`, `/v1/files`, `/v1/batches`, `/v1/tokenize`, and `/v1/detokenize`. The 401 code depends on the entry point: gateway routes return `INVALID_API_KEY` (`type` `authentication_error`; see [Errors](#错误)), while Files and Batches return the OpenAI-format `invalid_api_key`.
 
 `GET /v1/models` lists the served names the gateway can route right now (read from the gateway's event-driven route table, not the database): active deployments only, each served name once, in name order; a scoped key sees only the served names of deployments it may call. A deployment just created or stopped appears or disappears once the route table rebuilds: at most about 0.5 s after the deployment's event, and every 2 s regardless.
 
@@ -78,6 +78,46 @@ You can disable tokenization forwarding for each deployment: set `tokenize_enabl
 The gateway decides a request's priority: from the priority class its API key is bound to, and the class the client names with the request header `X-GPUWorks-Priority-Class: <name>` within what the key allows; batch requests run at the class their batch was created with, and a batch created through `/v1/batches` always at the `batch` class. A name that matches no class returns 400. The response header `X-GPUWorks-Priority-Class` names the class the request ran at.
 
 For a deployment with request priority on, the gateway writes the class value into the body's `priority` in the engine's direction; otherwise it sets an existing `priority` to `0`. A client's own `priority` field and `X-Vllm-Priority` header never reach the engine, whether the model is named in the body, in `?model=` or in `X-GPUWorks-Model`, and whatever Content-Type the body declares; a body declared as JSON or text must be UTF-8, or the request gets a 400. See [Request Priority](../explanation/request-priority.md).
+
+The response header `X-GPUWorks-Priority-Scheduling` says whether the engine scheduled the request by that class: `on` when the instance that took the request was launched with priority scheduling, the request is on a generating path and the gateway wrote the engine's `priority`; `off` otherwise (the deployment has it off, the instance was launched without it, an auxiliary route such as `/v1/tokenize`, or a body the gateway does not rewrite such as a multipart upload). The gateway writes it when it chooses the instance; a resend to another replica after a connection failure keeps the value of the first choice.
+
+### Key Information
+
+`GET /v1/key` returns the key information of the API key that calls it, so that a gateway in front of GPUWorks can decide which priority header to send before it forwards. Authentication, the key's scope and open access work as for `/v1/models`; any other method returns 405 `METHOD_NOT_ALLOWED` with `Allow: GET`. It is not inference traffic: it does not count toward the gateway's requests, leaves no request record, and answers from the route table and the class snapshot without reading the deployments table.
+
+```json
+{
+  "object": "key",
+  "features": ["priority_scheduling_header"],
+  "priority": {
+    "own": {"name": "normal", "value": 0},
+    "ceiling": {"name": "critical", "value": 40},
+    "reachable": [
+      {"name": "critical", "value": 40},
+      {"name": "high", "value": 20},
+      {"name": "normal", "value": 0},
+      {"name": "low", "value": -20},
+      {"name": "batch", "value": -40}
+    ]
+  },
+  "models": [
+    {"id": "qwen3-8b", "priority_scheduling": "all", "busy_reject": false}
+  ]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `features` | Gateway capabilities this server has; a listed one is never removed. `priority_scheduling_header`: answers carry `X-GPUWorks-Priority-Scheduling` |
+| `priority` | The key's priority binding; `null` for anonymous access without a key |
+| `priority.own` | The class a request runs at without `X-GPUWorks-Priority-Class` |
+| `priority.reachable` | Every class the header can run at (`own` included), highest value first |
+| `priority.ceiling` | The class a request runs at when the header names a class not in `reachable`. Equal to `own` under the "fixed" and "down only" policies |
+| `models` | The models the key may call, with the same `id` as `/v1/models`, in name order |
+| `models[].priority_scheduling` | How many running replicas schedule by priority: `all`, `some` or `none` (also `none` with no running replica) |
+| `models[].busy_reject` | Always `false` for now |
+
+A caller resolves a class by one rule: as named when it is in `reachable`, at `ceiling` otherwise; it does not need to reimplement the gateway's policies. Fields are only added, never changed, and a caller should ignore fields it does not know. An older server without this route treats it as a model request that names no model and, with a valid key, answers 400 `MODEL_REQUIRED`. Changes to classes and key bindings take effect as for requests (see [Request Priority](../explanation/request-priority.md)).
 
 ## Trace Context
 
@@ -255,12 +295,13 @@ The gateway does not emulate all OpenAI product APIs. For the exact capabilities
 Streaming SSE and binary responses (such as WAV) are forwarded with their original content type without truncation.
 
 <!-- translation-source-sha256: 146ba1db59f6915d93d5c0497a63492d4efae6d2c61d64e6ba4f34e24120be14 # OpenAI-Compatible Gateway -->
-<!-- translation-source-sha256: 3419573a4fd81544ccdec8647a87d11ee1ec1ccf5113453070fb944603190c79 ## Authentication -->
+<!-- translation-source-sha256: 23afbdf6e1aaa11bba6e18766c8c87d5d70dfa4bca56f6e4f64a5226d7952cb9 ## Authentication -->
 <!-- translation-source-sha256: 389d4b5522a5bd3216a5041c7dac412010d158cc57bd4bb5ad5788145d664111 ## Supported Operations -->
 <!-- translation-source-sha256: 7bf01655b1c8196029d9b3ac65802f9f07b54314ee15dfcd83cb02319629c518 ## Replica Selection and Retries -->
 <!-- translation-source-sha256: 6acb770e47b044aaa2f5ae020be8de5399e18f1c1a2ca8766b6335625d6cff3b ## Batches (Files and Batches) -->
 <!-- translation-source-sha256: 475124ec8de50b9072b50ee962f92870520b5df325b80187af159d220745f2a7 ## Tokenization (tokenize) -->
-<!-- translation-source-sha256: b04cb3cd49891b8cf9a25bb166f063ce5af28e7721601eb94fa2fff50353569d ## Request Priority -->
+<!-- translation-source-sha256: f58e813c16efd7420156a21d092c58c2a473ea51613acd92208ff4a509628474 ## Request Priority -->
+<!-- translation-source-sha256: 0fe10b2ca7ce3b9806b31020061b0099acaa0d7780d433a9d2394e9dad4e98e5 ### Key Information -->
 <!-- translation-source-sha256: 91d6198ea9bcfb40d784f10fa77320acb27b0b45bcb8fdb958cf4d46554ea647 ## Trace Context -->
 <!-- translation-source-sha256: 2b9c4f0c8955d7d09cb9fc312559725988923ab947e97e8e4f21fbe931ef9cdf ### Trace Identifiers and Request IDs -->
 <!-- translation-source-sha256: 19589bf0b20be8387b262c114cb369861640ef81042c8ac4039bd2b51d39dafe ### Connect to the Caller's Trace -->

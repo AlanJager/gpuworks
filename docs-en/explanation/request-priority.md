@@ -68,6 +68,8 @@ The gateway first decides the request's class, names it in the response header `
 - when the target instance was actually launched with priority scheduling (judged from its launch command; an instance of a deployment that asks for it but landed on an accelerator that does not allow it does not count) and the request is not an auxiliary route such as `/v1/tokenize` or `/v1/detokenize`, writes the class value into the body's `priority` in the engine's direction: negated for vLLM (lower values run first), as is for SGLang;
 - otherwise (auxiliary endpoints such as tokenize included) sets a `priority` the body already has to `0`, and leaves a body without one untouched.
 
+The response header `X-GPUWorks-Priority-Scheduling` says which: `on` for the first, `off` for the second.
+
 A request whose `Content-Type` has a malformed parameter (such as `application/json; x`) is still handled as JSON, so a client cannot slip past this way.
 
 Either way, a client's own `priority` field and `X-Vllm-Priority` header (vLLM uses it to override the body) never reach the engine. Both stages of a PD request are handled the same way.
@@ -76,6 +78,7 @@ A class change applies to the next request on the server that made it; with seve
 
 ## Observation
 
+- A gateway in front of GPUWorks can read a key's priority binding with `GET /v1/key`, together with how many running replicas of each model the key may call schedule by priority; see [OpenAI-Compatible Gateway](../reference/openai-gateway.md#key-information).
 - Every request record carries `priority_class` (the name of the class the request ran at), shown in the request detail; the request records API can filter by it (the `priority_class` parameter).
 - The Service quality page of Operations analytics has a "By request priority" table giving each class's requests, success rate and first-token and end-to-end quantiles. A low class can queue for long while a high one keeps the engine saturated, which the totals hide; this table shows it. Requests from before priority classes count as "Unrecorded", their class unknown.
 
@@ -93,6 +96,6 @@ A class change applies to the next request on the server that made it; with seve
 <!-- translation-source-sha256: e68bb5553e31da8b61d16b83d68a2774087b167273eaee5b406fa2db9bda789c ## Priority Classes -->
 <!-- translation-source-sha256: f0a7820bbc07bf6371c3bca95173ce56cff7911ed57b1fededa72e983b3e3c3f ## Key Binding and Client Choice -->
 <!-- translation-source-sha256: c3e6ec30b3d17ad88cb0201462ebf5a15443cfeae174275ada4509afa8650ba4 ## Playground, Batches and Evaluations -->
-<!-- translation-source-sha256: e5ce1c9b3cd0b85532518a8e55aecaa81fcf16d204bcf6c1051da08931081ed0 ## How the Gateway Writes the Priority -->
-<!-- translation-source-sha256: 42726f4a82d484b9bf3f79eec5c40947a6cefd48ecf588a0ffb986cfec65fd17 ## Observation -->
+<!-- translation-source-sha256: ad69b3aed66393ea5f9b0dd604ead45756bffa34984279967de5b7bbf42a6151 ## How the Gateway Writes the Priority -->
+<!-- translation-source-sha256: ce77e6de19b8a69563d30b07bd48e740237687c9651ffb3b60fa897581b94905 ## Observation -->
 <!-- translation-source-sha256: 5e0426da219374b5c19bb1f5d43a757cafcd926fc2a70946b98e34b2372af3ba ## Effects and Limits -->

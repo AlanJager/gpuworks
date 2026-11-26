@@ -2039,6 +2039,12 @@
       "translations": {
         "zh": "材料证明"
       }
+    },
+    {
+      "term_en": "Key Information",
+      "translations": {
+        "zh": "令牌信息"
+      }
     }
   ],
   "do_not_translate": [

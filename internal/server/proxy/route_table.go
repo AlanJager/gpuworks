@@ -53,6 +53,10 @@ type routeDeployment struct {
 	reading replyReading
 	// injectUsage: the engine is asked for usage on streamed requests.
 	injectUsage bool
+	// replicas counts the deployment's running replicas (an instance that
+	// serves; a multi-node follower is part of its leader's), and
+	// prioritizedReplicas those of them in prioritized.
+	replicas, prioritizedReplicas int
 }
 
 type routeTable struct {
@@ -320,6 +324,12 @@ func (r *routeTable) build() (*routeSnapshot, error) {
 			running[in.UUID] = true
 			if rd.dep.PriorityScheduling && deploy.SpecRunsPriority(in.DesiredStateJSON) {
 				prioritized[in.UUID] = true
+			}
+			if !in.Headless {
+				rd.replicas++
+				if prioritized[in.UUID] {
+					rd.prioritizedReplicas++
+				}
 			}
 		}
 		// A multi-node replica sleeps with its leader's engine: only the
