@@ -1040,6 +1040,7 @@ the `POST /api/v1/evaluate` response and in `DEPLOYMENT_UNSCHEDULABLE` deploymen
 |---|---|---|
 | `AUTOMATIC_PLACEMENT_STALE` | 409 | Resources have been occupied since evaluation, or nodes no longer meet the node requirements; evaluate again |
 | `NODE_REQUIREMENTS_UNMET` | 400 | The selected node does not meet the deployment's node requirements; `params.detail` identifies the key and required values |
+| `PLACEMENT_GPU_NOT_ON_NODE` | 400 | A create, edit, or evaluation names a GPU index the selected node does not have (`params.node`, `params.gpu_index`, `params.node_gpus`); an index means a card on one node only, so after a node change choose cards again or name none |
 | `UNIT_PLACEMENT_NONE` | 409 | No group of nodes can take an automatically placed multi-node or PD request (create, evaluate, or scale) now. `params` gives the node total `nodes` and how many each check left out: `unmet` (node requirements not met), `cordoned`, `offline`, `busy` (not enough free cards), `no_network` (no usable compute network); `largest` is how many nodes the largest group has. Satisfy the item with the largest count, or place manually |
 | `AUTO_PLACEMENT_TP_REQUIRED` | 400 | An automatic multi-node request has no `placement.tp`, so the platform does not know how many free cards each node needs; fill in TP (and PP) |
 | `AUTO_PLACEMENT_PD_MULTI_NODE` | 400 | An automatically placed PD instance must fit on one node; an instance with `followers` must name its nodes (`params.role` is the role) |
@@ -1601,7 +1602,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 2e761edaeef85606c46762d1dc9680a3b996f61c30b4ae0b42ecf5b838256459 ### Why Candidates Switch and When Pulls Are Considered Stalled -->
 <!-- translation-source-sha256: 1032ac3a3086dc0bdfab0834acfa339935693f6e5b97faef8234bf02748ec5f1 ### Registry Rate Limits or Refused Connections -->
 <!-- translation-source-sha256: 28cfb7773daaae60e9e0285d967cb43b45bf53b7839887598260df0fb59f32ed ### Additional Checks for Digest References -->
-<!-- translation-source-sha256: 03fd6d5089afd689d343e7032d8d765c7d6cb3014dd08416563d72704e5cc6ec ## Deployment Rejected, Insufficient Estimated GPU Memory, or No Suitable Node -->
+<!-- translation-source-sha256: 764137da3d8542c5e01b15a48e85178a7e7c8642536638ada09ff01b7905538e ## Deployment Rejected, Insufficient Estimated GPU Memory, or No Suitable Node -->
 <!-- translation-source-sha256: b6d85798c7347370b799710bd36ca3bd36fc4830973089961d74d506bc75980b ## Instance Startup Failure, Repeated Restarts, or OOM -->
 <!-- translation-source-sha256: 71da95ca5ab9db8518ad2524787a82835f8ca14f9d5ce4d4724e240444103463 ### Find the Cause of This Failure -->
 <!-- translation-source-sha256: 2767b9a17fd44ed4e114c17cf95320e87486bc057a517077bf2be5a2b2a58bfc ### Insufficient GPU Memory or an Incorrect Startup Command -->
