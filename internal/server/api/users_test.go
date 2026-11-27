@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/server/aihelper"
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
 	"gpuworks.ai/gpuworks/internal/server/messages"
@@ -255,5 +256,18 @@ func TestALockedPlatformStillTakesAccessAway(t *testing.T) {
 	// Reading stays served.
 	if rec := rig.do(rig.session, http.MethodGet, "/api/v1/users", ""); rec.Code != http.StatusOK {
 		t.Fatalf("locked list = %d %s, want 200", rec.Code, rec.Body)
+	}
+}
+
+// The assistant reads the API as the asking administrator; the account list
+// and external identity subjects stay in the console and never reach a model.
+func TestTheAssistantNeverReadsAccountsOrIdentities(t *testing.T) {
+	for _, pattern := range []string{"/api/v1/users", "/api/v1/users/{id}/identities"} {
+		if aihelper.Readable(pattern) {
+			t.Fatalf("the assistant may read %s", pattern)
+		}
+		if aihelper.DeniedRoutes()[pattern] == "" {
+			t.Fatalf("%s is denied without a reason", pattern)
+		}
 	}
 }

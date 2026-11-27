@@ -33,6 +33,8 @@ var deniedRoutes = map[string]string{
 	"/api/v1/deployments/{id}/draft":              "the deploy form's edit draft, environment values included; GET /api/v1/deployments/{id} describes the deployment",
 	"/api/v1/branding":                            "console branding, mostly an inline logo image",
 	"/api/v1/platform-tokens":                     "platform API tokens",
+	"/api/v1/users":                               "every account and its role, for administrators in the console only",
+	"/api/v1/users/{id}/identities":               "accounts' external identity subjects, for administrators in the console only",
 	"/api/v1/events":                              "a server-sent event stream",
 	"/api/v1/instances/{uuid}/logs":               "a log stream; /api/v1/logs/search reads the same lines",
 	"/api/v1/inference-templates/export/{digest}": "an archive download",
