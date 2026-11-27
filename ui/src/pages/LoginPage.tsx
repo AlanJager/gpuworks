@@ -45,8 +45,8 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
 }
 
 // The codes /api/v1/auth/complete sends the browser back with (?code=) when
-// a sign-in through an identity source is refused.
-const SIGN_IN_REFUSALS = new Set(["IDENTITY_TICKET_INVALID", "IDENTITY_SOURCE_UNAVAILABLE", "USER_DISABLED"]);
+// a sign-in through an identity source does not go through.
+const SIGN_IN_REFUSALS = new Set(["IDENTITY_TICKET_INVALID", "IDENTITY_SOURCE_UNAVAILABLE", "USER_DISABLED", "SERVICE_UNAVAILABLE"]);
 
 function refusalFromLocation(): string {
   const code = new URLSearchParams(window.location.search).get("code") ?? "";

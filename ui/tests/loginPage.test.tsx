@@ -226,12 +226,16 @@ test("the identity sources the server offers are links under the password form",
   const link = within(nav).getByRole("link", { name: "Acme ID" });
   assert.equal(link.getAttribute("href"), "/api/v1/auth/sign-in/start?source=acme");
   assert.ok(screen.getByLabelText("Password"), "the password form stays for everyone");
-  // Keyboard: the entry is reachable by Tab after the password form.
+  // Keyboard: Tab from the submit button reaches the entry, and Enter
+  // follows it.
   const user = userEvent.setup();
-  link.focus();
-  assert.equal(document.activeElement, link);
-  await user.tab({ shift: true });
-  assert.notEqual(document.activeElement, link);
+  screen.getByRole("button", { name: "Sign in" }).focus();
+  for (let i = 0; i < 5 && document.activeElement !== link; i++) await user.tab();
+  assert.equal(document.activeElement, link, "Tab from the password form reaches the entry");
+  let followed = "";
+  link.addEventListener("click", (e) => { followed = link.getAttribute("href") ?? ""; e.preventDefault(); });
+  await user.keyboard("{Enter}");
+  assert.equal(followed, "/api/v1/auth/sign-in/start?source=acme");
 });
 
 test("when only local administrators use a password, the form is one click away", async () => {
@@ -262,6 +266,11 @@ test("a refused sign-in comes back with its code, and only known codes are shown
   const alert = await screen.findByRole("alert");
   assert.ok(alert.textContent?.includes(locale("common").apiError.IDENTITY_TICKET_INVALID));
   view.unmount();
+
+  window.history.replaceState(null, "", "/login?code=SERVICE_UNAVAILABLE");
+  const fault = render(page());
+  assert.ok((await screen.findByRole("alert")).textContent?.includes(locale("common").apiError.SERVICE_UNAVAILABLE));
+  fault.unmount();
 
   window.history.replaceState(null, "", "/login?code=SOMETHING_ELSE");
   render(page());

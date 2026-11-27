@@ -1140,7 +1140,7 @@
     "IDENTITY_PROTECTED_USER": "An identity connector cannot disable, enable, rename or sign out an administrator. An administrator manages this account.",
     "IDENTITY_NOT_PROVISIONED": "No account is linked to this identity, and this server creates none. Ask an administrator to link your account.",
     "IDENTITY_USERNAME_TAKEN": "Another account already has the username {{username}}.",
-    "IDENTITY_SOURCE_CONFLICT": "The identity source {{source}} belongs to another extension.",
+    "IDENTITY_SOURCE_CONFLICT": "The identity source {{source}} belongs to another extension, or this extension did not declare it.",
     "IDENTITY_SOURCE_UNAVAILABLE": "Signing in through this identity source is not available now. Sign in another way, or ask an administrator."
   },
   "apiErrorDetail": "{{category}}: {{detail}}",

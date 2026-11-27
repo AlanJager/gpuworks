@@ -1140,7 +1140,7 @@
     "IDENTITY_PROTECTED_USER": "身份连接器不能停用、启用、改名或强制登出管理员，管理员账号由管理员管理。",
     "IDENTITY_NOT_PROVISIONED": "没有账号链接到这个身份，而此服务器不自动创建账号。请联系管理员链接你的账号。",
     "IDENTITY_USERNAME_TAKEN": "已有账号使用用户名 {{username}}。",
-    "IDENTITY_SOURCE_CONFLICT": "身份源 {{source}} 属于另一个扩展。",
+    "IDENTITY_SOURCE_CONFLICT": "身份源 {{source}} 属于另一个扩展，或者不是本扩展声明的。",
     "IDENTITY_SOURCE_UNAVAILABLE": "现在不能通过这个身份源登录。请换一种方式登录，或联系管理员。"
   },
   "apiErrorDetail": "{{category}}：{{detail}}",
