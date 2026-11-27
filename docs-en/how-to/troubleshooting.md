@@ -946,7 +946,7 @@ Candidates consist of the alternative addresses in site rules and the site itsel
 | Failure type | Automatic handling |
 |---|---|
 | File list retrieval fails | If the address is unreachable, returns an HTTP error, or provides an unparseable list, the current address enters a 30-minute cooldown and the next candidate is tried immediately; rate limiting (429, 503) is handled as in "Source rate limiting" below |
-| Source rate limiting | If the file list or a download returns 429 or 503, wait for the reset time in the response's `Retry-After` or `RateLimit` header (at least the backoff interval, at most 5 minutes and 1 second) and retry the same address; progress shows "rate limited by the source". These count toward the attempts in the next row, and only after they are exhausted does the address enter cooldown and switch; in the worst case, one file can wait about 75 minutes at the last candidate |
+| Source rate limiting | If the file list or a download returns 429 or 503, wait for the reset time in the response's `Retry-After` or `RateLimit` header (at least the backoff interval, at most 5 minutes and 1 second) and retry the same address; progress marks the wait as the source's. These count toward the attempts in the next row, and only after they are exhausted does the address enter cooldown and switch; in the worst case, one file can wait about 75 minutes at the last candidate |
 | Non-retryable source error | If a download returns another HTTP error (including 404 and 401/403), TLS certificate verification fails, or a similar error occurs, the original address is not retried. It enters a 30-minute cooldown and the next candidate is tried; the operation ends if there is no next candidate |
 | Retryable transfer error | For connection refusals or resets, TLS handshake timeouts, EOF, and similar download errors, retry the same address first: up to 6 attempts per file, or 16 for the last candidate, including the initial attempt. Backoff starts at 1 second and caps at 15 seconds. Only after all attempts fail does the address enter cooldown and switch |
 | Individual request times out | If one HTTP request lasts more than 15 minutes, disconnect and attempt to resume; this counts toward the address's total attempt limit |
@@ -1596,7 +1596,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 42fed8d49a7803ff38e5219e59e18fbd01e2d979874ce46b0f29cd76d6b78913 ## Model Downloads Stall, Fail, or Leave Incomplete Directories -->
 <!-- translation-source-sha256: 178536686b1efd8668c7e8d46049e9e86b9e70f96c29fb441228f7b2442ca5ff ### Check Completeness First -->
 <!-- translation-source-sha256: 013d23a93b7ad4aa7bca003a2fcbbfb97c6e17c6571ac8fa8df03ea0144fda27 ### Choose a Resolution Based on the Error -->
-<!-- translation-source-sha256: 8e25dca6995b4cfd169c59211ebf4e2d4a67301a84dea0eb1f5326d1881370a5 ### Long Downloads: Check Source Switching and Resume Progress -->
+<!-- translation-source-sha256: 5a7b086b91b907b2bfa866cb337a4c68fcc148c423d0ff3c9885d0f957d15aa1 ### Long Downloads: Check Source Switching and Resume Progress -->
 <!-- translation-source-sha256: 15199cdc0f07486d121b220a634cb7cbd7198b8935c85f1396a0eca8440eb136 ### Retry After the Fix and Confirm the Result -->
 <!-- translation-source-sha256: e0dfe8a8bfbb8a0f359c56d406e3618b4b7ea94111dbc7526470cc3e9f9a6848 ## Image Pull Failures -->
 <!-- translation-source-sha256: 99d6b5bf92e4ecb66476e5edc57763af51fdd33cdc42dca43de41335436208ad ### Identify the Failed Source First -->

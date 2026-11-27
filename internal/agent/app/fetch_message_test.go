@@ -45,19 +45,23 @@ func throttle(retryAfter time.Duration) error {
 	return &download.StatusError{Code: http.StatusTooManyRequests, Detail: "download: unexpected probe status 429", RetryAfter: retryAfter}
 }
 
-// While the source has asked the download to wait, the status says so, at
-// once and with the progress already reached; bytes beyond that point put the
-// address back.
+// While the source has asked the download to wait, the status carries that
+// retry, marked as the source's wait, with the progress already reached;
+// bytes beyond that point put the address back. The message itself says only
+// where the bytes come from (GWKS-526).
 func TestTheStatusSaysWhenTheSourceAskedTheDownloadToWait(t *testing.T) {
 	m, sent := newTestFetchMessage()
 	m.set(downloadingFrom("huggingface.co"))
 	m.progress(proto.ModelFileStatus{Key: "k", State: proto.MFDownloading, BytesDone: 40 << 30, BytesTotal: 60 << 30, RateBytesPerS: 1 << 20, Revision: "abc"})
 	m.retrying(throttle(110*time.Second), 1, 16, 110*time.Second)
 
-	want := "downloading from huggingface.co (rate limited by the source; retrying in 1m50s)"
 	got := sent.last()
-	if got.Message != want {
-		t.Fatalf("message %q, want %q", got.Message, want)
+	if got.Message != downloadingFrom("huggingface.co") {
+		t.Fatalf("message %q, want the address alone", got.Message)
+	}
+	want := proto.ModelFetchRetry{Attempt: 2, Attempts: 16, WaitSeconds: 110, Throttled: true}
+	if got.Retry == nil || *got.Retry != want {
+		t.Fatalf("retry %+v, want %+v", got.Retry, want)
 	}
 	if got.BytesDone != 40<<30 || got.BytesTotal != 60<<30 || got.Revision != "abc" || got.RateBytesPerS != 0 {
 		t.Fatalf("the wait was announced as %+v: the progress reached must stay, with no rate", got)
@@ -65,27 +69,26 @@ func TestTheStatusSaysWhenTheSourceAskedTheDownloadToWait(t *testing.T) {
 
 	// A resumed file reports the bytes already on disk first: not new bytes.
 	m.progress(proto.ModelFileStatus{BytesDone: 40 << 30, BytesTotal: 60 << 30})
-	if sent.last().Message != want {
-		t.Fatalf("a report of the bytes already there ended the wait: %q", sent.last().Message)
+	if sent.last().Retry == nil {
+		t.Fatal("a report of the bytes already there ended the wait")
 	}
 	m.progress(proto.ModelFileStatus{BytesDone: 40<<30 + 4096, BytesTotal: 60 << 30})
-	if sent.last().Message != downloadingFrom("huggingface.co") {
-		t.Fatalf("new bytes left %q", sent.last().Message)
+	if sent.last().Retry != nil {
+		t.Fatalf("new bytes left the wait %+v", sent.last().Retry)
 	}
 }
 
 // Other retries (a reset, a server error) are not waits the source asked
-// for, so the message does not say rate limited; the retry itself is still
-// reported, as a field: a download that keeps failing near its end must not
-// read as one that stopped (GWKS-526).
-func TestOtherRetriesAreReportedAsARetryNotAsRateLimited(t *testing.T) {
+// for, and are reported as the retry they are: a download that keeps failing
+// near its end must not read as one that stopped (GWKS-526).
+func TestOtherRetriesAreReportedAsARetryNotAsASourcesWait(t *testing.T) {
 	m, sent := newTestFetchMessage()
 	m.set(downloadingFrom("hf-mirror.com"))
 	m.at(14_598_320_397, 14_606_988_015, "abc")
 	m.retrying(fmt.Errorf("download tokenizer.json: %w", errors.New("read tcp 10.0.0.2:60286->39.99.133.195:443: read: connection reset by peer")), 3, 16, 8*time.Second)
 	got := sent.last()
 	if got.Message != downloadingFrom("hf-mirror.com") {
-		t.Fatalf("message %q: a reset is not the source asking to wait", got.Message)
+		t.Fatalf("message %q", got.Message)
 	}
 	want := proto.ModelFetchRetry{Attempt: 4, Attempts: 16, WaitSeconds: 8, Cause: "read tcp 10.0.0.2:60286->39.99.133.195:443: read: connection reset by peer"}
 	if got.Retry == nil || *got.Retry != want {
@@ -100,15 +103,33 @@ func TestOtherRetriesAreReportedAsARetryNotAsRateLimited(t *testing.T) {
 	}
 }
 
-// A throttled answer is a retry too, marked as the source's wait and without
-// a cause: the message already says it is rate limited.
-func TestAThrottledRetryIsMarkedAsTheSourcesWait(t *testing.T) {
+// A throttled listing (a modelrepo error, not a download one) is a wait too.
+func TestAThrottledListingIsAWaitToo(t *testing.T) {
 	m, sent := newTestFetchMessage()
 	m.set(downloadingFrom("huggingface.co"))
-	m.retrying(throttle(110*time.Second), 1, 16, 110*time.Second)
-	want := proto.ModelFetchRetry{Attempt: 2, Attempts: 16, WaitSeconds: 110, Throttled: true}
-	if r := sent.last().Retry; r == nil || *r != want {
-		t.Fatalf("retry %+v, want %+v", r, want)
+	m.retrying(&modelrepo.StatusError{Code: http.StatusTooManyRequests, RetryAfter: 30 * time.Second}, 2, 16, 30*time.Second)
+	if r := sent.last().Retry; r == nil || !r.Throttled || r.WaitSeconds != 30 || r.Attempt != 3 {
+		t.Fatalf("retry %+v", r)
+	}
+}
+
+// A retry after a switch keeps the switch's message as it is: the wait is the
+// retry's, so nothing is appended after the switch reason, which the console
+// reads as one parenthetical.
+func TestARetryAfterASwitchKeepsTheSwitchedMessage(t *testing.T) {
+	m, sent := newTestFetchMessage()
+	m.set(downloadingFrom("modelscope.cn"))
+	m.at(50, 100, "abc")
+	switched := downloadingFrom("huggingface.co") + " (switched: modelscope.cn failed: listing after 6 attempt(s))"
+	m.set(switched)
+	m.retrying(throttle(30*time.Second), 1, 16, 30*time.Second)
+	m.retrying(errors.New("read: connection reset by peer"), 2, 16, 2*time.Second)
+	got := sent.last()
+	if got.Message != switched {
+		t.Fatalf("message %q, want %q", got.Message, switched)
+	}
+	if got.Retry == nil || got.Retry.Throttled || got.Retry.Attempt != 3 || got.Retry.WaitSeconds != 2 {
+		t.Fatalf("retry %+v", got.Retry)
 	}
 }
 
@@ -134,7 +155,8 @@ func TestNewBytesOrASwitchEndTheRetry(t *testing.T) {
 	}
 }
 
-// The cause is the innermost failure, cut on a character boundary.
+// The cause is the innermost failure, cut on a character boundary; a throttle
+// carries none, its wait says it all.
 func TestARetryCauseIsTheInnermostFailureBounded(t *testing.T) {
 	if got := retryCause(fmt.Errorf("download a: %w", fmt.Errorf("get b: %w", errors.New("read: connection reset by peer")))); got != "read: connection reset by peer" {
 		t.Fatalf("cause %q", got)
@@ -143,29 +165,22 @@ func TestARetryCauseIsTheInnermostFailureBounded(t *testing.T) {
 	if !utf8.ValidString(cause) || len(cause) > retryCauseLimit+len("…") {
 		t.Fatalf("cause is %d bytes, valid=%v", len(cause), utf8.ValidString(cause))
 	}
-}
-
-// A throttled listing (a modelrepo error, not a download one) is a wait too.
-func TestAThrottledListingSaysRateLimited(t *testing.T) {
-	m, sent := newTestFetchMessage()
-	m.set(downloadingFrom("huggingface.co"))
-	m.retrying(&modelrepo.StatusError{Code: http.StatusTooManyRequests, RetryAfter: 30 * time.Second}, 2, 16, 30*time.Second)
-	if !strings.Contains(sent.last().Message, "rate limited by the source; retrying in 30s") {
-		t.Fatalf("message %q", sent.last().Message)
+	if retryCause(nil) != "" {
+		t.Fatal("a nil failure has no cause")
 	}
 }
 
-// Moving to another address ends the wait the last address asked for, and the
+// Moving to another address ends the retry the last address had, and the
 // switch is announced with the progress reached.
-func TestASwitchEndsTheWaitOfTheAddressBefore(t *testing.T) {
+func TestASwitchEndsTheRetryOfTheAddressBefore(t *testing.T) {
 	m, sent := newTestFetchMessage()
 	m.set(downloadingFrom("hf-mirror.com"))
 	m.at(7<<20, 9<<20, "abc")
 	m.retrying(throttle(5*time.Second), 1, 2, 5*time.Second)
 	m.set(downloadingFrom("huggingface.co") + " (switched: hf-mirror.com failed 6 times)")
 	got := sent.last()
-	if strings.Contains(got.Message, "rate limited") || !strings.HasPrefix(got.Message, "downloading from huggingface.co") {
-		t.Fatalf("message %q", got.Message)
+	if got.Retry != nil || !strings.HasPrefix(got.Message, "downloading from huggingface.co") {
+		t.Fatalf("after the switch: %+v", got)
 	}
 	if got.BytesDone != 7<<20 || got.BytesTotal != 9<<20 {
 		t.Fatalf("the switch was announced as %+v", got)

@@ -27,9 +27,10 @@ type retryEntry struct {
 // model-file key: the agents' latest proto.ModelFetchRetry. Like Copies they
 // are evidence only, never persisted; a frame without a retry ends it.
 type Retries struct {
-	mu      sync.Mutex
-	entries map[string]retryEntry
-	byNode  map[uint]map[string]struct{}
+	mu        sync.Mutex
+	entries   map[string]retryEntry
+	byNode    map[uint]map[string]struct{}
+	lastSweep time.Time
 }
 
 func NewRetries() *Retries {
@@ -48,8 +49,14 @@ func (r *Retries) Record(node uint, status proto.ModelFileStatus, now time.Time)
 	if status.Retry == nil || status.State != proto.MFDownloading {
 		return
 	}
-	if len(r.entries) >= RetryLimit {
-		r.sweepLocked(now)
+	if _, exists := r.entries[status.Key]; !exists && len(r.entries) >= RetryLimit {
+		// A full map sweeps expired entries at most once per RetryGrace, like
+		// expiring.put: the check is per status frame, four per second per
+		// download.
+		if now.Sub(r.lastSweep) >= RetryGrace {
+			r.lastSweep = now
+			r.sweepLocked(now)
+		}
 		if len(r.entries) >= RetryLimit {
 			return
 		}

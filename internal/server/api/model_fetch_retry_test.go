@@ -77,6 +77,40 @@ func TestADownloadsRetryReachesTheModelPageAndThePreparation(t *testing.T) {
 		t.Fatalf("the row took the retry: %+v err=%v", row, err)
 	}
 
+	// A shared row and a throttled wait carry the field the same way.
+	storage, err := st.CreateStorage(&store.Storage{Name: "shared-retry", Type: proto.StorageNFS, Enabled: true, AllNodes: true, Path: "/shared", Export: "fixture:/models"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	shared := proto.ModelFileStatus{Key: "", State: proto.MFDownloading, TransferID: "dl-shared", Acquisition: proto.ModelAcquireDownload,
+		Retry: &proto.ModelFetchRetry{Attempt: 2, Attempts: 16, WaitSeconds: 110, Throttled: true}}
+	if _, err := st.UpsertModelFile(&store.ModelFile{ModelID: model.ID, StorageID: storage.ID, WriterNodeID: node.ID, State: proto.MFDownloading, Acquisition: proto.ModelAcquireDownload, TransferID: "dl-shared"}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := st.ModelFilesForModel(model.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sharedRow *store.ModelFile
+	for i := range rows {
+		if rows[i].TransferID == "dl-shared" {
+			sharedRow = &rows[i]
+		}
+	}
+	if sharedRow == nil {
+		t.Fatal("the shared row is missing")
+	}
+	shared.Key = store.ModelFileKey(sharedRow.ID)
+	prep.record(node.ID, shared)
+	var sharedPage dto.Model
+	handler.fillModelPresence(&sharedPage, model.ID)
+	if len(sharedPage.Storages) != 1 {
+		t.Fatalf("storages=%+v", sharedPage.Storages)
+	}
+	if got := retryOf(sharedPage.Storages[0]); got != `{"attempt":2,"attempts":16,"wait_seconds":110,"throttled":true}` {
+		t.Fatalf("shared retry=%s", got)
+	}
+
 	moving := frame
 	moving.Retry, moving.BytesDone = nil, 100
 	prep.record(node.ID, moving)

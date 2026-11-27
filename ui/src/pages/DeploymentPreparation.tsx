@@ -129,7 +129,8 @@ export function DeploymentPreparation({ dep, rows, onChanged }: { dep?: Deployme
           <RetryHint />
         </Space>}
         {!ready && failed && !view?.retryable && <Typography.Text type="secondary">{t("preparation.retryUnavailable")}</Typography.Text>}
-        {!ready && item.message && ((!compact && !origin) || failed || diskFull) && <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{item.message}</Typography.Paragraph>}
+        {/* A retry already says where the download is, once and in the user's language. */}
+        {!ready && item.message && !item.retry && ((!compact && !origin) || failed || diskFull) && <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{item.message}</Typography.Paragraph>}
         {!ready && view?.reason === "MODEL_COPY_STALLED" && <Typography.Paragraph className="flex items-center gap-1">{t("preparation.idle", { seconds: view.idle_seconds })} · {t("preparation.waitForIO")}<HelpTip content={t("preparation.waitForIOHelp")} /></Typography.Paragraph>}
       </div>;
     })}

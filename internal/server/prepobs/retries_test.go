@@ -1,6 +1,7 @@
 package prepobs
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -53,5 +54,30 @@ func TestRetriesForgetNodeOnlyDropsThatNode(t *testing.T) {
 	}
 	if _, ok := r.Observe("b", proto.MFDownloading, "t", now); !ok {
 		t.Fatal("another node's retry was dropped")
+	}
+}
+
+// The map is bounded: a full one drops new retries rather than growing, and
+// sweeps expired entries instead of rescanning on every frame.
+func TestRetriesAreBoundedAndReclaimExpiredOnes(t *testing.T) {
+	r := NewRetries()
+	now := time.Unix(1000, 0)
+	for i := 0; i < RetryLimit; i++ {
+		r.Record(uint(i%1000+1), retryFrame("k"+fmt.Sprint(i), "t", 1, 1), now)
+	}
+	if len(r.entries) != RetryLimit {
+		t.Fatalf("entries=%d", len(r.entries))
+	}
+	r.Record(1, retryFrame("overflow", "t", 1, 1), now)
+	if _, ok := r.Observe("overflow", proto.MFDownloading, "t", now); ok {
+		t.Fatal("a full map admitted a new retry")
+	}
+	later := now.Add(time.Second + RetryGrace + time.Second)
+	r.Record(1, retryFrame("later", "t", 1, 1), later)
+	if _, ok := r.Observe("later", proto.MFDownloading, "t", later); !ok {
+		t.Fatal("expired entries were not reclaimed for a new retry")
+	}
+	if len(r.entries) > RetryLimit {
+		t.Fatalf("entries=%d", len(r.entries))
 	}
 }

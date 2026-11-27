@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -55,7 +54,7 @@ func TestDownloadRepoWaitsOutARateLimitedSource(t *testing.T) {
 	}
 	waiting, after := -1, -1
 	for i, st := range *statuses {
-		if strings.Contains(st.Message, "rate limited by the source; retrying in 1s") {
+		if st.Retry != nil && st.Retry.Throttled {
 			if waiting < 0 {
 				waiting = i
 			}
@@ -66,8 +65,11 @@ func TestDownloadRepoWaitsOutARateLimitedSource(t *testing.T) {
 	if waiting < 0 {
 		t.Fatalf("no status said the source asked to wait: %+v", statusTrail(*statuses))
 	}
-	if after < 0 || strings.Contains((*statuses)[after].Message, "rate limited") {
-		t.Fatalf("the rate-limit note outlived the wait: %+v", statusTrail(*statuses))
+	if after < 0 || (*statuses)[after].Retry != nil {
+		t.Fatalf("the wait's retry outlived the wait: %+v", statusTrail(*statuses))
+	}
+	if wait := (*statuses)[waiting].Retry; wait.WaitSeconds != 1 || wait.Attempt != 2 || wait.Attempts != 16 {
+		t.Fatalf("the wait is %+v", wait)
 	}
 	// The wait is announced with the bytes already on disk (config.json and
 	// the weights), and the download never appears to go backwards.
