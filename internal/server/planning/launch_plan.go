@@ -177,6 +177,11 @@ type LaunchResolveError struct {
 }
 
 func (e *LaunchResolveError) Error() string {
+	if e.DeploymentID == 0 {
+		// A preview has no deployment yet; "deployment 0" reads as a
+		// deployment named 0 rather than as the draft the form holds.
+		return fmt.Sprintf("resolve launch: %v", e.Err)
+	}
 	return fmt.Sprintf("deployment %d resolve launch: %v", e.DeploymentID, e.Err)
 }
 
@@ -208,6 +213,9 @@ func PlanLaunch(ctx context.Context, st *store.Store, networks Networks, req Lau
 	input.ServingUnavailable = !networks.CanServe(*req.Node)
 	plan := LaunchPlan{Input: input, Output: input.Evaluate(st), Topology: req.Topology, Source: req.Source}
 	if plan.Output.PlacementError != nil && !req.Preview {
+		if req.Source.DeploymentID == 0 {
+			return plan, fmt.Errorf("placement: %w", plan.Output.PlacementError)
+		}
 		return plan, fmt.Errorf("deployment %d placement: %w", req.Source.DeploymentID, plan.Output.PlacementError)
 	}
 	if (!plan.Output.Result.OK || plan.Output.Result.Plan == nil) && !req.Preview {

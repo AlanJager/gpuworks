@@ -231,7 +231,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | GET | `/api/v1/agent-upgrades/{id}/items` | 分页查询逐节点结果，可按 state 筛选 | JWT |
 | POST | `/api/v1/agent-upgrades/{id}/stop` | 停止尚未开始的节点，继续观察当前节点 | JWT(admin) |
 | POST | `/api/v1/agent-upgrades/{id}/continue-preview` | 重新预览暂停批次的剩余节点 | JWT(admin) |
-| POST | `/api/v1/agent-upgrades/{id}/items/{uuid}/release` | 管理员填写 note 释放待确认项的全局占位，保留审计 | JWT(admin) |
+| POST | `/api/v1/agent-upgrades/{id}/items/{uuid}/release` | 管理员记录核实结论，把“结果未知”的节点提前标记为已核实（可选；系统会在节点重新连接时自行判定，批次不再因它暂停） | JWT(admin) |
 | POST | `/api/v1/nodes/precheck` | 检查 SSH 接入所需的主机环境与双向连通性；地址规则见[SSH 检查与安装](#ssh-检查与安装) | JWT(admin) |
 | POST | `/api/v1/nodes/install` | 经 SSH 安装 agent；连接参数同创建节点，可用 `no_systemd` 选择 Linux 后台运行方式。冲突与替换条件见[SSH 检查与安装](#ssh-检查与安装) | JWT(admin) |
 | GET | `/api/v1/nodes/{uuid}` | 节点详情（含 GPU 列表；管理员额外含 token） | JWT |
@@ -240,8 +240,8 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | POST | `/api/v1/nodes/{uuid}/connection-diagnostics` | 在线经既有ctrl读取Agent运行态，无需SSH；另有保存地址、可选SSH检查及历史公网入口。空body或`{}`，不执行恢复或修改地址；见[节点连接诊断](#节点连接诊断) | JWT(admin) |
 | POST | `/api/v1/nodes/{uuid}/upgrade` | 触发 agent 远程升级；Kubernetes 节点与普通节点一样原地升级（agent 运行在节点状态目录里，声明 `upgrade.kube_binary`）；没能从状态目录启动的（例如 noexec）不声明它，升级把它标为 `kubernetes` 并跳过 | JWT |
 | PUT | `/api/v1/nodes/{uuid}/scheduling` | 设置 `scheduling` 为 `cordoned`、`draining` 或 `schedulable`，返回节点；非法值 400 `FIELD_INVALID`。各状态的影响见[节点调度与加速卡切换](#节点调度与加速卡切换) | JWT |
-| PUT | `/api/v1/nodes/{uuid}/gpus/scheduling` | 设置一张卡是否接受新部署：`{"pcie_bdf":"0000:3f:00.0","scheduling":"stopped"}`（没有 PCI 地址的卡用 `uuid`）。`stopped` 禁用调度，`schedulable` 启用调度；两者一直有效，直到管理员手动改变，不随时间、上报或 server 重启失效。健康与平台外占用仍如实展示，未手动设置的卡仍按平台自动判定。返回节点（含卡），卡上 `scheduling_stopped`、`scheduling_allowed` 表示状态，`scheduling_actions` 给出现在可以做的操作。非法值或没点名卡 400 `FIELD_INVALID`；节点或卡不存在 404；卡已直通或没绑定驱动时设为可调度 409 `CARD_NOT_OWNED` | JWT |
-| GET | `/api/v1/nodes/{uuid}/health-checks` | 节点每张卡每项检查的当前状态，按表格给出（只读 server 内存，不触达 agent）：`checks` 是列（只含有卡适用的检查，带周期秒数），`cards[].cells[]` 是格子（`status` 为 `pass`/`warn`/`fail`/`skip`/`na`，`code` 为发现码或未检查的原因码，如 agent 启动后还没运行过为 `CARD_CHECK_NOT_RUN_YET`；`checked_at`、`duration_ms`、`stale`），`cards[].worst`（按 `fail`、`warn`、`skip`、`pass`、`na` 取最严重的）、`cards[].can_recheck` 与 `summary`（各状态格子数）由 server 计算。老 agent 上报的小写码和旧状态词由 server 读入时换成这一套。`?pcie_bdf=`（或 `uuid=`）只看一张卡。节点还没上报时 `cards` 为空、`reports` 为 false；离线时给出最后已知状态并标 `stale` | JWT |
+| PUT | `/api/v1/nodes/{uuid}/gpus/scheduling` | 设置一张卡是否接受新部署：`{"pcie_bdf":"0000:3f:00.0","scheduling":"stopped"}`（没有 PCI 地址的卡用 `uuid`）。`stopped` 禁用调度，`schedulable` 启用调度；两者一直有效，直到管理员手动改变，不随时间、上报或 server 重启失效。健康与平台外占用仍如实展示，未手动设置的卡仍按平台自动判定。返回节点（含卡），卡上 `scheduling_stopped`、`scheduling_allowed` 表示状态，`scheduling_actions` 给出现在可以做的操作；扩展保持的卡另带 `scheduling_held_by`（扩展的来源名）与 `scheduling_hold`（扩展给出的 `{code, params, message}`），见下面「扩展保持的卡」。非法值或没点名卡 400 `FIELD_INVALID`；节点或卡不存在 404；卡已直通或没绑定驱动时设为可调度 409 `CARD_NOT_OWNED`；扩展保持的卡设为可调度 409，`code` 与 `params` 由扩展给出（没有给 code 时为 `CARD_SCHEDULING_HELD`） | JWT |
+| GET | `/api/v1/nodes/{uuid}/health-checks` | 节点每张卡每项检查的当前状态，按表格给出（只读 server 内存，不触达 agent）：`checks` 是列（只含有卡适用的检查，带周期秒数），`cards[].cells[]` 是格子（`status` 为 `pass`/`warn`/`fail`/`skip`/`na`，`code` 为发现码或未检查的原因码，如 agent 启动后还没运行过为 `CARD_CHECK_NOT_RUN_YET`；`checked_at`、`duration_ms`、`stale`），`cards[].worst`（按 `fail`、`warn`、`skip`、`pass`、`na` 取最严重的）、`cards[].can_recheck` 与 `summary`（各状态格子数）由 server 计算。老 agent 上报的小写码和旧状态词由 server 读入时换成这一套。`?pcie_bdf=`（或 `uuid=`）只看一张卡。节点还没上报时 `cards` 为空、`reports` 为 false；离线时给出最后已知状态并标 `stale`。可选 `notice` 为 server 计算的 `{code, level}` 提示，`level` 为 `info` 或 `warning`；码为 `CARD_CHECKS_OFFLINE`、`CARD_CHECKS_UNSUPPORTED`、`CARD_CHECKS_WAITING`、`CARD_CHECKS_STALE`、`CARD_CHECKS_PASSTHROUGH`、`CARD_CHECKS_NO_DRIVER`、`CARD_CHECKS_HELD_ELSEWHERE`、`CARD_CHECKS_NO_USABLE_CARDS` 或 `CARD_CHECKS_NO_CARDS`，可正常展示检查时省略。`reports` 仅表示当前快照含宿主机卡的检查，不能用于推断 Agent 能力。节点在线且已收到未过期的报告时，先解释所选卡的设备归属；全部卡不可由宿主机检查时，不因 Agent 缺少能力而提示升级。 | JWT |
 | GET | `/api/v1/nodes/{uuid}/health-checks/detail?pcie_bdf=&check=` | 一张卡一项检查最近一次运行的详情（`last`；`last` 是跳过时另给 `last_ran`；更早出过问题时给 `last_problem`；每次运行含 `status`、`code`、`at`、`duration_ms`、`probe` 复核命令、`evidence`），经 RPC 向 agent 取，agent 只读内存、不跑命令。同一格并发请求只发一次，答案复用 5 秒；每节点最多 2 个、全局最多 16 个在途请求，超出 429（带 `Retry-After`）。缺卡或检查名非法 400 `FIELD_INVALID`；节点离线 409 `NODE_OFFLINE`；agent 版本过旧 409 `CARD_CHECKS_UNSUPPORTED`（两者都不发 RPC） | JWT |
 | GET | `/api/v1/nodes/{uuid}/health-records` | 节点的失败记录（某项检查告警或失败的一段时间）：进行中的在前，其余新的在前；`?pcie_bdf=`（或 `uuid=`）、`?check=` 筛选，`page`/`page_size` 分页（默认每页 50）。每条含 `card_ident`、仍在节点上的卡的 `card_index`/`card_name`/`pcie_bdf`（已移除的卡 `removed` 为 true）、`check`、`status`（`warn`/`fail`）、`code`、`started_at`、`ended_at`（进行中没有）、`last_seen_at`、`duration_seconds`、`count`、`flapping`、`ongoing`、`first_evidence`、`latest_evidence`；`retention_days` 是保留天数（30） | JWT |
 | POST | `/api/v1/nodes/{uuid}/gpus/recheck` | 立即对一张卡做一次运行时检查：`{"pcie_bdf":"0000:3f:00.0"}`（或 `uuid`）。结果像周期检查一样记到卡上，下一次上报卡的状态随之变化；返回同 `health-checks/detail` 的运行时检查详情（卡正在服务、被平台外进程占用或宿主暂时不能检查时 `last.status` 为 `skip`，`last.code` 说明原因）。错误同上 | JWT |
@@ -285,9 +285,9 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 
 预览的 `target_build` 与版本更新接口的 `server.current_build` 共用当前构建说明：包含 `version`、`kind`（`stable`、`prerelease`、`development`、`unknown`）、可用时的 `commit`、`built_at`、`build_channel`、`published_version` 与 `published_at`。构建时间属于当前运行版本，不是远端候选时间；发布字段只在已验签索引的版本号、完整 commit 和构建时间均匹配时填写。Agent 预览只读取已有发布检查缓存，不新增出网请求；更新源不可用或记录不匹配时仍可预览本地制品。
 
-成功返回 202 和批次对象，含 `id`、`state`、`counts`。同幂等键与相同请求返回原批次；修改请求或目标/制品变化返回 409，需重新预览。`GET /agent-upgrades`、`GET /agent-upgrades/{id}/items` 支持 `page`、`page_size`；逐节点结果可用单个 `state` 筛选。`processed` 包含所有终态，不等于 `succeeded`；`unconfirmed` 是未知结果，仍保留全局执行占位。
+成功返回 202 和批次对象，含 `id`、`state`、`counts`。同幂等键与相同请求返回原批次；修改请求或目标/制品变化返回 409，需重新预览。`GET /agent-upgrades`、`GET /agent-upgrades/{id}/items` 支持 `page`、`page_size`；逐节点结果可用单个 `state` 筛选。`processed` 包含所有终态，不等于 `succeeded`；`unconfirmed` 是未知结果：超时后 5 分钟内保留全局执行占位，之后批次继续；连续两台结果未知时批次暂停，`pause_reason` 为 `repeated_unknown_outcome`（安装包不可用时为 `artifact_unavailable`）。有 Agent 升级占用执行名额或批次仍有排队节点时，升级 server 的接口返回 409：`SERVER_UPGRADE_WAITS_FOR_AGENT`（`params.node`、`params.minutes`、`params.run_id`）或 `SERVER_UPGRADE_WAITS_FOR_AGENT_BATCH`（`params.run_id`、`params.queued`）。
 
-停止只取消 queued 项。继续时先调用 `continue-preview`，再次创建时增加 `source_run_id` 指向原批次，原队列的撤销与新批次创建原子完成。管理员核实待确认节点后，向 `items/{uuid}/release` 提交 `{"note":"处理依据"}`，成功返回 204；原结果保留，新增核实审计。查询接口可供管理身份读取，批量写入仅管理员且拒绝只读平台令牌。旧的单节点升级路由保留原权限，返回 202 时增加 `run_id`，与批量升级共享执行占位。操作和业务影响见[升级 Agent](../how-to/upgrade-and-compatibility.md#升级-agent)。
+停止只取消 queued 项。继续时先调用 `continue-preview`，再次创建时增加 `source_run_id` 指向原批次，原队列的撤销与新批次创建原子完成。管理员可选择向 `items/{uuid}/release` 提交 `{"note":"处理依据"}`，提前把结果未知的节点标记为已核实，成功返回 204；原结果保留，新增核实审计。查询接口可供管理身份读取，批量写入仅管理员且拒绝只读平台令牌。旧的单节点升级路由保留原权限，返回 202 时增加 `run_id`，与批量升级共享执行占位。操作和业务影响见[升级 Agent](../how-to/upgrade-and-compatibility.md#升级-agent)。
 
 ### 节点列表的筛选与返回字段
 
@@ -417,6 +417,7 @@ macOS 忽略 `no_systemd`。
 平台停止调度后，经这个接口设为 `schedulable` 立即生效，原因还在时下一次上报会再次停止。
 扩展模块还可以把节点保持在停止调度状态（扩展停止调度）：被保持的节点在下一次上报时（或扩展立即应用时）设为 `cordoned`，`scheduling_by` 为扩展的来源名；从不设为 `draining`，已有副本照常服务。扩展停止调度高于平台、低于管理员：平台原因消失不会解除它；保持期间设为 `schedulable` 回 409，`code` 与 `params` 由扩展给出（没有给 code 时为 `NODE_SCHEDULING_HELD`），设为 `cordoned` 或 `draining` 照常生效。扩展不再保持后，平台原因还在时回到平台停止调度，否则恢复可调度。
 节点的 `uncordon` 说明此时设为 `schedulable` 的结果，由 server 判定：`allowed`；`confirm`（平台有停止调度的原因，下一次上报会再次停止）；`refused`（扩展保持中，`cordon_message` 是扩展给出的 `{code, params, message}`）。
+扩展保持的卡：扩展模块还可以把单张卡保持在停止调度状态。被保持的卡在节点下一次上报时（或扩展立即应用时）不再接受新部署，卡上 `schedulable` 为假，`scheduling_held_by` 为扩展的来源名，`scheduling_hold` 是扩展给出的 `{code, params, message}`，`scheduling_actions` 只给 `stopped`；节点本身不停止调度，卡上已运行的实例照常服务。它高于管理员的启用、低于管理员的禁用：保持期间 `PUT /api/v1/nodes/{uuid}/gpus/scheduling` 设为 `schedulable` 回 409（`code` 与 `params` 由扩展给出，没有给 code 时为 `CARD_SCHEDULING_HELD`），设为 `stopped` 照常生效；保持结束后卡按管理员的决定或平台判定接受部署。调度器的拒绝原因为 `gpus_held`（参数 `gpus`、`count`、`node`）。
 
 `PATCH /api/v1/nodes/{uuid}/runtime` 设置节点的容器运行时偏好 `{runtime: auto|docker|nerdctl|udocker}`，由 agent 接受后保存。节点的 `runtime_choices` 列出这个节点可以设置的值，按展示顺序：Mac 只有 `auto`，其他节点是全部四种；**Kubernetes 节点没有这个字段**（实例是集群里的 Pod，没有运行时可选），对它设置返回 409 `NODE_RUNTIME_KUBE_NODE`。非法值回 400 `NODE_RUNTIME_INVALID`。
 
@@ -1565,17 +1566,18 @@ PD 请求（`placement.pd`）：单元可以不写 `node_uuid`，写了的单元
 
 - 快捷参数直接使用字典 key（即表单字段名），如 `max_model_len`、`gpu_memory_utilization`；
 - 请求级字段使用请求 JSON 中的名称：`replicas`、`nnodes`、`engine`、`target_vendor`、`extra_args`、
-  `quick_params_unset`、`master_port`、`placement`、`placement.tp`、`placement.pp`、`node_requirements`、
+  `quick_params_unset`、`master_port`、`placement`、`placement.gpus`、`placement.tp`、`placement.pp`、`node_requirements`、
   `placement_strategy`、`partition_backend`、`start_timeout_sec`、`health_check_threshold_sec`；
 - `node_uuids`（多机节点列表）在表单里对应 `distributed_nodes` 控件；自动放置的多机请求在挑不出节点或缺 `placement.tp` 时，错误归到 `placement_mode`；
 - 额外挂载行统一归到 `container_mount_rows`（请求只携带用户新增的挂载，不含行号）；
 - docker 参数错误归到 `container_docker_args`，共享内存大小错误归到 `container_shm_gib`；
 - **`field` 为空串的错误不归属任何控件**：启动装配/放置试算等与单个参数无关的失败
-  （如节点没有该 GPU 序号、没有可用运行时镜像）以此承载，客户端应将其合并进页面级
+  （如没有可用运行时镜像）以此承载，客户端应将其合并进页面级
   提示，不得挂在参数控件旁。
 
 涉及的规则：副本形状（`REPLICAS_NEGATIVE`/`REPLICAS_TOO_MANY`/`DISTRIBUTED_REPLICA_COUNT`）、
 节点条件（`NODE_REQUIREMENTS_INVALID`/`NODE_REQUIREMENTS_UNMET`）、放置策略（`PLACEMENT_STRATEGY_INVALID`）、
+指定的卡（`PLACEMENT_GPU_NOT_ON_NODE`：`placement.gpus` 写了所选节点没有的序号，`params.node`/`gpu_index`/`node_gpus`）、
 厂商（`TARGET_VENDOR_INVALID`）、引擎（`ENGINE_INVALID`）、
 extra_args 解析（`EXTRA_ARGS_INVALID`）、挂载（`MOUNT_CONTAINER_PATH`/`MOUNT_HOST_PATH`/
 `MOUNT_TARGET_DUPLICATE`/`MOUNT_TARGET_NESTED`/`MOUNT_VOLUME_INVALID`）、json 型参数（`QUICK_PARAM_JSON_INVALID`）、
@@ -2436,7 +2438,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
   `internal/server/api/router_inventory_test.go` 中的 `TestRouterInventoryMatchesCompleteContract` 逐条断言实际路由树，
   新增或删除路由时必须同步更新该测试。
 - 管理鉴权由 `internal/server/api/auth.go` 的 `managementAuth` 校验，管理员操作再经过 `managementAdmin`。
-  产品错误使用 `messages.ProductError`；130+ 个稳定错误码定义在 `internal/server/api/errors.go`，本文不逐一罗列。
+  产品错误使用 `messages.ProductError`；130+ 个稳定错误码定义在 `internal/server/api/errors*.go`，本文不逐一罗列。
 - `make check-api-conventions` 从类型上检查字段命名和列表结构，详见 [API 规范](api-conventions.md)。
 - `internal/server/app` 在生产装配时始终为 `/v1/*`、`/v1/models`、`/api/v1/playground/v1/*` 注入非空
   `ProxyV1`、`ProxyModels`、`PlaygroundV1` handler。路由清单测试使用零值 `Deps{}`，因此这三个网关路由

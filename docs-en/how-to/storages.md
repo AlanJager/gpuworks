@@ -178,7 +178,7 @@ Common remaining items and what to do:
 - A model kept only in a node cache with no copy on the NFS: put the model back on the NFS first, or delete that copy on the node.
 - An unreachable node: wait for it to reconnect. An offline node with no cache of this storage does not stop the switch.
 
-Files left in an old cache directory after a directory change are no longer managed anyway (see [Default Policy and Node Overrides](#default-policy-and-node-overrides)) and do not stop the switch; delete them on the node if needed. The cache directory and limit settings are kept and apply again if you switch back to **NFS with local cache**.
+Files left in an old cache directory after a directory change are no longer managed anyway (see [Default Policy and Node Overrides](#默认策略与节点例外)) and do not stop the switch; delete them on the node if needed. The cache directory and limit settings are kept and apply again if you switch back to **NFS with local cache**.
 
 ## Share One NFS Across Multiple gpuworks Installations
 

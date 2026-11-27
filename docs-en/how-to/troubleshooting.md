@@ -202,7 +202,7 @@ Once fixed, confirm the node appears on the Compute Nodes page and is online. If
 
 **Symptom**: requests sent through one member get 503 with the body `member business service is not ready`.
 
-**How to confirm**: read the code in the response header `X-Gpuworks-Refusal` (meanings in [Control-Plane Cluster Behaviour and Limits](../explanation/control-plane-cluster.md#behaviour-on-failure)), then look in that member's server log for why it closed its business (`<install-dir>` is that member's installation directory):
+**How to confirm**: read the code in the response header `X-Gpuworks-Refusal` (meanings in [Control-Plane Cluster Behaviour and Limits](../explanation/control-plane-cluster.md#故障时的行为)), then look in that member's server log for why it closed its business (`<install-dir>` is that member's installation directory):
 
 ```bash
 grep -E 'closed business admission|candidate material proof (failed|succeeded)' <install-dir>/logs/server.log | tail
@@ -548,6 +548,10 @@ would report nonexistent additional faulty cards, so inside a container it recog
 
 The upper half of the “Health checks” tab in node details is a table of cards by checks, and the lower half is the node's failure records; the “Health checks” tab of a GPU's details has the same two halves for that card alone.
 
+When the node is online and its report is current, the page first explains the selected cards' ownership: the host does not check cards configured for passthrough, without a vendor driver, or bound to another driver. If none of the selected cards can be checked by the host, missing Agent capability does not prompt an upgrade. Install and load the GPU vendor driver for driverless cards; if cards bound to another driver need host checks, bind them to the vendor driver.
+
+Missing reports do not mean that the Agent is old. An Agent that supports card health checks but has not reported yet shows a waiting notice. For an online Agent, missing capability prompts an upgrade unless a current report confirms that all selected cards are unavailable to the host. Offline or stale reports do not establish current ownership; a current report with no GPUs shows no applicable cards. No failure records does not mean that checks ran and passed.
+
 **The checks**: vendor health (the vendor tool's verdict), vendor tool answering, use outside the platform, PCIe link, PCIe errors, Xid (NVIDIA), NVLink (NVIDIA), GPUDirect RDMA (NVIDIA, PPU) and the runtime check.
 The first five, Xid and GPUDirect RDMA run once with every report (about a minute), NVLink every 5 minutes and the runtime check every 15 minutes.
 GPUDirect RDMA checks, only on a host with RDMA NICs, whether the vendor's peer memory module (`nvidia_peermem`, `alixpu_peermem`) is loaded: not loaded is a warning,
@@ -592,7 +596,7 @@ gets its identities filled in by a migration when the server is upgraded, and th
 
 **For the card to take the platform's deployments you must consent, in one of two ways**:
 
-- **Enable scheduling on the card** (the "Scheduling" entry in the [previous section](#enabling-or-disabling-scheduling-on-a-card-by-hand)): automatic placement may then use the card, and always tries cards without such processes first (on the node and across nodes).
+- **Enable scheduling on the card** (the "Scheduling" entry in the [previous section](#手动启用或禁用一张卡的调度)): automatic placement may then use the card, and always tries cards without such processes first (on the node and across nodes).
   Enabling scheduling is your explicit decision about this card, and the platform no longer guards it for you: a whole-card deployment, a card whose outside use is unknown and a node whose agent is older are all placed on.
   With an older agent, once a platform instance is on the card the agent stops reporting the outside processes that were already there, so the card reads as free and its memory may be handed out twice; upgrade the agent before enabling.
 - **Pick the card yourself when deploying** (in the deploy form, or `placement.gpus` in the request): this admits only a dGPU deployment with a memory limit, and only when every condition below holds.
@@ -924,7 +928,7 @@ Start from the code in `metadata_notice` or in the "fetch metadata" error. It te
 |---|---|---|
 | `MODEL_REPO_NOT_FOUND` | The site answered and has no such repository | Check the repository ID against the source; the same model often has a different ID on Hugging Face and on ModelScope |
 | `MODEL_REVISION_NOT_FOUND` | The repository exists and has no files at that revision | Use a branch or commit of this source; a commit ID does not carry across sites |
-| `MODEL_REPO_ACCESS_DENIED` | The site returned 401 / 403 | A private or gated repository needs [credentials](configure-pull-settings.md#credentials); without a token Hugging Face also returns 401 for a repository that does not exist, so check the repository ID first |
+| `MODEL_REPO_ACCESS_DENIED` | The site returned 401 / 403 | A private or gated repository needs [credentials](configure-pull-settings.md#凭据); without a token Hugging Face also returns 401 for a repository that does not exist, so check the repository ID first |
 | `MODEL_METADATA_UNREACHABLE` / `MODEL_METADATA_FORBIDDEN` | No address gave the management node an answer about the repository, or the rules forbid every address | Check the management node's outbound access: select **Used by the management node for model metadata** on an available site rule, and select **Used for management node outbound access** on the proxy if needed |
 
 **The source node is offline, or peer sync fails**
@@ -1036,6 +1040,7 @@ the `POST /api/v1/evaluate` response and in `DEPLOYMENT_UNSCHEDULABLE` deploymen
 |---|---|---|
 | `AUTOMATIC_PLACEMENT_STALE` | 409 | Resources have been occupied since evaluation, or nodes no longer meet the node requirements; evaluate again |
 | `NODE_REQUIREMENTS_UNMET` | 400 | The selected node does not meet the deployment's node requirements; `params.detail` identifies the key and required values |
+| `PLACEMENT_GPU_NOT_ON_NODE` | 400 | A create, edit, or evaluation names a GPU index the selected node does not have (`params.node`, `params.gpu_index`, `params.node_gpus`); an index means a card on one node only, so after a node change choose cards again or name none |
 | `UNIT_PLACEMENT_NONE` | 409 | No group of nodes can take an automatically placed multi-node or PD request (create, evaluate, or scale) now. `params` gives the node total `nodes` and how many each check left out: `unmet` (node requirements not met), `cordoned`, `offline`, `busy` (not enough free cards), `no_network` (no usable compute network); `largest` is how many nodes the largest group has. Satisfy the item with the largest count, or place manually |
 | `AUTO_PLACEMENT_TP_REQUIRED` | 400 | An automatic multi-node request has no `placement.tp`, so the platform does not know how many free cards each node needs; fill in TP (and PP) |
 | `AUTO_PLACEMENT_PD_MULTI_NODE` | 400 | An automatically placed PD instance must fit on one node; an instance with `followers` must name its nodes (`params.role` is the role) |
@@ -1067,6 +1072,7 @@ the `POST /api/v1/evaluate` response and in `DEPLOYMENT_UNSCHEDULABLE` deploymen
 | `no_healthy_gpu` | None of the node's own cards has a health level that permits serving |
 | `no_owned_gpu` | The node has no cards available for its own use: it has none, or all are passed through to VMs, lack an available vendor driver, or are held by other drivers |
 | `gpus_held_outside_platform` | The cards themselves are healthy, but all usable cards (the named ones, when the request names cards) are occupied by processes outside the platform, and this deployment cannot share them: it takes whole cards, the outside processes' memory is unknown, or the node's agent is older |
+| `gpus_held` | The usable cards (the named ones, when the request names cards) are held out of scheduling by an extension module; params `gpus`, `count`, `node`. An administrator cannot enable scheduling on them, and each card shows the extension's reason in the node's GPU table; act on that reason on the extension's side, or pick another node |
 | `held_outside_platform_sleep` | Only cards shared with processes outside the platform could take this memory-limited deployment, but it sleeps: while those processes run, it could not be woken on that card once asleep. Fix: turn off sleep for this deployment, or pick another card |
 | `held_outside_platform_not_allowed` | Cards that could take this memory-limited deployment are used by processes outside the platform, and neither is scheduling enabled on those cards nor did this deployment pick them; params `gpus`, `count`, `node`. Also reported when the node has a clean card that is busy or too small. Fix: enable scheduling on those cards in the node's GPU table, or pick the card yourself |
 | `foreign_shared_gpus_used` | A plan note (not a refusal): `count` of the chosen cards are shared with processes outside the platform (up to `foreign_gib` GiB), because no clean card could take the deployment |
@@ -1074,7 +1080,7 @@ the `POST /api/v1/evaluate` response and in `DEPLOYMENT_UNSCHEDULABLE` deploymen
 | `sleep_residue_blocks_startup` | Residual GPU memory from sleeping instances blocks startup |
 | `engine_ports_exhausted` | The node's engine port range is exhausted |
 | `insufficient_disk` / `insufficient_runtime_disk` | Insufficient space on the weights disk / runtime disk |
-| `insufficient_managed_dir_disk` | The disk the node keeps managed directories on cannot hold the ceilings the template's `dirs` declare plus the disk reserve (and the weights and image when they share it); the parameters give the needed, available, declared and reserved bytes and the path; see [Managed Writable Directories](../reference/inference-catalog-spec.md#dirs-managed-writable-directories) |
+| `insufficient_managed_dir_disk` | The disk the node keeps managed directories on cannot hold the ceilings the template's `dirs` declare plus the disk reserve (and the weights and image when they share it); the parameters give the needed, available, declared and reserved bytes and the path; see [Managed Writable Directories](../reference/inference-catalog-spec.md#dirs托管的可写目录) |
 | `RUNTIME_UNAVAILABLE` / `serving_unavailable` | The node has no container runtime / no network capable of carrying serving traffic |
 | `image_source_forbidden` | The pull source rules applicable to the node leave no source from which to pull the image (parameters `node` and `image`); see [Image Pull Failures](#镜像拉取失败) |
 | `partition_unavailable` | A dGPU backend is required, but none is ready on the node; see the dGPU section |
@@ -1241,7 +1247,7 @@ After retrying, check events and logs again and confirm that the new instance en
 
 ## Gateway Returns 401, 404, or 503
 
-The gateway error body has the OpenAI shape: `{"error":{"message":"…","type":"…","code":"…","param":…}}`. Identify the error by `code`; `message` is an English description. Every response carries `X-Request-ID`, which you can look up in the request records. For the code table, see [OpenAI-Compatible Gateway](../reference/openai-gateway.md#errors).
+The gateway error body has the OpenAI shape: `{"error":{"message":"…","type":"…","code":"…","param":…}}`. Identify the error by `code`; `message` is an English description. Every response carries `X-Request-ID`, which you can look up in the request records. For the code table, see [OpenAI-Compatible Gateway](../reference/openai-gateway.md#错误).
 
 | Status | code | Cause and action |
 |---|---|---|
@@ -1250,6 +1256,7 @@ The gateway error body has the OpenAI shape: `{"error":{"message":"…","type":"
 | 404 | `MODEL_NOT_FOUND` | The model name is not the deployment's served name (list names with `GET /v1/models`), or the deployment has stopped |
 | 404 | `MODEL_ROUTE_NOT_EXPOSED` | Only the playground (`/api/v1/playground/v1/*`) performs contract checks and returns this error: the deployment's API contract does not include this endpoint (for example, calling `/v1/embeddings` on a Chat model). Use `GET /api/v1/playground/openapi.json` to view its declared endpoints. The public `/v1` does not perform this check; it forwards the request unchanged to the engine, which returns its own 404 or other response |
 | 404 | `ROUTE_NOT_FOUND` | The listener you accessed does not serve the inference API. Check `listen.gateway` |
+| 429 + `Retry-After: 1` | `MODEL_BUSY` | The request carried `X-GPUWorks-If-Busy: reject` and no replica of the model has a free run slot. Send it again later, or drop the header to let the request queue as usual, see [Busy Rejection](../reference/openai-gateway.md#busy-rejection) |
 | 503 | `MODEL_ASLEEP` | No awake replica is available to serve requests. Wake it in the console or call `POST /api/v1/deployments/{id}/wake`; a schedule or a waiting wake also wakes it, see the [Scheduling Analysis](scheduling-center.md). Once sleep intent is issued, selected instances stop accepting new requests |
 | 503 | `MODEL_NOT_READY`, `DEPLOYMENT_START_FAILED` | No running replica: it is still starting, has failed, or has been stopped. Check instance status |
 | 503 | `MODEL_NODE_OFFLINE` | A replica is running, but its node's agent is not connected. Check the node's connection state |
@@ -1479,7 +1486,7 @@ When you cannot log in to the customer's servers, have an administrator work in 
 |---|---|
 | `manifest.json` | The collection's scope, the server version, and each part's check result: `pass` collected whole, `warn` cut at its size limit, `skip` not read (node offline, agent version without support), `fail` the read failed (with its error text) |
 | `server/disk.json` | The server's data, log and backup directories and SQLite's temporary directory: their filesystems' size and free space, and the size of each entry in every directory (largest first) |
-| `server/host-identity.json` | The identity of the server's machine (system UUID, board serial, machine-id, root file system UUID), each only as a salted digest `h` and the raw value's last four characters `tail`, absent when unreadable; the salt is fixed, so one machine has the same digests in every collection; see [Extension points](../dev/extensions.md#the-management-servers-host-identity) |
+| `server/host-identity.json` | The identity of the server's machine (system UUID, board serial, machine-id, root file system UUID), each only as a salted digest `h` and the raw value's last four characters `tail`, absent when unreadable; the salt is fixed, so one machine has the same digests in every collection; see [Extension points](../dev/extensions.md#管理-server-的主机身份) |
 | `server/gpuworks-server.log` | The server log in the time range (info included; the Logs page has warn and above only) |
 | `server/stalls/stall-<time>.txt` | The [stall reports](#server-卡住或偶发变慢时卡顿报告与现场堆栈) in the time range, as written |
 | `members/index.json` | Only on a [control-plane cluster](../explanation/control-plane-cluster.md): one entry per member. When a member's part did not arrive, `missing` says why; the field is absent when it did (`unreachable`, `timeout`, `refused` when the member does not accept this member's key, `unsupported` when the member's release does not have this yet (a member not yet upgraded during an upgrade), `busy` when it is reading for another collection, `failed` when it answered with an error, was not the member asked for, or the transfer broke off; the error's own text is in `evidence`), the fingerprint of the member key that answered (`answered_key`), what was cut (`truncated`), and how many milliseconds the member's clock differs from the collecting member's (`clock_offset_ms`, measured at the moment the request is sent). `complete` is `false` when a member's part is missing |
@@ -1574,7 +1581,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: c40739d95375b5423c001d772cdeb5770f2f8c11f507b388a3810a77b6d18f98 ### A Card Is Unusable by the Runtime or Fails Driver Initialization -->
 <!-- translation-source-sha256: 7ebf5c9174ef8583f382fdc9479446b523c3851af93fa26195569e89ad2a8a6c ### Host Sees the Card but Container Does Not -->
 <!-- translation-source-sha256: c82ecdd35a71817d12d7d211f000826eb7579542a79020dc17542ddaf09e7e33 ### Card Is Passed Through, Has an Unavailable Vendor Driver, or Is Held by Another Driver -->
-<!-- translation-source-sha256: 2488452434871c842f2ca3751373431a71deb21ec374a782d5ee32a22526ec05 ### Card Health Checks -->
+<!-- translation-source-sha256: 84ed9834f5fe373c63f23e0f1213537fc016979bcf791704b582f3665483b7e1 ### Card Health Checks -->
 <!-- translation-source-sha256: f21b0e1066763e69c4b7a21b31d457963df4ad672a72d602f692c25d3260ec54 ### Enabling or Disabling Scheduling on a Card by Hand -->
 <!-- translation-source-sha256: ea953d23612e21c2dd6138b94e0c8e87f6b306c392842579fed602afacdcca64 ### Card Is in Use by Processes Outside the Platform -->
 <!-- translation-source-sha256: 13f5bcd92b822ca98eee304c3b8abb770dc00adaaf99922bfd175f416305b74f ### Diagnosis Finds an Unrecognized Accelerator -->
@@ -1597,7 +1604,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 2e761edaeef85606c46762d1dc9680a3b996f61c30b4ae0b42ecf5b838256459 ### Why Candidates Switch and When Pulls Are Considered Stalled -->
 <!-- translation-source-sha256: 1032ac3a3086dc0bdfab0834acfa339935693f6e5b97faef8234bf02748ec5f1 ### Registry Rate Limits or Refused Connections -->
 <!-- translation-source-sha256: 28cfb7773daaae60e9e0285d967cb43b45bf53b7839887598260df0fb59f32ed ### Additional Checks for Digest References -->
-<!-- translation-source-sha256: 03fd6d5089afd689d343e7032d8d765c7d6cb3014dd08416563d72704e5cc6ec ## Deployment Rejected, Insufficient Estimated GPU Memory, or No Suitable Node -->
+<!-- translation-source-sha256: 94afa58746779e032e7f720d30cdf437795e5688d923a8938624614b18ed8d9b ## Deployment Rejected, Insufficient Estimated GPU Memory, or No Suitable Node -->
 <!-- translation-source-sha256: b6d85798c7347370b799710bd36ca3bd36fc4830973089961d74d506bc75980b ## Instance Startup Failure, Repeated Restarts, or OOM -->
 <!-- translation-source-sha256: 71da95ca5ab9db8518ad2524787a82835f8ca14f9d5ce4d4724e240444103463 ### Find the Cause of This Failure -->
 <!-- translation-source-sha256: 2767b9a17fd44ed4e114c17cf95320e87486bc057a517077bf2be5a2b2a58bfc ### Insufficient GPU Memory or an Incorrect Startup Command -->
@@ -1605,7 +1612,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 9fc0546899e8801217945461926cdfddbf92aeaebba15b22768f0392951830e5 ### Container Exits After Reaching Running -->
 <!-- translation-source-sha256: 9b440725e326934e1723979abbdb7feca7f9a96cf5fac88ee19b1482db1500e2 ### Engine Stops Responding After Reaching Running -->
 <!-- translation-source-sha256: add832ec4ab268d576c36b2fc99eba23a41a9ba25040cceb7b68ff0583f0f8ab ### Retry After Fixing the Cause -->
-<!-- translation-source-sha256: b3621e999c44b86976534c6f5899fa03638f2c06386f8221e5a7d60e2d360e79 ## Gateway Returns 401, 404, or 503 -->
+<!-- translation-source-sha256: b13f0f68455c5a89e6f54e0035b7999cb6b7f94cdb9e5abafa81f18c85e4618a ## Gateway Returns 401, 404, or 503 -->
 <!-- translation-source-sha256: 2c0e5a7c9e97b4735744c0fee373cf39d0326a987466dd32c03c0357bb55abe1 ## dGPU Capability Unavailable -->
 <!-- translation-source-sha256: 0e3041f49383f6df9bdad9e0f779abe9dad3c8fc082a5d108e8da5e178c515bc ## Sleep / Wake Failure -->
 <!-- translation-source-sha256: 6bed70deff3f0668d6c10fbbf64777d85d384d8c080f53cef873e0f3e0a97a34 ### Schedules, Yielding, or Waiting Did Not Run as Expected -->
