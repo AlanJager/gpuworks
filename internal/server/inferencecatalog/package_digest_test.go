@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"io/fs"
-	"os"
 	"reflect"
 	"testing"
 )
@@ -51,17 +50,6 @@ func TestPackageDigestLoadsSemanticCatalogOnce(t *testing.T) {
 	}
 	if count := input.reads["models/org/model/model.yaml"]; count != 2 {
 		t.Fatalf("model YAML read %d times; require one semantic validation plus one exact archive read (2)", count)
-	}
-}
-
-func BenchmarkPackageDigestRealCatalog(b *testing.B) {
-	input := os.DirFS("seed/catalog")
-	b.ReportAllocs()
-	for range b.N {
-		pkg, digest, err := LoadPackageDigest(input)
-		if err != nil || digest == "" || len(pkg.Catalog.Models) == 0 {
-			b.Fatalf("catalog proof failed: %v", err)
-		}
 	}
 }
 

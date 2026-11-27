@@ -156,6 +156,13 @@ jobs:
       # records are verified by the GitLab merge-request gate only; this step
       # prints which decision paths it did not check.
       - run: CGO_ENABLED=0 go run ./scripts/changerecord
+      - run: make seed-manifest
+      - run: SEED_CATALOG_MANIFEST=bin/seed-catalog/manifest.yaml make test-seed-catalog-build
+      - uses: actions/upload-artifact@v5
+        if: inputs.release_gates
+        with:
+          name: seed-catalog-manifest
+          path: bin/seed-catalog/manifest.yaml
       - run: ./scripts/check_time_policy.sh
       - run: ./scripts/check_architecture.sh
       - run: ./scripts/check_ci_yaml.sh

@@ -423,6 +423,8 @@ core-test-image:
 core-test:
   extends: .go-core
   stage: core
+  variables:
+    GIT_DEPTH: "0" # Find the last seed catalog commit, even on a quiet release branch.
   image: $GPUWORKS_CORE_TEST_IMAGE
   rules:
     - if: '$GPUWORKS_CORE_TEST_IMAGE'
@@ -440,6 +442,8 @@ core-test:
   # index, the coverage inventory) run in core-vet: they take seconds and do
   # not need the test compile, so the longest job carries tests only.
   script:
+    - make seed-manifest
+    - SEED_CATALOG_MANIFEST=bin/seed-catalog/manifest.yaml make test-seed-catalog-build
     - if [ "${CHECK_CORE_IMAGE_SHELLCHECK:-}" = 1 ]; then ./scripts/test_slurmboot_shellcheck.sh; fi
     - test -f internal/server/webui/dist/index.html
     # -timeout: the 10m default is per package binary, and a starved runner
@@ -483,6 +487,7 @@ core-test:
   artifacts:
     when: always
     paths:
+      - bin/seed-catalog/manifest.yaml
       - coverage-core.out
       - .testlogs/core-test.log
     expire_in: 14 days
@@ -903,6 +908,8 @@ release-docs-pdf:
 .release-build:
   extends: .go-core
   stage: release
+  variables:
+    SEED_CATALOG_MANIFEST: bin/seed-catalog/manifest.yaml
   # Same gate policy as .l4-acceptance: only the fast deterministic gates.
   # core-l2/l3/ui-test flakes must not also kill the nightly packages, as
   # they did on 2026-09-30 and 2026-10-01.
@@ -1019,6 +1026,8 @@ release-publish:
   extends: .go-core
   stage: publish
   needs:
+    - job: core-test
+      artifacts: true
     - job: release-build-linux-amd64
       artifacts: true
     - job: release-build-linux-arm64
@@ -1033,6 +1042,7 @@ release-publish:
   resource_group: distribution
   interruptible: false
   variables:
+    SEED_CATALOG_MANIFEST: bin/seed-catalog/manifest.yaml
     # Not RCLONE_VERSION: rclone reads every RCLONE_<FLAG> variable as that
     # flag, and took this one for --version (job 217655).
     GPUWORKS_RCLONE_VERSION: "v1.75.2"
@@ -1185,6 +1195,8 @@ release-agent-image:
 
 .l4-acceptance:
   extends: .l4-cloud
+  variables:
+    SEED_CATALOG_MANIFEST: bin/seed-catalog/manifest.yaml
   stage: l4-acceptance
   timeout: 120m
   # A needs graph otherwise lets these costly jobs bypass stage ordering as
