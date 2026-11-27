@@ -184,6 +184,7 @@
     "engine_ports_exhausted": "Every engine port {{start}}–{{end}} on node {{node}} is in use by instances or other host services. Free a port in that range or select another node.",
     "pool_empty": "No node can take a replica now: of {{nodes}} nodes, {{unmet}} do not satisfy the deployment's node requirements, {{cordoned}} are cordoned and {{offline}} are offline. Bring a node online or uncordon it, add one that satisfies the requirements, or widen them.",
     "node_cordoned": "Node {{node}} is cordoned; the replica starts once scheduling resumes there, or pick another node under Adjust replicas.",
+    "waiting_on_node": "The replica is placed but cannot start yet; it starts once its node is ready.",
     "pool_no_fit": "None of the {{tried}} best of {{candidates}} candidate nodes has room for a replica. The best, {{node}}, refused: {{first}}. Free resources there, scale down another deployment, or add nodes.",
     "waiting_for_yield": "Waiting until {{holders}}; the replica then goes on {{node}}.",
     "reserved_for_sleepers": "GPU {{gpus}} on {{node}} is kept for {{sleepers}}, asleep there until a request wakes it, so a deployment that never yields is not placed on it; choose another card, enable sleep with a yield policy that shares cards, or put the deployment on the card to sleep by hand.",
@@ -1225,5 +1226,13 @@
       "no_storage_path": "The candidate copy source {{source}} and target {{target}} have no common network allowed to carry storage sync. Check the storage sync role on the management network or another common network on both nodes.",
       "peer_transport_required": "The peer acquisition path was not accepted because a permitted storage-sync network is required. Resolve the preceding peer network check first."
     }
+  },
+  "waitingOnNode": {
+    "cache_eviction": "Node {{node}} has the replica, but its model cache is being cleaned up there; it starts once the cleanup finishes.",
+    "model_arriving": "Node {{node}} has the replica; it starts once the model has arrived there (see the download on the models page).",
+    "node_offline": "The replica's node is offline; it starts once the node reconnects, or pick another node under Adjust replicas.",
+    "previous_generation_leaving": "Node {{node}} has the replica; it starts once the generation it replaces has left that node.",
+    "pool_unreadable": "The deployment's candidate nodes could not be read; the platform tries again shortly. If this stays, check the server log.",
+    "node_missing": "The node this replica names is no longer part of the deployment's placement; pick another node under Adjust replicas."
   }
 }

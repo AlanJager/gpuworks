@@ -97,7 +97,9 @@ func (c *Controller) launchGeneration(ctx context.Context, deployment *unitDeplo
 	}
 	release, pinned := c.store.TryPinNodeCaches(nodeIDs)
 	if !pinned {
-		c.q.addAfter(depKey(deployment.dep.ID), groupPollInterval)
+		// A cache eviction owns one of the nodes; it is recorded as the
+		// replica's wait, which also schedules the re-check.
+		c.recordWaitingOnNode(deployment.dep, waitingStageCacheEviction, nodes[0])
 		return false, nil
 	}
 	// Keep every ready model component alive until persistGeneration commits

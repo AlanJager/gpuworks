@@ -68,6 +68,32 @@ func (c *Controller) modelUnavailable(dep *store.Deployment, node *store.Node, p
 	return nil, nil
 }
 
+// The stages a replica that already has its node can still wait at. Each is
+// a place the pass used to end silently, leaving the replica pending with no
+// reason and, since a stall is measured from the first recorded reason, never
+// reported as stalled either (GWKS-507).
+const (
+	waitingStageCacheEviction = "cache_eviction"
+	waitingStageModelArriving = "model_arriving"
+	waitingStageNodeOffline   = "node_offline"
+	waitingStageGeneration    = "previous_generation_leaving"
+	waitingStageNodeMissing   = "node_missing"
+	waitingStagePool          = "pool_unreadable"
+)
+
+// recordWaitingOnNode records that a placed replica cannot start because of
+// what node (nil when none was chosen) is doing, under the same throttle as
+// every other refusal: the record is what the deployment's status shows and
+// what makes a long wait read as a stall, and recording it also schedules the
+// re-check that a silent pass never did.
+func (c *Controller) recordWaitingOnNode(dep *store.Deployment, stage string, node *store.Node) {
+	params := map[string]any{"stage": stage}
+	if node != nil {
+		params["node"] = node.DisplayName()
+	}
+	c.recordUnschedulableRank(dep, scheduler.Reason{Code: scheduler.ReasonWaitingOnNode, Params: params}, nil)
+}
+
 // recordUnschedulable makes a placement failure visible, and arranges for the
 // deployment to be re-checked on its own.
 //

@@ -25,6 +25,12 @@ export function scheduleText(
       const specific = t(`storageRefusal.${why}`, { ...value.params, defaultValue: "" });
       if (specific) return specific;
     }
+    // A placed replica waiting on its node says what it waits for; an
+    // unknown stage reads as the generic wait.
+    if (code === "waiting_on_node" && typeof value.params?.stage === "string") {
+      const specific = t(`waitingOnNode.${value.params.stage}`, { ...value.params, defaultValue: "" });
+      if (specific) return specific;
+    }
     // schedule.* holds the scheduler's own codes (the i18n check ties it to
     // the scheduler source), worded for replicas that exist.
     const key = `schedule.${code}`;

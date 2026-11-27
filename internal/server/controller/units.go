@@ -181,13 +181,15 @@ func (c *Controller) reconcileUnits(ctx context.Context, dep *store.Deployment, 
 		nodes, ready := c.unitNodes(ctx, dep, deployment, model, slot.Unit)
 		if !ready {
 			placementResolved = false
+			// unitNodes records why a named replica cannot go on its node; a
+			// pool replica's refusal is recorded where its pool is planned.
 			continue
 		}
 		if leaving := masterPortHolder(dep, insts, nodes[0]); leaving != nil {
 			placementResolved = false
-			// The generation it replaces still listens on the master port;
-			// its retirement requeues the deployment.
+			// The generation it replaces still listens on the master port.
 			c.log.Info("replica waits for the generation it replaces to leave its leader node", "dep", dep.ID, "unit", slot.Key, "leaving", leaving.UUID)
+			c.recordWaitingOnNode(dep, waitingStageGeneration, nodes[0])
 			continue
 		}
 		for _, node := range nodes {
@@ -199,6 +201,9 @@ func (c *Controller) reconcileUnits(ctx context.Context, dep *store.Deployment, 
 			return err
 		}
 		if !ready {
+			// The model is still arriving on a rank's node (an image wait of
+			// a multi-node generation records itself).
+			c.recordWaitingOnNode(dep, waitingStageModelArriving, nodes[0])
 			continue
 		}
 		launched, err := c.launchGeneration(ctx, deployment, model, slot, nodes, len(attempts)+1)
@@ -519,12 +524,16 @@ func (c *Controller) unitNodes(ctx context.Context, dep *store.Deployment, deplo
 			}
 			if !c.hub.Online(node.UUID) {
 				c.log.Debug("deployment waiting: node offline", "dep", dep.ID, "node", node.UUID)
+				c.recordWaitingOnNode(dep, waitingStageNodeOffline, node)
 				return nil, false
 			}
 			picked = node
 			break
 		}
 		if picked == nil {
+			// The nodes this rank names are gone from the deployment's
+			// placement.
+			c.recordWaitingOnNode(dep, waitingStageNodeMissing, nil)
 			return nil, false
 		}
 		out = append(out, picked)
