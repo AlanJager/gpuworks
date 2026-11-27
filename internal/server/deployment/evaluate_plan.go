@@ -160,6 +160,10 @@ func (r *evaluateState) planRanks() bool {
 
 	// Estimate + schedule (shared with the controller).
 	gpuCount := len(r.placement.GPUIndexes)
+	if r.errs.add("placement.gpus", RequestCardsOnNode(r.req, r.node)) {
+		r.writeFieldErrors()
+		return false
+	}
 	resolver := templatePlacementResolver(r.selection.Placement)
 	templateArgs := append([]string(nil), r.launch.TemplateResidual...)
 	templateEnv := cloneStringMap(r.selection.Env)

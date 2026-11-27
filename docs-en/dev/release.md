@@ -117,7 +117,7 @@ and `<sha256>` is the content digest of the corresponding catalog file:
 | `catalog/templates/<sha256>.tar.gz` | The inference template catalog package identified by its content digest |
 | Root-level `get.sh` | One-line installer (source: `scripts/get.sh`): picks the fastest source, downloads the archive for the local platform, verifies it against `SHA256SUMS`, and runs `gpuworks install` |
 
-The `nightly` channel is every master build, with the short commit hash as the release id; `release` is every version tag, with the tag as the release id (see [Version Numbers](#version-numbers)).
+The `nightly` channel is every master build, with the short commit hash as the release id; `release` is every version tag, with the tag as the release id (see [Version Numbers](#版本号)).
 Binaries follow the channel injected at build time (`make CHANNEL=…`, defaulting to `nightly`; `scripts/package_release.sh` reads `GPUWORKS_RELEASE_CHANNEL`,
 and a `release` channel release id is either `vYY.M.PATCH` or the short commit hash of a release branch build, described below).
 

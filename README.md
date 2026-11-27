@@ -63,7 +63,7 @@ on the same accelerators.
   (NVIDIA via HAMi-core, Ascend via vcann-rt, PPU via ppu-slicing-shim, AMD via rocm-slicing-shim, Hygon via native vdevs); supported models,
   runtimes, and readiness requirements are in the [Vendor Support Matrix](docs-en/reference/support-matrix.md).
   Sleep/wake lets sleep-capable vLLM models take turns on the same GPUs; verified vendor and image combinations
-  are listed in [choosing features](docs-en/explanation/choosing-features.md#sleepwake-models-take-turns-on-one-gpu).
+  are listed in [choosing features](docs-en/explanation/choosing-features.md#sleepwake多个模型轮流用一张卡).
 - **Scale out.** Replicas across nodes, multi-node tensor/pipeline parallel, and prefill/decode disaggregation
   (vLLM + NIXL on NVIDIA, vLLM-Ascend + Mooncake on Ascend, SGLang or vLLM + Mooncake on PPU, within one host or over RDMA, and vLLM + Mooncake on Hygon).
 - **OpenAI-compatible gateway.** Chat, completions, embeddings, rerank, audio, images, video and realtime under
@@ -137,7 +137,7 @@ Install the GPUWorks control plane on this host and verify it.
 
 ✅ verified on real hardware · 🧪 experimental · — not supported or not validated. Sleep/wake beyond NVIDIA is
 verified on Ascend 910C, PPU ZW810E, Hygon K100 and AMD MI300X; the tested versions and limits are in
-[choosing features](docs-en/explanation/choosing-features.md#sleepwake-models-take-turns-on-one-gpu).
+[choosing features](docs-en/explanation/choosing-features.md#sleepwake多个模型轮流用一张卡).
 GPUs are detected with the vendor CLIs (`nvidia-smi`, `npu-smi`, `ppu-smi`, `hy-smi`, `xpu-smi`) or, for AMD, amdgpu sysfs and KFD, so there is no NVML or cgo
 dependency. Per-combination status lives in the [support matrix](docs-en/reference/support-matrix.md) and the
 [Ascend matrix](docs-en/reference/ascend-support-matrix.md).

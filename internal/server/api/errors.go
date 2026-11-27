@@ -27,7 +27,7 @@ const (
 	ErrorCardNotOwned = "CARD_NOT_OWNED"
 	// ErrorCardChecksUnsupported answers a request about a card's checks to a
 	// node whose agent predates them.
-	ErrorCardChecksUnsupported                  = "CARD_CHECKS_UNSUPPORTED"
+	ErrorCardChecksUnsupported                  = messages.ErrorCardChecksUnsupported
 	ErrorNodeAcceleratorHasInstances            = "NODE_ACCELERATOR_HAS_INSTANCES"
 	ErrorNodeDeleteHasInstances                 = "NODE_DELETE_HAS_INSTANCES"
 	ErrorNodeDeleteCacheBusy                    = "NODE_DELETE_CACHE_BUSY"
@@ -404,6 +404,7 @@ const (
 	ErrorUnitPlacementNone        = messages.ErrorUnitPlacementNone
 	ErrorAutoPlacementTPRequired  = messages.ErrorAutoPlacementTPRequired
 	ErrorAutoPlacementPDMultiNode = messages.ErrorAutoPlacementPDMultiNode
+	ErrorPlacementGPUNotOnNode    = messages.ErrorPlacementGPUNotOnNode
 	// ErrorPlacementModeShape: PUT /deployments/{id}/placement-mode on a
 	// single-node deployment, which states its placement in its node
 	// requirements.
