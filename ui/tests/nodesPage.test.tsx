@@ -357,8 +357,8 @@ function startsBatch() {
 
 async function confirmBatch(user: ReturnType<typeof userEvent.setup>) {
   const modal = await screen.findByRole("dialog");
-  await user.click(await within(modal).findByRole("checkbox", { name: /maintenance window/ }));
-  await user.click(within(modal).getByRole("button", { name: "Update to this version" }));
+  // One click starts the batch; there is no consent box to tick first.
+  await user.click(await within(modal).findByRole("button", { name: /^Upgrade \d+ nodes?$/ }));
   return screen.findByRole("dialog", { name: "Agent upgrade batch 32" });
 }
 

@@ -892,27 +892,19 @@
     }
   },
   "batchUpgrade": {
-    "targetHeading": "Target for this update",
-    "targetSource": "Provided by the current control plane. After updating, Agent versions will match the control plane.",
-    "versionDetails": "View version and updates",
     "selected": "Upgrade selected Agents",
     "selectedCount": "{{count}} nodes selected",
     "clearSelection": "Clear selection",
-    "scope": "This batch is limited to the nodes listed below. Refreshing the preview updates their status without adding other nodes.",
-    "previewTitle": "Review Agent upgrade",
+    "previewTitle": "Upgrade Agents to {{version}}",
     "target": "Target version: {{version}}",
-    "previewCounts": "{{eligible}} eligible of {{total}} nodes; {{skipped}} will be skipped.",
-    "disruption": "Agents will restart one at a time. Connections may be briefly interrupted.",
-    "versionWarning": "Updating replaces Agents with the target shown above. In-flight requests and long-running tasks may be interrupted. For multi-node or PD inference, select one node at a time and verify the model service before upgrading the next.",
-    "acknowledge": "I have arranged a maintenance window or confirmed that the affected workloads can be interrupted.",
-    "start": "Update to this version",
+    "start": "Upgrade {{count}} nodes",
     "refreshPreview": "Refresh preview",
     "close": "Close",
     "refresh": "Refresh upgrades",
     "loadingPreview": "Loading upgrade preview",
     "loadingRun": "Loading upgrade result",
     "loadingRuns": "Loading Agent upgrades",
-    "noEligible": "No nodes can be upgraded with this preview. Review the reasons below.",
+    "noEligible": "None of these nodes needs or can take an upgrade now; see the reasons below.",
     "empty": "No Agent upgrade batches yet.",
     "details": "View upgrade details",
     "history": "Recent Agent upgrades",
@@ -943,11 +935,11 @@
       "node": "Node",
       "from": "Original version",
       "current": "Observed version",
-      "platform": "Platform",
-      "result": "Eligibility",
       "reason": "Details",
       "phase": "Stage",
-      "time": "Started / finished"
+      "time": "Started → finished",
+      "status": "Status",
+      "version": "Current → target"
     },
     "runState": {
       "running": "Running",
@@ -1013,8 +1005,6 @@
       "target_registered": "A new Agent session confirmed the target version."
     },
     "activeBlock": "{{name}} is part of an active upgrade batch. Wait for it to finish or view its progress.",
-    "startedAt": "Started: {{at}}",
-    "finishedAt": "Finished: {{at}}",
     "verifiedAt": "Settled at {{at}}",
     "pausedRepeatedUnknown": "2 nodes in a row did not confirm their upgrade, so the batch is paused. Check them or the target version, then continue.",
     "pausedArtifact": "The Agent package is unavailable, so the batch is paused. Restore it, then continue.",
@@ -1034,6 +1024,11 @@
       "node_removed": "The node was removed from the platform, so no upgrade can still be running.",
       "reconnected_old_version": "The node later reconnected on its previous version, so the upgrade did not take effect.",
       "still_old_version": "The node stayed online on its previous version, so the upgrade did not take effect."
+    },
+    "summary": "{{eligible}} nodes will be upgraded; {{skipped}} skipped.",
+    "summaryAll": "{{eligible}} nodes will be upgraded.",
+    "warning": {
+      "interrupt": "The Agent restarts during the upgrade, so in-flight inference requests on the node are cut. Upgrade multi-node and PD nodes one at a time."
     }
   },
   "cardScheduling": {

@@ -533,7 +533,7 @@ test("batch upgrade retains checked nodes across pages and previews only those n
   fireEvent.click(rowOf("batch-node-11").getByRole("checkbox")); await screen.findByText("2 nodes selected");
   fireEvent.click(screen.getByRole("button", { name: "Previous page" })); await screen.findByText("batch-node-0");
   assert.equal(rowOf("batch-node-0").getByRole("checkbox").getAttribute("aria-checked"), "true");
-  fireEvent.click(batch); await screen.findByRole("dialog", { name: "Review Agent upgrade" });
+  fireEvent.click(batch); await screen.findByRole("dialog", { name: /Upgrade Agents to 0\.9\.8/ });
   assert.deepEqual(requests, [{ node_uuids: ["batch-0", "batch-11"] }]);
 });
 
@@ -561,18 +561,17 @@ test("a node-list refresh failure preserves an open upgrade preview and its retr
   renderPage(); await screen.findByText(onlineNode.name!);
   fireEvent.click(rowOf(onlineNode.name!).getByRole("checkbox"));
   fireEvent.click(screen.getByRole("button", { name: "Upgrade selected Agents" }));
-  const modal = await screen.findByRole("dialog", { name: "Review Agent upgrade" });
+  const modal = await screen.findByRole("dialog", { name: /Upgrade Agents to 0\.9\.8/ });
   await within(modal).findByText("0.9.7 → 0.9.8");
-  fireEvent.click(within(modal).getByRole("checkbox"));
-  fireEvent.click(within(modal).getByRole("button", { name: "Update to this version" }));
+  fireEvent.click(await within(modal).findByRole("button", { name: "Upgrade 1 nodes" }));
   await within(modal).findByText("create response lost");
   failList = true;
   await act(async () => {
     for (const listener of Events.listeners.get("node") ?? []) listener(new dom.window.MessageEvent("node", { data: JSON.stringify({ key: onlineNode.uuid, reason: "status" }) }) as unknown as Event);
   });
   await screen.findByText("node list temporarily unavailable");
-  assert.ok(screen.getByRole("dialog", { name: "Review Agent upgrade" }) === modal);
-  fireEvent.click(within(modal).getByRole("button", { name: "Update to this version" }));
+  assert.ok(screen.getByRole("dialog", { name: /Upgrade Agents to 0\.9\.8/ }) === modal);
+  fireEvent.click(within(modal).getByRole("button", { name: "Upgrade 1 nodes" }));
   await waitFor(() => assert.equal(submitted.length, 2));
   assert.equal(submitted[0].idempotency_key, submitted[1].idempotency_key);
   assert.deepEqual(submitted[1].node_uuids, [onlineNode.uuid]);

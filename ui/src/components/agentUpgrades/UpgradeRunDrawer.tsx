@@ -4,6 +4,21 @@ import { useTranslation } from "react-i18next";
 import { api, useEvents, usePolling } from "../../api";
 import { agentUpgradeRunning, type AgentUpgradeItem, type AgentUpgradeRun } from "../../agentUpgradesTypes";
 import { formatTimeSec } from "../../i18n/datetime";
+import { shortBuild } from "../../buildId";
+
+const PAGE_SIZE = 10;
+
+/** Column widths; the table's declared scroll width is their sum, so a wide drawer shows no scroll and a narrow one scrolls rather than squeezing a column. */
+const COLUMN_WIDTHS = { node: 220, from: 150, current: 150, phase: 140, reason: 280, time: 250 };
+const TABLE_WIDTH = Object.values(COLUMN_WIDTHS).reduce((sum, width) => sum + width, 0);
+
+/** One line for an attempt's times: the finish drops the date when it is the start's day. */
+function timeRange(started?: string, finished?: string): string {
+  const start = formatTimeSec(started), end = formatTimeSec(finished);
+  if (!started) return end;
+  if (!finished) return `${start} → —`;
+  return `${start} → ${end.slice(0, 10) === start.slice(0, 10) ? end.slice(11) : end}`;
+}
 import UpgradeSummary from "./UpgradeSummary";
 import { useAgentUpgradeAction } from "../../agentUpgrades";
 
@@ -19,7 +34,7 @@ export default function UpgradeRunDrawer({ runID, isAdmin, onClose, onContinue, 
   onContinue: (id: number) => void;
   onChanged: () => void;
 }) {
-  const { t } = useTranslation("nodes");
+  const { t, i18n } = useTranslation("nodes");
   const [watch, setWatch] = useState(true);
   const interval = watch ? 5000 : 0;
   const status = usePolling(() => api.agentUpgradeRun(runID), interval, [runID, interval]);
@@ -27,7 +42,7 @@ export default function UpgradeRunDrawer({ runID, isAdmin, onClose, onContinue, 
   useEffect(() => { if (run) setWatch(agentUpgradeRunning(run) || run.blocked_by_item?.run_id === run.id); }, [run]);
   const [page, setPage] = useState(1);
   const [phase, setPhase] = useState("");
-  const items = usePolling(() => api.agentUpgradeItems(runID, page, 20, phase), interval, [runID, page, phase, interval]);
+  const items = usePolling(() => api.agentUpgradeItems(runID, page, PAGE_SIZE, phase), interval, [runID, page, phase, interval]);
   const refresh = () => { void status.refresh(); void items.refresh(); onChanged(); };
   useEvents("agent_upgrade", refresh);
   const [busy, setBusy] = useState(false);
@@ -40,11 +55,10 @@ export default function UpgradeRunDrawer({ runID, isAdmin, onClose, onContinue, 
     catch (e) { setError((e as Error).message); }
     finally { setBusy(false); }
   });
-  const renderVersion = (value?: string) => <Typography.Text style={{ overflowWrap: "anywhere" }}>{value || "—"}</Typography.Text>;
+  const renderVersion = (value?: string) => <span className="whitespace-nowrap" title={value}>{shortBuild(value) || "—"}</span>;
   return <>
     <Drawer open title={t("batchUpgrade.runTitle", { id: runID })} width="min(1280px, calc(100vw - 32px))" onClose={onClose}>
       <Space direction="vertical" style={{ width: "100%" }} size="middle">
-        <Button onClick={refresh}>{t("batchUpgrade.refresh")}</Button>
         {status.loading && !run && <Spin aria-label={t("batchUpgrade.loadingRun")} />}
         {(status.error || items.error || error) && <Alert type="error" showIcon message={error || status.error?.message || items.error?.message} />}
         {run && <>
@@ -52,40 +66,41 @@ export default function UpgradeRunDrawer({ runID, isAdmin, onClose, onContinue, 
           <UpgradeSummary counts={run.counts} />
           {run.state === "paused" && <Alert type="warning" showIcon message={t(run.pause_reason === "repeated_unknown_outcome" ? "batchUpgrade.pausedRepeatedUnknown" : "batchUpgrade.pausedArtifact")} />}
           {run.blocked_by_item && run.state !== "paused" && <Alert type={run.blocked_by_item.reason === "unconfirmed" ? "info" : "warning"} showIcon message={t(run.blocked_by_item.reason === "unconfirmed" ? "batchUpgrade.blocked" : "batchUpgrade.activeBlock", { name: run.blocked_by_item.name || run.blocked_by_item.node_uuid })} />}
-          <Space wrap>
-            {isAdmin && (run.counts.queued > 0 || run.counts.active > 0) && !run.stop_requested_at && <Popconfirm title={t("batchUpgrade.stopConfirm")} description={t("batchUpgrade.stopHelp")} onConfirm={() => void stop()} okText={t("batchUpgrade.stop")} cancelText={t("batchUpgrade.close")}>
+          {isAdmin && <Space wrap className="empty:hidden">
+            {(run.counts.queued > 0 || run.counts.active > 0) && !run.stop_requested_at && <Popconfirm title={t("batchUpgrade.stopConfirm")} description={t("batchUpgrade.stopHelp")} onConfirm={() => void stop()} okText={t("batchUpgrade.stop")} cancelText={t("batchUpgrade.close")}>
               <Button disabled={busy}>{t("batchUpgrade.stop")}</Button>
             </Popconfirm>}
-            {isAdmin && (run.counts.failed + run.counts.interrupted + run.counts.cancelled + run.counts.queued + run.counts.unconfirmed > 0) && (run.state === "paused" || !agentUpgradeRunning(run)) &&
+            {(run.counts.failed + run.counts.interrupted + run.counts.cancelled + run.counts.queued + run.counts.unconfirmed > 0) && (run.state === "paused" || !agentUpgradeRunning(run)) &&
               <Button disabled={busy || (!!run.blocked_by_item && !(["paused", "interrupted"].includes(run.state) && run.counts.active === 0 && run.blocked_by_item.run_id === run.id && run.blocked_by_item.reason === "active_run"))} onClick={() => onContinue(runID)}>{t("batchUpgrade.continue")}</Button>}
-          </Space>
+          </Space>}
         </>}
-        <Select value={phase} style={{ minWidth: 220 }} aria-label={t("batchUpgrade.filter")} onChange={(value) => { setPhase(value); setPage(1); }} options={[
-          { value: "", label: t("batchUpgrade.allResults") },
-          ...phases.map((value) => ({ value, label: t(`batchUpgrade.phase.${value}`) })),
-        ]} />
+        <Space wrap>
+          <Select value={phase} style={{ minWidth: 220 }} aria-label={t("batchUpgrade.filter")} onChange={(value) => { setPhase(value); setPage(1); }} options={[
+            { value: "", label: t("batchUpgrade.allResults") },
+            ...phases.map((value) => ({ value, label: t(`batchUpgrade.phase.${value}`) })),
+          ]} />
+          <Button onClick={refresh}>{t("batchUpgrade.refresh")}</Button>
+        </Space>
         <Table<AgentUpgradeItem> size="small" rowKey="node_uuid" loading={items.loading} dataSource={items.data?.items ?? []}
-          tableLayout="fixed" scroll={{ x: 1164 }}
+          tableLayout="fixed" scroll={{ x: TABLE_WIDTH }}
           locale={{ emptyText: t("batchUpgrade.noItems") }}
-          pagination={{ current: page, pageSize: 20, total: items.data?.total ?? 0, showSizeChanger: false, onChange: setPage }}
+          pagination={{ current: page, pageSize: PAGE_SIZE, total: items.data?.total ?? 0, showSizeChanger: false, onChange: setPage }}
           columns={[
-            { title: t("batchUpgrade.columns.node"), key: "node", width: 220, render: (_, item) => <div style={{ overflowWrap: "anywhere" }}><Typography.Text style={{ display: "block" }}>{item.name || item.node_uuid}</Typography.Text><Typography.Text type="secondary">{item.node_uuid}</Typography.Text></div> },
-            { title: t("batchUpgrade.columns.from"), dataIndex: "from_version", width: 150, render: renderVersion },
-            { title: t("batchUpgrade.columns.current"), key: "current", width: 150, render: (_, item) => renderVersion(item.current_version || item.observed_version) },
-            { title: t("batchUpgrade.columns.phase"), dataIndex: "phase", width: 144, render: (value: string, item) => <Tag>{value === "unconfirmed" && item.verified_at
+            { title: t("batchUpgrade.columns.node"), key: "node", width: COLUMN_WIDTHS.node, render: (_, item) => <Typography.Text ellipsis={{ tooltip: `${item.name || item.node_uuid}\n${item.node_uuid}` }}>{item.name || item.node_uuid}</Typography.Text> },
+            { title: t("batchUpgrade.columns.from"), dataIndex: "from_version", width: COLUMN_WIDTHS.from, render: renderVersion },
+            { title: t("batchUpgrade.columns.current"), key: "current", width: COLUMN_WIDTHS.current, render: (_, item) => renderVersion(item.current_version || item.observed_version) },
+            { title: t("batchUpgrade.columns.phase"), dataIndex: "phase", width: COLUMN_WIDTHS.phase, render: (value: string, item) => <Tag>{value === "unconfirmed" && item.verified_at
               ? t(`batchUpgrade.settled.${item.verification_code}`, { defaultValue: t("batchUpgrade.phase.unconfirmed") })
               : t(`batchUpgrade.phase.${value}`, { defaultValue: t("batchUpgrade.phase.unknown") })}</Tag> },
-            { title: t("batchUpgrade.columns.reason"), key: "reason", width: 280, render: (_, item) => <Space direction="vertical" size={0} style={{ width: "100%", overflowWrap: "anywhere" }}>
+            { title: t("batchUpgrade.columns.reason"), key: "reason", width: COLUMN_WIDTHS.reason, render: (_, item) => <Space direction="vertical" size={0} style={{ width: "100%", overflowWrap: "anywhere" }}>
               {!item.reason && !item.error && !item.verified_at && !item.verification_note && "—"}
               {item.reason && !(item.phase === "unconfirmed" && item.verified_at) && <Typography.Text>{t(`batchUpgrade.reason.${item.reason}`, { defaultValue: t("batchUpgrade.reason.unavailable") })}</Typography.Text>}
-              {item.error && <Typography.Text type="danger">{item.error}</Typography.Text>}
+              {/* A skip is fully said by its reason code; the server's English note would repeat it in red. */}
+              {item.error && !(item.phase === "skipped" && item.reason && i18n.exists(`nodes:batchUpgrade.reason.${item.reason}`)) && <Typography.Text type="danger">{item.error}</Typography.Text>}
               {item.verified_at && <Typography.Text>{[item.verification_code && item.verification_code !== "operator_verified" ? t(`batchUpgrade.verification.${item.verification_code}`, { defaultValue: "" }) : "", t("batchUpgrade.verifiedAt", { at: formatTimeSec(item.verified_at) })].filter(Boolean).join(" ")}</Typography.Text>}
               {item.verification_note && !systemNoteCodes.has(item.verification_code ?? "") && <Typography.Text>{t("batchUpgrade.verified", { note: item.verification_note })}</Typography.Text>}
             </Space> },
-            { title: t("batchUpgrade.columns.time"), key: "time", width: 220, render: (_, item) => <Space direction="vertical" size={0} style={{ whiteSpace: "nowrap" }}>
-              <Typography.Text>{t("batchUpgrade.startedAt", { at: formatTimeSec(item.started_at) })}</Typography.Text>
-              <Typography.Text>{t("batchUpgrade.finishedAt", { at: formatTimeSec(item.finished_at) })}</Typography.Text>
-            </Space> },
+            { title: t("batchUpgrade.columns.time"), key: "time", width: COLUMN_WIDTHS.time, render: (_, item) => <span className="whitespace-nowrap">{timeRange(item.started_at, item.finished_at)}</span> },
           ]} />
       </Space>
     </Drawer>
