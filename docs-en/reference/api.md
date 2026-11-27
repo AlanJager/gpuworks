@@ -2478,7 +2478,7 @@ Fields of `GET /api/v1/console/manifest`:
 | `edition` | Build name, for display only |
 | `features[]` | Current availability of each declared feature (those compiled modules declare together with those the plugin packages installed now declare, changing as soon as a plugin is installed or uninstalled), sorted by `key`: `{key, access, presentation, link?, message?, limits}`. `access` is `full` / `read_only` / `locked` / `hidden`; `presentation` is `promote` (shown as locked with `link` when unavailable) or `hidden` (hidden entirely when unavailable, so locked is returned as `hidden`); `message` is a product message `{code, params?, message}` explaining the current availability; `limits` is `[{dim, max}]`, where a `null` `max` means unlimited |
 | `nav[]` | Menu entries extensions add to the console `{id, group, label_key, icon?, route, feature?}`; entries whose feature is `hidden` are not returned |
-| `banners[]` | Notices shown at the top of every page `{id, severity, message, link?}`; `severity` is `info` / `warning` / `danger` (any other value is returned as `info`), and `message` is a product message `{code, params?, message}` |
+| `banners[]` | Notices shown at the top of every page `{id, severity, message, link?, ack_key?}`; `severity` is `info` / `warning` / `danger` (any other value is returned as `info`), and `message` is a product message `{code, params?, message}`; a notice with `ack_key` can be acknowledged by the user, the console remembers the acknowledged keys per user and no longer shows a notice with the same key, and a new key from the source shows it again (`ack_key` is letters, digits and `._:-`, at most 128 characters; one that does not match is not returned) |
 
 ### Whether GPU capacity is known
 
@@ -2586,5 +2586,5 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: d90c2a891f76775aec3f7b48248481bd52e0751724b4a75648d8f62318cd8799 ### OpenAI-Compatible Files and Batches Endpoints -->
 <!-- translation-source-sha256: a896a5dab1c99b94dd8ffc62b82650f6309812d3ef0bf90b28daeb38d7cc2c25 ## Out of Scope -->
 <!-- translation-source-sha256: c4754e1c0339b7b8667346967d3065633f65a4f92b8e5c978e7d78101e64be0e ## Route and Contract Maintenance -->
-<!-- translation-source-sha256: 1675912304c727803750974af1e4156fd8251b789694bc2428ad15395793ba68 ### Console manifest and extension routes -->
+<!-- translation-source-sha256: 6ea5d24090ccfe30faedc8cfd5a1e94fecad4aa528cf75f0630c56261f3628db ### Console manifest and extension routes -->
 <!-- translation-source-sha256: 3b39ae121cdbd7a4964c45d1deacffa4a4772f5ddd32c4530ca202ffcd247aef ### Whether GPU capacity is known -->

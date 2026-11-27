@@ -30,6 +30,8 @@ export interface ConsoleBanner {
   severity: "info" | "warning" | "danger";
   message: ProductMessage;
   link?: string;
+  // Present when the viewer may acknowledge the banner; a new key raises it again.
+  ack_key?: string;
 }
 
 /**

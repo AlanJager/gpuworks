@@ -75,4 +75,11 @@ type ConsoleBanner struct {
 	Severity string         `json:"severity"`
 	Message  ProductMessage `json:"message"`
 	Link     string         `json:"link,omitempty"`
+	// AckKey, when present, lets a viewer acknowledge the banner: the
+	// console offers an acknowledge control and, once it is used, no longer
+	// shows a banner with this key to that viewer. The source chooses the
+	// key, so a banner that should be raised again (a new stage, a new
+	// deadline) carries a new key; one without a key is never acknowledged.
+	// Matches api.BannerAckKeyPattern, else it is dropped.
+	AckKey string `json:"ack_key,omitempty"`
 }
