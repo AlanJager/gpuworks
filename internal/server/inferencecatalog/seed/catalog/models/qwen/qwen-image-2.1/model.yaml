@@ -1,0 +1,117 @@
+model_id: qwen/qwen-image-2.1
+source: upstream
+display_title: Qwen-Image-2.1
+parameter_count: 7B DiT
+architecture: QwenImage21Pipeline
+model_config: {kv_cache: false}
+specs:
+- name: bf16-sglang-nvidia-single-gpu
+  display_name_zh_cn: NVIDIA Ampere 及以上 · BF16 · 单卡至少 47 GiB
+  display_name_en: NVIDIA Ampere+ · BF16 · Single GPU with at least 47 GiB
+  scenario: balanced
+  engine: sglang
+  image: gpuworks/gpuworks-runner:cuda13.0-sglang0.5.21-r2
+  weights:
+    quantization: bf16
+    sources:
+    - huggingface:
+        repo_id: Qwen/Qwen-Image-2.1
+        revision: d26bb61231c349cf6b7896fa83353113880e1ba3
+    - modelscope:
+        repo_id: Qwen/Qwen-Image-2.1
+        revision: 45ee13449c69593e1b7a10d7d1cba830c7ada657
+  weight_bytes: 33115613408
+  gpus:
+    vendor: nvidia
+    cc: '>=8.0'
+  entrypoint: [sglang, serve]
+  args:
+  - --model-type
+  - diffusion
+  - --model-id
+  - Qwen-Image-2.1
+  - --backend
+  - sglang
+  - --num-gpus
+  - '1'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.nnodes != 1 or gpu.count != 1:
+              return reject("requires exactly one GPU on one node")
+          # The validated card reports 47.99 GiB of physical VRAM.
+          if gpu.min_memory_gib < 47:
+              return reject("requires at least 47 GiB of VRAM per GPU")
+          # Reserve 42 GiB for the 30.8 GiB weights and inference overhead.
+          return accept(gpu_memory_mib_per_device = 43008)
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.image.edit
+      endpoint: /v1/images/edits
+      mode: sync
+      request_encoding: multipart
+      request_defaults: {output_format: png}
+- name: bf16-sglang-diffusers-ppu-zw810e
+  display_name_zh_cn: ZW810E · 仅 hggc13.0-sglang0.5.13-r3 · 启动时安装 Diffusers 补丁
+  display_name_en: ZW810E · hggc13.0-sglang0.5.13-r3 only · Diffusers patch at startup
+  scenario: balanced
+  engine: callable
+  image: swr.cn-southwest-2.myhuaweicloud.com/gpuworks/gpuworks-runner:hggc13.0-sglang0.5.13-r3
+  weights:
+    quantization: bf16
+    sources:
+    - modelscope:
+        repo_id: Qwen/Qwen-Image-2.1
+        revision: 45ee13449c69593e1b7a10d7d1cba830c7ada657
+    - huggingface:
+        repo_id: Qwen/Qwen-Image-2.1
+        revision: d26bb61231c349cf6b7896fa83353113880e1ba3
+  weight_bytes: 33115613408
+  gpus:
+    vendor: ppu
+    name: '(?i)(^|[^A-Za-z0-9])ZW810E([^A-Za-z0-9]|$)'
+  placement:
+    language: starlark
+    resolver: |
+      def resolve(gpu):
+          if gpu.nnodes != 1:
+              return reject("requires one ZW810E node")
+          if gpu.count not in (1, 2, 4):
+              return reject("select 1, 2 or 4 ZW810E PPUs")
+          return {"GPU_COUNT": gpu.count}
+  assets:
+  - file: assets/qwenimage21-ppu.tar.gz
+    sha256: fba95b3998163924b96ed34a7f76eaa4477049cb2e630af6614411acbfbf2af1
+    size_bytes: 39085
+    unpack_to: /opt/gpuworks/qwenimage21
+  pre_start_argv: [python3, /opt/gpuworks/qwenimage21/prepare.py]
+  entrypoint: [sglang, serve]
+  args:
+  - --model-type
+  - diffusion
+  - --backend
+  - diffusers
+  - --model-path
+  - ${MODEL_PATH}
+  - --num-gpus
+  - ${GPU_COUNT}
+  - --host
+  - ${API_HOST}
+  - --port
+  - ${API_PORT}
+  env:
+    HF_HUB_OFFLINE: '1'
+    TRANSFORMERS_OFFLINE: '1'
+    NCCL_SOCKET_IFNAME: lo
+    GLOO_SOCKET_IFNAME: lo
+  api:
+    health_endpoint: /health
+    operations:
+    - type: openai.image.edit
+      endpoint: /v1/images/edits
+      mode: sync
+      request_encoding: multipart
+      request_defaults: {output_format: png}
+input_modalities: [text, image]

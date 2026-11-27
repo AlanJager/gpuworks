@@ -17,6 +17,27 @@ import (
 // name the predicate would have rejected first.
 const ppuDeviceName = "PPU-M890"
 
+func TestQwenImage21ZW810EPlacement(t *testing.T) {
+	_, spec := catalogSpec(t, "qwen/qwen-image-2.1", "bf16-sglang-diffusers-ppu-zw810e")
+	for _, tc := range []struct {
+		nodes, cards int
+		accept       bool
+	}{
+		{1, 1, true}, {1, 2, true}, {1, 4, true},
+		{1, 3, false}, {1, 8, false}, {2, 1, false}, {2, 4, false},
+	} {
+		result, err := placement.Resolve(t.Context(), spec.Placement.Resolver, placement.GPU{
+			Count: tc.cards, NNodes: tc.nodes, Vendor: "ppu",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (result.Reason == "") != tc.accept || (tc.accept && result.Variables["GPU_COUNT"] != int64(tc.cards)) {
+			t.Errorf("%d nodes × %d cards: reason=%q variables=%v", tc.nodes, tc.cards, result.Reason, result.Variables)
+		}
+	}
+}
+
 // ppuPinnedCardCount matches a resolver that only accepts one exact card count.
 var ppuPinnedCardCount = regexp.MustCompile(`gpu\.count != (\d+)`)
 
