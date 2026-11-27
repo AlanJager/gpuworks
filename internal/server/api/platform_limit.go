@@ -95,6 +95,13 @@ var platformRecoveryRoutes = map[string]bool{
 	"GET /slurm/token-status":   true,
 	// The check of a Kubernetes cluster's agents only reads the cluster.
 	"GET /kube/check.sh": true,
+	// Writes that only take access away (ADR 0071: a limit never stops an
+	// administrator from tightening): disabling an account, and removing one
+	// of its links to an external identity, which removes a way to sign in.
+	// Enabling an account and adding a link give access, so they stay
+	// refused like any other change.
+	"POST /api/v1/users/{id}/disable":                   true,
+	"DELETE /api/v1/users/{id}/identities/{identityID}": true,
 }
 
 // platformRecoveryPrefixes are subtrees served under any limit: the

@@ -15,9 +15,39 @@ type User struct {
 	// set it for every administrator; EnsureAdmin and reset-password set it
 	// for theirs; users created later start without it.
 	LocalAdmin bool `gorm:"not null;default:false"`
+	// DisabledAt is when the account was disabled (ADR 0085): empty while the
+	// user is enabled. A disabled user cannot sign in, and their platform
+	// tokens and inference API keys are refused with USER_DISABLED. Sessions
+	// are deleted when the account is disabled; their data and keys are kept,
+	// so enabling the account again restores everything.
+	DisabledAt *time.Time
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 }
+
+// UserIdentity links a user to an identity in an outside identity source
+// (ADR 0085): one row per (source, subject). Subject is the identity source's
+// own immutable id, never a username or an email. The source is named by the
+// extension (a plugin package or a compiled module) that owns it.
+type UserIdentity struct {
+	ID     uint `gorm:"primaryKey"`
+	UserID uint `gorm:"index;not null"`
+	// Source is the extension's source name, [a-z][a-z0-9_]{1,31}.
+	Source string `gorm:"size:32;not null;uniqueIndex:idx_user_identities_source_subject,priority:1"`
+	// Subject is the identity source's id for this user.
+	Subject string `gorm:"size:256;not null;uniqueIndex:idx_user_identities_source_subject,priority:2"`
+	// CreatedAt is when the link was made; LastSignInAt the last sign-in
+	// through it (empty before the first).
+	CreatedAt    time.Time
+	LastSignInAt *time.Time
+}
+
+func (UserIdentity) TableName() string { return "user_identities" }
+
+// IsLocalAdmin reports whether the account holds the break-glass floor of
+// ADR 0071 decision 11: the stored flag counts only while the role is admin,
+// so a demoted user loses it without a write.
+func (u User) IsLocalAdmin() bool { return u.LocalAdmin && u.Role == "admin" }
 
 // APIKey authenticates data-plane (/v1) and API access. The prefix is stored in
 // clear for O(1) lookup; the full key is verified against an argon2id hash.

@@ -1393,6 +1393,7 @@ var migrations = []migration{
 		// it yet, and the next report or hold pass asks them.
 		return db.Migrator().AddColumn(&GPU{}, "SchedulingHeldBy")
 	}},
+	{Version: 252, Name: "user_identities_and_disabled", Apply: addUserIdentities},
 }
 
 // modelFileNetworkColumns are the columns migrations 76 and 77 added to
@@ -1697,7 +1698,7 @@ func applyMigration(db *gorm.DB, m migration) error {
 // AutoMigrateDev exposes the old schema convenience path for local development.
 func (s *Store) AutoMigrateDev() error {
 	return s.db.AutoMigrate(
-		&SchemaMigration{}, &Node{}, &GPU{}, &User{}, &APIKey{}, &APIKeyDeployment{}, &ManagementSession{},
+		&SchemaMigration{}, &Node{}, &GPU{}, &User{}, &UserIdentity{}, &APIKey{}, &APIKeyDeployment{}, &ManagementSession{},
 		&Model{}, &ModelFile{}, &Deployment{}, &Instance{}, &InstanceEvent{},
 		&Provider{}, &ProviderInstance{}, &ProviderBootstrapToken{}, &NodeSSHCredential{}, &Setting{}, &AIConfig{}, &Profile{}, &ImageSeries{}, &Image{}, &ImageNode{}, &Storage{}, &StorageNode{}, &StorageNodeState{}, &TerminalSession{}, &BenchmarkRun{}, &BenchmarkPoint{}, &InferenceModel{}, &InferenceSpecRow{}, &Network{}, &NetworkAttachment{}, &NetworkTestRun{}, &DeploymentNodeRequirement{}, &InstanceModelFile{}, &PlatformSSHKey{}, &PlatformToken{},
 		&PullSourceRule{}, &PullSourceRuleEndpoint{}, &PullSourceRuleRequirement{}, &SyncGroup{}, &SyncGroupRequirement{}, &SourceCredential{}, &PullProxy{}, &PullProxyRequirement{},

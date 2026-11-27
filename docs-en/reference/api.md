@@ -159,7 +159,9 @@ The Cookie is set to `HttpOnly` and `SameSite=Lax` and stores an opaque session 
 When a request includes both Bearer and Cookie credentials, Bearer takes precedence; an invalid Bearer does not fall back to the Cookie.
 
 An incorrect username or password returns `401 INVALID_CREDENTIALS`; overly frequent login attempts return `429 LOGIN_THROTTLED`.
-Wait for the number of seconds specified by the `Retry-After` response header before retrying. For other errors, see [Common HTTP Statuses and Error Codes](api-conventions.md#常见-http-状态与错误码).
+Wait for the number of seconds specified by the `Retry-After` response header before retrying. A disabled account returns `403 USER_DISABLED`; when
+`auth.local_password` in `server.yaml` is `local_admin` and the user is not a local administrator, it returns `403 LOCAL_PASSWORD_DISABLED`
+(both are judged only after the password checks out, so neither tells anyone else about the account's state). For other errors, see [Common HTTP Statuses and Error Codes](api-conventions.md#常见-http-状态与错误码).
 
 ### Change Password
 
@@ -195,6 +197,7 @@ and must also be associated with a valid session. An unexpired JWT alone does no
 | Calling `auth/me` or passive polling | Does not extend the idle timeout |
 | Performing management write requests through a login session, or calling `auth/activity` to report real activity | Extends the idle timeout but not the absolute deadline measured from login |
 | Password change or reset (console or `reset-password`) | Revokes the user's management sessions and invalidates associated JWTs; does not revoke platform API tokens or API keys |
+| The account is disabled (`POST /api/v1/users/{id}/disable`) | Deletes all of the user's management sessions at once; sign-in, platform tokens and inference API keys are refused (`USER_DISABLED`); the data and keys are kept and work again once the account is enabled |
 | Logout | Revokes the session associated with the submitted credential, invalidates associated JWTs, and clears the Cookie; repeated logout still succeeds |
 | A JWT not bound to a session before the upgrade, or an old Cookie | Requires logging in again |
 
@@ -204,6 +207,29 @@ Platform API tokens authenticate independently according to their own scope and 
 
 An invalid session returns `401 AUTHENTICATION_REQUIRED`; unavailable session storage returns 503.
 Login, logout, and management write requests using login sessions check the request origin; cross-origin requests return `403 MANAGEMENT_ORIGIN_REJECTED`.
+
+## Accounts (Accounts and External Identities)
+
+The only account is the administrator created at installation by default. Administrators list accounts here, disable and enable them, and maintain the links from an account to an outside identity source
+([ADR 0085](../adr/0085-external-identity-connectors.md)); an identity connector (DingTalk, for example) finds the account by its link at sign-in, and it can neither create an administrator nor disable or change one.
+
+| Method | Path | Description | Authentication |
+|---|---|---|---|
+| GET | `/api/v1/users` | Every account, disabled ones included: `{items:[{id,username,role,local_admin,disabled,disabled_at,created_at,updated_at}], total}` | Administrator login session |
+| POST | `/api/v1/users/{id}/disable` | Disables the account: deletes all of its sessions, and sign-in, platform tokens and inference API keys are refused. Returns the updated account | Administrator login session |
+| POST | `/api/v1/users/{id}/enable` | Enables the account; its data and keys work again. Returns the updated account | Administrator login session |
+| GET | `/api/v1/users/{id}/identities` | The account's links to outside identity sources: `{items:[{id,source,subject,created_at,last_sign_in_at}], total}` | Administrator login session |
+| POST | `/api/v1/users/{id}/identities` | Adds a link: `{source, subject}`; returns 201 and the link | Administrator login session |
+| DELETE | `/api/v1/users/{id}/identities/{identityID}` | Removes one of the account's links; returns 204 | Administrator login session |
+
+- These routes accept login sessions only: a platform API token returns `403 PLATFORM_TOKEN_NOT_ALLOWED`, and a member returns `403 ADMINISTRATOR_REQUIRED`.
+- A missing account (or an id that is not a positive integer) returns `404 USER_NOT_FOUND`; a missing link, or one that belongs to another account, returns `404 EXTERNAL_IDENTITY_NOT_FOUND`.
+- `source` is the identity connector's source name and must match `[a-z][a-z0-9_]{1,31}`; `subject` is the identity source's immutable id, 1 to 256 bytes. A violation returns `400 EXTERNAL_IDENTITY_INVALID`, and a pair that is already linked returns `409 EXTERNAL_IDENTITY_TAKEN`.
+- While the whole server is limited (read-only or locked), disabling an account and removing a link still work: they only take access away. Enabling an account and adding a link give access and are refused as changes (`403 PLATFORM_READ_ONLY` / `PLATFORM_LOCKED`).
+- The last enabled local administrator (an administrator whose `local_admin` is true) cannot be disabled; that returns `403 LAST_LOCAL_ADMIN`. The platform keeps one account that can sign in while the identity source is unreachable, and this also keeps an administrator from locking themselves out. Disabling an ordinary administrator or a member is unrestricted.
+- Disabling takes effect at once in this process; other cluster members follow at the latest when the inference API key cache (5 minutes) and the platform token cache (1 minute) expire. Sessions are read from the database per request, so they end at once everywhere.
+- Disabling does not interrupt work already running: a [batch](#batches批处理任务) submitted with the account's key before it was disabled still sends its requests, while new requests and new batches are refused.
+- A link is looked up only by `(source, subject)`, never matched automatically by username or email; linking an existing account to an external identity is done explicitly by an administrator here.
 
 ## Nodes (Node Connection)
 
@@ -903,7 +929,7 @@ The following illustrates the key fields of a regular deployment, omitting other
 | `health` | Object | Health check status and latest results; see [Health Checks](#健康检查) |
 | `instances` (optional) | Array of objects | Instances in the deployment; `uuid` identifies an instance, `state` indicates its state, and `node_uuid` and `gpu_indexes` indicate where it runs |
 | `runtime_nodes` (optional) | Array of objects | The nodes the instances are on now, one entry per node: `{node_uuid, node_name, instances}`, with the meaning and value the same field has on a list row. `node_uuid`, `node_name` and `node_names` are the placement target, which can differ from it |
-| `model_progress` (optional) | Array of objects | Preparation status of model files; `state` is the file state, `progress` is progress from 0–1, and `message` provides related information; `retry` appears while a download waits to retry the same address, shaped as in [List Filtering and Presence Summary](#list-filtering-and-presence-summary) |
+| `model_progress` (optional) | Array of objects | Preparation status of model files; `state` is the file state, `progress` is progress from 0–1, and `message` provides related information; `retry` appears while a download waits to retry the same address, shaped as in [List Filtering and Presence Summary](#列表筛选与就位汇总) |
 | `quick_params`, `extra_args` (optional) | Object, string | Saved launch configuration and extra arguments; see [Deployment Launch Parameter Sources](deployment-launch-sources.md) |
 | `pd` (optional) | Object | PD deployment mode and replica counts and states for each role; see [PD Disaggregated Deployment](#pd-分离部署placementpd) |
 | `node_replacement` | Object | How long a lost node is waited for before its replicas move, `{after_sec}`; default 600, 0 means never |
@@ -2441,7 +2467,7 @@ A separately built server can mount its own management routes under `/api/v1/x/<
 - **Namespace and collisions**: an extension name must match `[a-z][a-z0-9_]{1,31}`; a route (relative to `/api/v1`) must be `/x/<name>` or start with `/x/<name>/`. The core registers no route under `/api/v1/x/`, so an extension name may equal a core path segment (such as `nodes`), and `/api/v1/nodes` stays the core route. `Router` panics at startup on a route outside its namespace or a method and path registered twice.
 - **Authentication**: extension routes use the same management authentication as core routes (including the session's origin check and renewal). Each declares one of three levels: `read` (any signed-in user and platform token; a read token only for GET/HEAD/OPTIONS), `admin` (also requires an administrator, otherwise `403 ADMINISTRATOR_REQUIRED`), or `admin-session` (an administrator with a login session only; a platform token gets `403 PLATFORM_TOKEN_NOT_ALLOWED`).
 - **Feature availability**: every extension route either belongs to one feature or is explicitly marked as a community route, never both. A feature's availability is `full`, `read_only`, `locked`, or `hidden`, enforced on the server: under `read_only` only reads pass (plus routes declared writable while read-only) and writes get `403 FEATURE_READ_ONLY`; under `locked` the route returns `403 FEATURE_UNAVAILABLE`; under `hidden` it returns `404 FEATURE_UNAVAILABLE`. When nothing answers for availability, the feature counts as unavailable and returns `FEATURE_PROVIDER_ABSENT`. The error's `params.feature` is the feature name.
-- **Availability of the whole server**: a separately built server can set the whole server to `read_only` or `locked`. While `read_only`, reads, `/v1/*` and `/api/v1/playground/v1/*` work as usual and changes get `403 PLATFORM_READ_ONLY`; while `locked`, reads work as usual, as do signing in, health checks, the console manifest, the connection of machines that already joined, plugin package management, the server's upgrade, diagnostics bundles and the routes of the extension that set the limit, and changes and `/v1/*` get `403 PLATFORM_LOCKED`. A request under `/api/v1` is authenticated before it is refused, so one that is not signed in still gets 401; a refusal on `/v1/*` has the gateway's error shape with the same code. Installing or upgrading a plugin package is refused like a change. While limited, `GET /api/v1/console/manifest` carries `platform` (`access`, `message`, and `link` for an administrator only); the community server is never limited and its manifest has no such field.
+- **Availability of the whole server**: a separately built server can set the whole server to `read_only` or `locked`. While `read_only`, reads, `/v1/*` and `/api/v1/playground/v1/*` work as usual and changes get `403 PLATFORM_READ_ONLY`; while `locked`, reads work as usual, as do signing in, health checks, the console manifest, the connection of machines that already joined, plugin package management, the server's upgrade, diagnostics bundles, the account operations that only take access away (disabling an account and removing one of its external identity links; enabling an account and adding a link are still refused as changes) and the routes of the extension that set the limit, and changes and `/v1/*` get `403 PLATFORM_LOCKED`. A request under `/api/v1` is authenticated before it is refused, so one that is not signed in still gets 401; a refusal on `/v1/*` has the gateway's error shape with the same code. Installing or upgrading a plugin package is refused like a change. While limited, `GET /api/v1/console/manifest` carries `platform` (`access`, `message`, and `link` for an administrator only); the community server is never limited and its manifest has no such field.
 - **AI assistant and MCP**: extension GET routes are closed to the AI assistant and MCP by default; only explicitly marked routes appear in the readable route list and can be read.
 - **Route inventory**: `api.RouteInventory` lists one route per line; an extension route adds `[access=…] [action=…] [feature=…]` (`[community]` for a community route), and an extension route that neither belongs to a feature nor is marked community fails the inventory.
 
@@ -2473,10 +2499,11 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: 07bbb1333fa351e29a815227a6849f59fad7ef2bedb4deeba1dfd62b5a75ac5d ### Real-Time Event Streams and Response Compression -->
 <!-- translation-source-sha256: e84017100ea5bd395dd6f4ddc000ef7b85d4ce62c29e008d613c0bf11ff9495b ### How Setting Changes Reach Nodes -->
 <!-- translation-source-sha256: dd05cb84569536c26f5469fce1e4dbc875e0c445cd676077ae3a32fc2320ee29 ## Auth -->
-<!-- translation-source-sha256: 16f64df1cf4b0d600ddac8d1033036cc031016cfca0375951216effed4a9a00e ### Login Request and Response -->
+<!-- translation-source-sha256: dfc4613cc2a88f811c4b1d0c1db326b19ef7263ba6659098e9fa8812b0b44a23 ### Login Request and Response -->
 <!-- translation-source-sha256: 0c5e5b2fbfc149bc9864e31a84b6c0bcf78d7b74a8bfeb0e3924ff0b27a78a43 ### Change Password -->
-<!-- translation-source-sha256: 78c7acae52d8a56aa6a026d187b7898535ed349c3236bcfaa5ee2d989a580c46 ### When Sessions Expire -->
+<!-- translation-source-sha256: 0567ae0b4b828c1e3b362f672b58365c8847feb841dd46ff763a72b9cd395ffe ### When Sessions Expire -->
 <!-- translation-source-sha256: 60f52e5578eaeb214401ce94f2639e999f5f048d60dfef2ae192cdc06720c4af ### Login Endpoint Errors and Origin Checks -->
+<!-- translation-source-sha256: 9d82cb1593ceb3f1d28993edc8749294c8ec9623b512c0cda75f4397b94a919a ## Accounts (Accounts and External Identities) -->
 <!-- translation-source-sha256: bac8251098baf9c5fbf9da0d5af2bb98ef14b3a55f5a9a4627a60d685522163f ## Nodes (Node Connection) -->
 <!-- translation-source-sha256: 1ae3a0719a72437f95ec918d60876a342fac4c10ec80a3e8626d12b9fb9bd5cf ### Bulk Agent Upgrades -->
 <!-- translation-source-sha256: 98c4940bec9d9b4daed0cf57ea7d5af70d4156588fdda2c82782b5fcf39f43ce ### Node List Filters and Response Fields -->
@@ -2559,5 +2586,5 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: d90c2a891f76775aec3f7b48248481bd52e0751724b4a75648d8f62318cd8799 ### OpenAI-Compatible Files and Batches Endpoints -->
 <!-- translation-source-sha256: a896a5dab1c99b94dd8ffc62b82650f6309812d3ef0bf90b28daeb38d7cc2c25 ## Out of Scope -->
 <!-- translation-source-sha256: c4754e1c0339b7b8667346967d3065633f65a4f92b8e5c978e7d78101e64be0e ## Route and Contract Maintenance -->
-<!-- translation-source-sha256: 1f082a1dc64217e23acc8eb01bf5b2781011ef80a37db2325a8ca6b8f758ede1 ### Console manifest and extension routes -->
+<!-- translation-source-sha256: 1675912304c727803750974af1e4156fd8251b789694bc2428ad15395793ba68 ### Console manifest and extension routes -->
 <!-- translation-source-sha256: 3b39ae121cdbd7a4964c45d1deacffa4a4772f5ddd32c4530ca202ffcd247aef ### Whether GPU capacity is known -->

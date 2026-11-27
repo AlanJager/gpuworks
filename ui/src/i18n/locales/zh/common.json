@@ -1128,7 +1128,14 @@
     "PROVIDER_HTTP_UNREACHABLE": "接口地址没有响应请求。",
     "PROVIDER_KIND_UNKNOWN": "未知的外部平台类型。",
     "PROVIDER_AUTH_FAILED": "平台拒绝了这组凭据。",
-    "PROVIDER_TEST_UNAVAILABLE": "连接测试未能完成，请稍后重试。"
+    "PROVIDER_TEST_UNAVAILABLE": "连接测试未能完成，请稍后重试。",
+    "USER_NOT_FOUND": "没有这个 id 的账号。",
+    "USER_DISABLED": "该账号已停用。管理员可以重新启用它。",
+    "LOCAL_PASSWORD_DISABLED": "此服务器通过身份源登录。只有本地管理员能用密码登录。",
+    "LAST_LOCAL_ADMIN": "这是最后一个启用的本地管理员。平台需要保留一个以免无法登录，所以不能停用它。",
+    "EXTERNAL_IDENTITY_INVALID": "来源名须符合 [a-z][a-z0-9_]{1,31}，主体须为 1 到 256 字节。",
+    "EXTERNAL_IDENTITY_TAKEN": "这个外部身份已经链接到一个账号。",
+    "EXTERNAL_IDENTITY_NOT_FOUND": "该账号没有这个 id 的外部身份。"
   },
   "apiErrorDetail": "{{category}}：{{detail}}",
   "checkStatus": {

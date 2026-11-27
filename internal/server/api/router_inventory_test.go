@@ -108,6 +108,7 @@ DELETE /api/v1/slurm/clusters/{uuid}
 DELETE /api/v1/storages/{id}
 DELETE /api/v1/storages/{id}/cache
 DELETE /api/v1/storages/{id}/files
+DELETE /api/v1/users/{id}/identities/{identityID}
 GET /api/v1/accelerator-vendors
 GET /api/v1/agent-upgrades
 GET /api/v1/agent-upgrades/summary
@@ -281,6 +282,8 @@ GET /api/v1/updates/server/result
 GET /api/v1/updates/server/versions
 GET /api/v1/usage-report
 GET /api/v1/usage-report/preview
+GET /api/v1/users
+GET /api/v1/users/{id}/identities
 GET /healthz
 GET /kube/check.sh
 GET /kube/manifest.yaml
@@ -443,6 +446,9 @@ POST /api/v1/telemetry/export/test
 POST /api/v1/updates/prefetch
 POST /api/v1/updates/server
 POST /api/v1/updates/server/upload
+POST /api/v1/users/{id}/disable
+POST /api/v1/users/{id}/enable
+POST /api/v1/users/{id}/identities
 PUT /api/v1/apikeys/{prefix}/priority
 PUT /api/v1/apikeys/{prefix}/scope
 PUT /api/v1/data-retention

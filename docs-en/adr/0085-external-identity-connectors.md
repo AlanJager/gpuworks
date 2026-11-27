@@ -92,9 +92,9 @@ Not implemented. Order, each step with contract tests (compiled modules through 
 3. The `write:accounts` permission for plugin packages, the `host.accounts` host interface and the manifest's `sign_in` declaration.
 4. The synchronous check interface for password connectors.
 
-<!-- translation-source-sha256: 72e12cab399c88335db818a80b630c43bb6b15bce19dc08dc867d0a69deaa055 # ADR 0085: External Identity: Plugins Are Identity Connectors, the Core Creates Accounts and Issues Sessions -->
+<!-- translation-source-sha256: 13bbe40a7699473736ab1458265564f06fa0f8e4b5436252cc48fbd0aa2f6014 # ADR 0085: External Identity: Plugins Are Identity Connectors, the Core Creates Accounts and Issues Sessions -->
 <!-- translation-source-sha256: a9b89a0d37a27045da734b29e4c42fbe8c18e709426c5670c535c0a3536cf009 ## Background -->
 <!-- translation-source-sha256: 411bb728db44ae720d5974565286b34fa81612a9814edfa4727a5638ecfc3e8a ## Decision -->
 <!-- translation-source-sha256: faf40b805c5bc1b22d8a18f0d7b80320fcc208a69eef6823e055d6e845901ffc ## Extension level -->
 <!-- translation-source-sha256: eaeee62586f9665447d7722bc0da9c3226e048659e0d3d461eaedb9575fdadbb ## Trade-offs -->
-<!-- translation-source-sha256: f3c47854cc0cc8927b65098264429e1d7a1a9265ca5da8fe688e894b2f215818 ## Implementation status -->
+<!-- translation-source-sha256: beb8b9c4519a933d70d7b44a64a368a6fededada856225311490e5a22634b33a ## Implementation status -->

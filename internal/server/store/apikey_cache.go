@@ -167,6 +167,28 @@ func (c *apiKeyCache) forget(prefix string) {
 	clear(c.inflight)
 }
 
+// forgetUser drops every cached secret of one user's keys, after the user was
+// disabled or enabled (DisableUser). Later requests re-read the database and
+// reach the user's current state; a verification in flight may not repopulate
+// the cache.
+func (c *apiKeyCache) forgetUser(userID uint) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for digest, entry := range c.verified {
+		if entry.identity.UserID == userID {
+			delete(c.verified, digest)
+			delete(c.lastUsed, entry.identity.KeyID)
+		}
+	}
+	for id, entry := range c.scopes {
+		if entry.identity.UserID == userID {
+			delete(c.scopes, id)
+		}
+	}
+	c.generation++
+	clear(c.inflight)
+}
+
 // dueLastUsed reports whether key id's last_used should be written now, and
 // if so records the write time so concurrent callers skip it.
 func (c *apiKeyCache) dueLastUsed(id uint) (time.Time, bool) {

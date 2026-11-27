@@ -94,6 +94,34 @@ type File struct {
 	Extensions map[string]yaml.Node `yaml:"extensions,omitempty"`
 	// Plugins is the plugin host's trust and site policy.
 	Plugins Plugins `yaml:"plugins,omitempty"`
+	// Auth is how users sign in (ADR 0085).
+	Auth Auth `yaml:"auth,omitempty"`
+}
+
+// Auth is the sign-in policy, a site decision rather than a business setting:
+// it decides what a locked-out administrator can fall back on.
+type Auth struct {
+	// LocalPassword is who may sign in with a local password: "all" (the
+	// default when empty) or "local_admin", where only users marked as local
+	// administrators may, and everyone else signs in through an external
+	// identity (ADR 0085 decision 8).
+	LocalPassword string `yaml:"local_password,omitempty"`
+}
+
+// LocalPasswordAll and LocalPasswordLocalAdmin are the values of
+// Auth.LocalPassword.
+const (
+	LocalPasswordAll        = "all"
+	LocalPasswordLocalAdmin = "local_admin"
+)
+
+// Validate accepts the documented values and empty.
+func (a Auth) Validate() error {
+	switch a.LocalPassword {
+	case "", LocalPasswordAll, LocalPasswordLocalAdmin:
+		return nil
+	}
+	return fmt.Errorf("auth.local_password %q is not one of %s, %s", a.LocalPassword, LocalPasswordAll, LocalPasswordLocalAdmin)
 }
 
 // Log configures the server's own log.
@@ -140,6 +168,9 @@ func decodeFile(path string, raw []byte) (File, error) {
 		return File{}, fmt.Errorf("%s: %w", path, err)
 	}
 	if err := f.Plugins.Validate(); err != nil {
+		return File{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if err := f.Auth.Validate(); err != nil {
 		return File{}, fmt.Errorf("%s: %w", path, err)
 	}
 	if (f.TLSCertFile == "") != (f.TLSKeyFile == "") {

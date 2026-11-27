@@ -77,6 +77,17 @@ func Router(d Deps, policies ...auth.SessionPolicy) http.Handler {
 		a.pluginRoutes(r)
 		r.With(a.managementAuth, sessionOnly).Post("/auth/activity", a.activity)
 		r.With(a.managementAuth, sessionOnly).Post("/auth/password", a.changePassword)
+		// Accounts and external identities (ADR 0085): administrators only,
+		// from a login session, like platform tokens.
+		r.Group(func(r chi.Router) {
+			r.Use(a.managementAuth, sessionOnly)
+			r.With(a.managementAdmin).Get("/users", a.listUsers)
+			r.With(a.managementAdmin).Post("/users/{id}/disable", a.disableUser)
+			r.With(a.managementAdmin).Post("/users/{id}/enable", a.enableUser)
+			r.With(a.managementAdmin).Get("/users/{id}/identities", a.listUserIdentities)
+			r.With(a.managementAdmin).Post("/users/{id}/identities", a.linkUserIdentity)
+			r.With(a.managementAdmin).Delete("/users/{id}/identities/{identityID}", a.unlinkUserIdentity)
+		})
 		// Platform tokens are managed from a login session only, so no token
 		// can mint itself a wider one.
 		r.Group(func(r chi.Router) {

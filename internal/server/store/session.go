@@ -74,6 +74,11 @@ func managementSessionByHash(db *gorm.DB, hash string, now time.Time) (*User, *M
 	if err := db.First(&user, session.UserID).Error; err != nil {
 		return nil, nil, sessionLookupError(err)
 	}
+	// Disabling deletes the sessions in the same transaction, so this covers
+	// a session read in another process before that write reached it.
+	if user.DisabledAt != nil {
+		return nil, nil, ErrUserDisabled
+	}
 	return &user, &session, nil
 }
 

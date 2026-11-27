@@ -109,6 +109,11 @@ type Config struct {
 
 	SessionIdleTimeout time.Duration // inactivity deadline for management sessions
 	SessionMaxLifetime time.Duration // absolute login deadline
+	// AuthLocalPassword is server.yaml's auth.local_password (ADR 0085):
+	// "all" (the default) lets every user sign in with a password,
+	// "local_admin" only the local administrators, the floor that stays
+	// reachable when every identity connector is down.
+	AuthLocalPassword string
 
 	ProxyMaxBodyBytes int64 // max /v1 request body spooled to disk before routing (413 beyond)
 
@@ -201,6 +206,16 @@ func masterSecret(cfg Config, policies ...securefile.Policy) (string, error) {
 		return "", err
 	}
 	return secret, nil
+}
+
+// sessionPolicy is the sign-in and session policy the API enforces: the
+// session deadlines, who may sign in with a password (auth.local_password),
+// the proxies trusted for the browser origin and the session cookie's name.
+func (cfg Config) sessionPolicy(proxies *auth.ProxyTrust) auth.SessionPolicy {
+	return auth.SessionPolicy{
+		IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime,
+		Proxies: proxies, Cookie: cfg.sessionCookie(), LocalPassword: cfg.AuthLocalPassword,
+	}
 }
 
 func normalizeRuntimeConfig(cfg Config) Config {

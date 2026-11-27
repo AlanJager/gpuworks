@@ -326,3 +326,34 @@ func TestUsageReportRoundTrip(t *testing.T) {
 		t.Fatalf("hand-written key = %+v, %v", f, err)
 	}
 }
+
+// auth.local_password accepts the two documented values and empty, and a file
+// carrying anything else is refused at load rather than silently ignored.
+func TestAuthLocalPasswordValidation(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		ok    bool
+	}{
+		{"", true}, {LocalPasswordAll, true}, {LocalPasswordLocalAdmin, true},
+		{"admin", false}, {"LOCAL_ADMIN", false}, {"true", false},
+	} {
+		if err := (Auth{LocalPassword: tc.value}).Validate(); (err == nil) != tc.ok {
+			t.Fatalf("auth.local_password %q: err=%v, want ok=%t", tc.value, err, tc.ok)
+		}
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, FileName)
+	if err := os.WriteFile(path, []byte("auth:\n  local_password: local_admin\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := Load(path)
+	if err != nil || f.Auth.LocalPassword != LocalPasswordLocalAdmin {
+		t.Fatalf("load = %+v %v", f.Auth, err)
+	}
+	if err := os.WriteFile(path, []byte("auth:\n  local_password: nobody\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(path); err == nil || !strings.Contains(err.Error(), "auth.local_password") {
+		t.Fatalf("load with an invalid value = %v, want an auth.local_password error", err)
+	}
+}
