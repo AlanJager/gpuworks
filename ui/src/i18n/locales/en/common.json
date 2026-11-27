@@ -1583,13 +1583,9 @@
       "development": "Built for the development / test channel; it is not labelled as a stable release.",
       "unknown": "There is not enough release information to confirm whether this is a stable build."
     },
-    "builtAt": "Built: {{time}}",
-    "publishedAt": "Published: {{time}}",
-    "matched": "Matching release: {{version}}",
     "unmatched": "No matching release record is currently available.",
     "details": "Build details",
-    "commit": "Commit: {{commit}}",
-    "channel": "Build channel: {{channel}}"
+    "commit": "Commit: {{commit}}"
   },
   "serverStorageFull": {
     "at": "The server host's disk is full, so the change was not saved: the disk holding the data directory {{path}} has {{available}} of {{total}} left. Free space on it, then retry."

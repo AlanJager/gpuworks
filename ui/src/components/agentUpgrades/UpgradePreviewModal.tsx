@@ -1,10 +1,13 @@
-import { Alert, Button, Checkbox, Modal, Space, Spin, Table, Typography } from "antd";
-import { useEffect, useState } from "react";
+import { Alert, Button, Modal, Space, Spin, Table, Typography } from "antd";
 import { useTranslation } from "react-i18next";
-import { Badge } from "../ui/badge";
-import ServerBuildSummary from "../ServerBuildSummary";
+import { Badge, type BadgeProps } from "../ui/badge";
 import type { AgentUpgradeCandidate, AgentUpgradePreview } from "../../agentUpgradesTypes";
+import { shortBuild } from "../../buildId";
 
+const kindTone: Record<string, Pick<BadgeProps, "status" | "color">> = { stable: { status: "success" }, prerelease: { status: "warning" }, development: { color: "orange" }, unknown: { color: "gray" } };
+
+// The batch upgrades the nodes it can and records why it skips the rest, so
+// the dialog leads with what will happen and starts in one click.
 export default function UpgradePreviewModal({ open, preview, loading, busy, error, onClose, onRefresh, onStart }: {
   open: boolean;
   preview: AgentUpgradePreview | null;
@@ -15,42 +18,46 @@ export default function UpgradePreviewModal({ open, preview, loading, busy, erro
   onRefresh: () => void;
   onStart: () => void;
 }) {
-  const { t } = useTranslation("nodes");
-  const [acknowledged, setAcknowledged] = useState(false);
-  useEffect(() => setAcknowledged(false), [open, preview]);
+  const { t, i18n } = useTranslation("nodes");
+  const { t: tc } = useTranslation("common");
   const eligible = preview?.counts.eligible ?? 0;
-  return <Modal open={open} title={t("batchUpgrade.previewTitle")} onCancel={() => !busy && onClose()} destroyOnHidden
-    afterClose={() => setAcknowledged(false)} footer={<Space>
+  const skipped = (preview?.node_uuids.length ?? 0) - eligible;
+  const build = preview?.target_build?.version === preview?.target_version ? preview?.target_build : undefined;
+  const kind = build && ["stable", "prerelease", "development"].includes(build.kind) ? build.kind : "unknown";
+  // The nodes that will be upgraded come first; the skipped ones follow with their reason.
+  const nodes = preview ? [...preview.nodes].sort((a, b) => Number(b.eligibility === "eligible") - Number(a.eligibility === "eligible")) : [];
+  const title = preview
+    ? <span className="flex flex-wrap items-center gap-2">{t("batchUpgrade.previewTitle", { version: preview.target_version })}<Badge size="sm" {...kindTone[kind]}>{tc(`buildInfo.kind.${kind}`)}</Badge></span>
+    : t("batchUpgrade.selected");
+  return <Modal open={open} title={title} onCancel={() => !busy && onClose()} destroyOnHidden footer={<Space>
       <Button disabled={busy} onClick={onClose}>{t("batchUpgrade.close")}</Button>
-      <Button disabled={loading || busy} onClick={() => { setAcknowledged(false); onRefresh(); }}>{t("batchUpgrade.refreshPreview")}</Button>
-      <Button type="primary" aria-label={t("batchUpgrade.start")} loading={busy} disabled={loading || !preview || !acknowledged || eligible === 0 || !!preview.blocked_by_item} onClick={onStart}>
-        {t("batchUpgrade.start")}
-      </Button>
+      <Button disabled={loading || busy} onClick={onRefresh}>{t("batchUpgrade.refreshPreview")}</Button>
+      {eligible > 0 && <Button type="primary" aria-label={t("batchUpgrade.start", { count: eligible })} loading={busy} disabled={loading || !!preview?.blocked_by_item} onClick={onStart}>
+        {t("batchUpgrade.start", { count: eligible })}
+      </Button>}
     </Space>} width={850}>
     <Space direction="vertical" style={{ width: "100%" }}>
-      <Typography.Paragraph>{t("batchUpgrade.scope")}</Typography.Paragraph>
       {loading && <Spin aria-label={t("batchUpgrade.loadingPreview")} />}
       {error && <Alert type="error" showIcon message={error} />}
       {preview && <>
-        <Typography.Text strong>{t("batchUpgrade.targetHeading")}</Typography.Text>
-        <ServerBuildSummary version={preview.target_version} build={preview.target_build} />
-        <Typography.Paragraph>{t("batchUpgrade.targetSource")} <Typography.Link href="/settings#updates" target="_blank" rel="noopener noreferrer">{t("batchUpgrade.versionDetails")}</Typography.Link></Typography.Paragraph>
-        <Typography.Text>{t("batchUpgrade.previewCounts", { total: preview.node_uuids.length, eligible, skipped: preview.node_uuids.length - eligible })}</Typography.Text>
         {preview.blocked_by_item && <Alert type={preview.blocked_by_item.reason === "unconfirmed" ? "info" : "warning"} showIcon message={t(preview.blocked_by_item.reason === "unconfirmed" ? "batchUpgrade.blocked" : "batchUpgrade.activeBlock", { name: preview.blocked_by_item.name || preview.blocked_by_item.node_uuid })} />}
-        {!eligible && <Alert type="info" showIcon message={t("batchUpgrade.noEligible")} />}
-        <Table<AgentUpgradeCandidate> size="small" rowKey="node_uuid" dataSource={preview.nodes} pagination={{ pageSize: 10, showSizeChanger: false }} columns={[
-          { title: t("batchUpgrade.columns.node"), key: "node", render: (_, node) => <Space direction="vertical" size={0}><Typography.Text>{node.name || node.node_uuid}</Typography.Text><Typography.Text type="secondary">{node.node_uuid}</Typography.Text></Space> },
-          { title: t("fleet.versionChange"), key: "version", render: (_, node) => node.eligibility === "eligible"
-            ? <div className="flex flex-col items-start gap-1"><span>{node.from_version} → {preview.target_version}</span>
+        {eligible > 0
+          ? <Alert type="warning" showIcon message={<>{t(skipped > 0 ? "batchUpgrade.summary" : "batchUpgrade.summaryAll", { eligible, skipped })} {t("batchUpgrade.warning.interrupt")}</>} />
+          : <Alert type="info" showIcon message={t("batchUpgrade.noEligible")} />}
+        <Table<AgentUpgradeCandidate> size="small" rowKey="node_uuid" dataSource={nodes} tableLayout="fixed" pagination={{ pageSize: 10, showSizeChanger: false, hideOnSinglePage: true }} columns={[
+          { title: t("batchUpgrade.columns.node"), key: "node", render: (_, node) => <Typography.Text ellipsis={{ tooltip: node.name || node.node_uuid }}>{node.name || node.node_uuid}</Typography.Text> },
+          { title: t("batchUpgrade.columns.version"), key: "version", width: 320, render: (_, node) => node.eligibility === "eligible"
+            /* Both ends of each id stay readable on one line; the full pair is on hover. */
+            ? <div className="flex flex-col items-start gap-1"><span className="whitespace-nowrap" title={`${node.from_version} → ${preview.target_version}`}>{shortBuild(node.from_version)} → {shortBuild(preview.target_version)}</span>
                 <Badge size="sm" status="neutral">{t(node.downgrade ? "fleet.status.downgrade" : node.version_change === "upgrade" ? "fleet.willUpgrade" : "fleet.replaceBuild")}</Badge></div>
-            : node.from_version || "—" },
-          { title: t("batchUpgrade.columns.platform"), key: "platform", render: (_, node) => `${node.os || "—"}/${node.arch || "—"}` },
-          { title: t("batchUpgrade.columns.result"), key: "eligibility", render: (_, node) => t(`batchUpgrade.eligibility.${node.eligibility}`, { defaultValue: t("batchUpgrade.eligibility.unavailable") }) },
-          { title: t("batchUpgrade.columns.reason"), key: "reason", render: (_, node) => node.reason ? t(`batchUpgrade.reason.${node.reason}`, { defaultValue: node.reason }) : "—" },
+            : <span className="whitespace-nowrap" title={node.from_version}>{shortBuild(node.from_version) || "—"}</span> },
+          { title: t("batchUpgrade.columns.status"), key: "status", width: 200, render: (_, node) => node.eligibility === "eligible"
+            ? t("batchUpgrade.eligibility.eligible")
+            : <div className="flex flex-col"><span>{t(`batchUpgrade.eligibility.${node.eligibility}`, { defaultValue: t("batchUpgrade.eligibility.unavailable") })}</span>
+                {/* The preview's reason is a code only for some cases; free text stays out of a localized table. */}
+                {node.reason && node.reason !== node.eligibility && i18n.exists(`nodes:batchUpgrade.reason.${node.reason}`) && <Typography.Text type="secondary">{t(`batchUpgrade.reason.${node.reason}`)}</Typography.Text>}</div> },
         ]} />
       </>}
-      <Alert type="warning" showIcon message={t("batchUpgrade.disruption")} description={t("batchUpgrade.versionWarning")} />
-      <Checkbox checked={acknowledged} disabled={busy || loading} onChange={(event) => setAcknowledged(event.target.checked)}>{t("batchUpgrade.acknowledge")}</Checkbox>
     </Space>
   </Modal>;
 }

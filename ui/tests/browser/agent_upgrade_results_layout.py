@@ -89,10 +89,14 @@ class AgentUpgradeResultsLayout(unittest.TestCase):
                 self.assertEqual(len(widths), 6)
                 self.assertGreaterEqual(min(widths), 140)
                 time_cell = drawer.locator("tbody tr.ant-table-row").first.locator("td").nth(5)
-                expect(time_cell).to_contain_text("开始：2026-10-30 11:20:01")
-                expect(time_cell).to_contain_text("结束：2026-10-30 11:20:59")
-                lines = time_cell.locator(".ant-typography").evaluate_all("xs=>xs.map(x=>({height:x.getBoundingClientRect().height,lineHeight:parseFloat(getComputedStyle(x).lineHeight)}))")
-                self.assertTrue(all(x["height"] <= x["lineHeight"] + 1 for x in lines), lines)
+                # One range on one line; the finish drops the date it shares with the start.
+                expect(time_cell).to_have_text("2026-10-30 11:20:01 → 11:20:59")
+                line = time_cell.locator("span").first.evaluate("x=>({height:x.getBoundingClientRect().height,lineHeight:parseFloat(getComputedStyle(x).lineHeight)})")
+                self.assertLessEqual(line["height"], line["lineHeight"] + 1, line)
+                # A row is one line unless it carries a failure's own detail,
+                # which stays readable in full: that is where a failure is explained.
+                heights = drawer.locator("tbody tr.ant-table-row").evaluate_all("rs=>rs.map(r=>r.getBoundingClientRect().height)")
+                self.assertLessEqual(max(heights[1:]), 48, heights)
                 self.capture(page, f"results-{width}.png")
 
     def test_an_unknown_outcome_offers_no_action_and_stays_in_view(self):

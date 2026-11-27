@@ -1583,13 +1583,9 @@
       "development": "此构建来自开发／测试渠道，未标记为稳定发布。",
       "unknown": "目前发布信息不足，无法确认此构建是否为稳定版。"
     },
-    "builtAt": "构建时间：{{time}}",
-    "publishedAt": "发布时间：{{time}}",
-    "matched": "匹配发布版本：{{version}}",
     "unmatched": "目前没有可匹配的发布记录。",
     "details": "构建详情",
-    "commit": "Commit：{{commit}}",
-    "channel": "构建渠道：{{channel}}"
+    "commit": "Commit：{{commit}}"
   },
   "serverStorageFull": {
     "at": "服务端主机的磁盘已满，本次操作未能保存：数据目录 {{path}} 所在磁盘剩余 {{available}}（共 {{total}}）。请清理这块磁盘后重试。"

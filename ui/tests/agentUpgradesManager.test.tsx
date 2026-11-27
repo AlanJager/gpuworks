@@ -7,6 +7,8 @@ import type { AgentUpgradeCounts, AgentUpgradeCreate, AgentUpgradeItem, AgentUpg
 
 const { i18n, locale } = await createI18n(["nodes"]);
 const k = locale.nodes.batchUpgrade;
+const startName = (count: number) => i18n.t("nodes:batchUpgrade.start", { count });
+const previewTitle = new RegExp(i18n.t("nodes:batchUpgrade.previewTitle", { version: "dev-target" }));
 class Events {
   static listeners = new Map<string, Set<EventListener>>();
   addEventListener(topic: string, listener: EventListener) { const entries = Events.listeners.get(topic) ?? new Set<EventListener>(); entries.add(listener); Events.listeners.set(topic, entries); }
@@ -53,7 +55,7 @@ function mount(isAdmin = true, requestedRunID?: number, selectedNodeUUIDs = prev
   return render(<I18nextProvider i18n={i18n}><AgentUpgradeManager isAdmin={isAdmin} requestedRunID={requestedRunID} selectedNodeUUIDs={selectedNodeUUIDs} onStarted={onStarted} /></I18nextProvider>);
 }
 
-test("the selected node preview requires consent and submits every snapshot UUID exactly once", async () => {
+test("the selected node preview starts in one click and submits every snapshot UUID exactly once", async () => {
   const state = backend();
   let finish!: () => void;
   api.createAgentUpgrade = async (body) => {
@@ -67,9 +69,10 @@ test("the selected node preview requires consent and submits every snapshot UUID
   const modal = await screen.findByRole("dialog");
   await within(modal).findByText("fleet-0");
   assert.deepEqual(state.previews, [{ node_uuids: preview().node_uuids }]);
-  const start = within(modal).getByRole("button", { name: k.start }) as HTMLButtonElement;
-  assert.equal(start.disabled, true);
-  await user.click(within(modal).getByRole("checkbox", { name: k.acknowledge }));
+  assert.ok(within(modal).getByText(new RegExp(i18n.t("nodes:batchUpgrade.summaryAll", { eligible: 25 }))), "the dialog leads with what will happen");
+  assert.equal(within(modal).queryByRole("checkbox"), null, "starting needs no extra consent step");
+  const start = within(modal).getByRole("button", { name: startName(25) }) as HTMLButtonElement;
+  assert.equal(start.disabled, false);
   start.focus(); await user.keyboard("{Enter}");
   fireEvent.click(start);
   await waitFor(() => assert.equal(state.created.length, 1));
@@ -84,20 +87,17 @@ test("the selected node preview requires consent and submits every snapshot UUID
   assert.ok(await within(drawer).findByText("fleet-0"));
 });
 
-test("a lost create response can retry with the same idempotency key and a refresh resets consent", async () => {
+test("a lost create response can retry with the same idempotency key", async () => {
   const state = backend(); const user = userEvent.setup();
   api.createAgentUpgrade = async (body) => { state.created.push(body); throw new Error("response lost"); };
   mount();
   await user.click(screen.getByRole("button", { name: k.selected }));
   const modal = await screen.findByRole("dialog"); await within(modal).findByText("fleet-0");
-  await user.click(within(modal).getByRole("checkbox"));
-  await user.click(within(modal).getByRole("button", { name: k.start }));
+  await user.click(within(modal).getByRole("button", { name: startName(25) }));
   await within(modal).findByText("response lost");
-  await user.click(within(modal).getByRole("button", { name: k.start }));
+  await user.click(within(modal).getByRole("button", { name: startName(25) }));
   await waitFor(() => assert.equal(state.created.length, 2));
   assert.equal(state.created[0].idempotency_key, state.created[1].idempotency_key);
-  await user.click(within(modal).getByRole("button", { name: k.refreshPreview }));
-  await waitFor(() => assert.equal((within(modal).getByRole("checkbox") as HTMLInputElement).checked, false));
 });
 
 test("persisted partial results survive remount and read-only users can inspect without mutation actions", async () => {
@@ -166,8 +166,8 @@ test("query and preview failures expose retry, and SSE refreshes the persisted r
   await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
   api.agentUpgradePreview = async () => { throw new Error("artifact metadata unavailable"); };
   await user.click(screen.getByRole("button", { name: k.selected }));
-  const modal = await screen.findByRole("dialog", { name: k.previewTitle }); await within(modal).findByText("artifact metadata unavailable");
-  assert.equal((within(modal).getByRole("button", { name: k.start }) as HTMLButtonElement).disabled, true);
+  const modal = await screen.findByRole("dialog", { name: k.selected }); await within(modal).findByText("artifact metadata unavailable");
+  assert.equal(within(modal).queryByRole("button", { name: startName(25) }), null, "nothing to start without a preview");
   await user.click(within(modal).getAllByRole("button", { name: k.close }).at(-1)!);
   state.runs = [run({ state: "finished", counts: counts({ processed: 2, succeeded: 2, queued: 0, active: 0 }) })];
   await act(async () => Events.emit("agent_upgrade"));
@@ -187,8 +187,7 @@ test("a paused run can preview an atomic handoff after all uncertain attempts ar
   await user.click(button);
   const modal = screen.getAllByRole("dialog").at(-1)!;
   await within(modal).findByText("fleet-0");
-  await user.click(within(modal).getByRole("checkbox"));
-  await user.click(within(modal).getByRole("button", { name: k.start }));
+  await user.click(within(modal).getByRole("button", { name: startName(25) }));
   await waitFor(() => assert.equal(state.created.length, 1));
   assert.equal(continued, 1);
   assert.equal(state.created[0].source_run_id, 7);
@@ -205,14 +204,15 @@ test("an interrupted run can confirm its own queued handoff but another run rema
   await waitFor(() => assert.equal((screen.getByRole("button", { name: k.continue }) as HTMLButtonElement).disabled, true));
 });
 
-test("an all-skipped preview cannot create an upgrade even after consent", async () => {
+test("an all-skipped preview offers no start and says why", async () => {
   const state = backend();
   api.agentUpgradePreview = async () => ({ ...preview(), counts: { eligible: 0, already_current: 25 }, nodes: preview().nodes.map((node) => ({ ...node, eligibility: "already_current" })) });
   const user = userEvent.setup(); mount();
   await user.click(screen.getByRole("button", { name: k.selected }));
   const modal = await screen.findByRole("dialog"); await within(modal).findByText(k.noEligible);
-  await user.click(within(modal).getByRole("checkbox"));
-  assert.equal((within(modal).getByRole("button", { name: k.start }) as HTMLButtonElement).disabled, true);
+  assert.equal(within(modal).queryByRole("button", { name: startName(0) }), null);
+  assert.equal(within(modal).getAllByText(k.eligibility.already_current).length, 10, "each skipped node shows why");
+  assert.equal(within(modal).queryByText(k.warning.interrupt), null, "no interruption warning when nothing restarts");
   assert.equal(state.created.length, 0);
 });
 
@@ -290,20 +290,19 @@ test("refresh keeps the reviewed selection even when the list selection changes"
   await user.click(within(modal).getByRole("button", { name: k.refreshPreview }));
   await waitFor(() => assert.equal(state.previews.length, 2));
   assert.deepEqual(state.previews, [{ node_uuids: selected }, { node_uuids: selected }]);
-  await user.click(within(modal).getByRole("checkbox", { name: k.acknowledge }));
-  await user.click(within(modal).getByRole("button", { name: k.start }));
+  await user.click(within(modal).getByRole("button", { name: startName(2) }));
   await waitFor(() => assert.equal(started, 1));
   assert.deepEqual(state.created[0].node_uuids, selected);
 });
 
-test("finished result rows distinguish full start and finish times and omit an unused action column", async () => {
+test("finished result rows keep one line each: times as a range, the UUID behind the name", async () => {
   const { formatTimeSec } = await import("../src/i18n/datetime.ts");
   const started = "2026-10-30T03:20:01Z";
   const finished = "2026-10-30T03:20:59Z";
   const state = backend([run({ state: "finished", counts: counts({ total: 2, processed: 2, succeeded: 1, skipped: 1, queued: 0, active: 0 }) })]);
   state.items = [
     item({ node_uuid: "done", name: "completed node", phase: "succeeded", started_at: started, finished_at: finished }),
-    item({ node_uuid: "offline", name: "not started node", phase: "skipped", reason: "offline" }),
+    item({ node_uuid: "offline", name: "not started node", phase: "skipped", reason: "offline", error: "node is offline" }),
   ];
   mount(true, 7);
   const name = await screen.findByText("completed node");
@@ -311,12 +310,20 @@ test("finished result rows distinguish full start and finish times and omit an u
   const timeIndex = within(drawer).getAllByRole("columnheader").findIndex((cell) => cell.textContent === k.columns.time);
   assert.ok(timeIndex >= 0);
   const completed = within(name.closest("tr")!).getAllByRole("cell")[timeIndex];
-  assert.ok(completed.textContent?.includes(formatTimeSec(started)), "start must include time of day, not only the date");
-  assert.ok(completed.textContent?.includes(formatTimeSec(finished)), "finish must preserve its distinct seconds");
-  assert.ok(completed.textContent?.includes(i18n.t("nodes:batchUpgrade.startedAt", { at: formatTimeSec(started) })));
-  assert.ok(completed.textContent?.includes(i18n.t("nodes:batchUpgrade.finishedAt", { at: formatTimeSec(finished) })));
+  // One line: the start in full, the finish without the date it shares, both to the second.
+  assert.equal(completed.textContent, `${formatTimeSec(started)} → ${formatTimeSec(finished).slice(11)}`);
   const skipped = within(screen.getByText("not started node").closest("tr")!).getAllByRole("cell")[timeIndex];
-  assert.equal((skipped.textContent?.match(/—/g) ?? []).length, 2, "missing start and finish each have an explicit placeholder");
+  assert.equal(skipped.textContent, "—", "a node never started shows one placeholder, not two");
+  assert.equal(within(name.closest("tr")!).queryByText("done"), null, "the node UUID moves into the name's tooltip");
+  // The declared scroll width is the columns' own sum: a wide drawer shows no
+  // scroll bar and a narrow one scrolls instead of squeezing a column.
+  const table = drawer.querySelector("table")!;
+  const widths = [...table.querySelectorAll("col")].map((col) => parseFloat(col.style.width));
+  assert.equal(widths.reduce((sum, width) => sum + width, 0), 1190);
+  if (table.style.width) assert.equal(parseFloat(table.style.width), 1190);
+  const skippedRow = screen.getByText("not started node").closest("tr")!;
+  assert.ok(within(skippedRow).getByText(k.reason.offline), "the record says why the node was skipped");
+  assert.equal(within(skippedRow).queryByText("node is offline"), null, "a known skip reason is not repeated as server prose");
 });
 
 test("an attempt the system settled shows why in the reader's language, and only an operator's release shows a note", async () => {
@@ -347,7 +354,7 @@ test("a whole-fleet request previews every node, fixes the range to what came ba
   await act(async () => { await Promise.resolve(); });
   assert.deepEqual(state.previews, [], "nothing is previewed until the page asks");
   view.rerender(all(1));
-  const dialog = await screen.findByRole("dialog", { name: k.previewTitle });
+  const dialog = await screen.findByRole("dialog", { name: previewTitle });
   assert.deepEqual(state.previews, [{ scope: "all" }]);
   // Previewing again asks about the nodes the first answer listed, as the dialog says.
   await userEvent.click(within(dialog).getByRole("button", { name: k.refreshPreview }));
