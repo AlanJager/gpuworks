@@ -155,7 +155,6 @@
   "unrecognized": "Unrecognized",
   "presenceMessage": {
     "downloadCanceled": "Download canceled",
-
     "downloadStarted": "Internet download started",
     "syncStarted": "Node sync started",
     "syncCanceled": "Node sync canceled"
@@ -163,7 +162,6 @@
   "presenceAction": {
     "cancelDownload": "Cancel download",
     "cancelDownloadConfirm": "Cancel this download? Downloaded data is kept for a retry.",
-
     "cancelConfirm": "Cancel the current node sync?",
     "cancelSync": "Cancel sync",
     "continueSync": "Continue sync",
@@ -323,7 +321,6 @@
   },
   "presence": {
     "canceled": "Canceled",
-
     "deleting": "Deletion awaiting confirmation",
     "pending": "Pending",
     "downloading": "Internet download",
@@ -375,7 +372,9 @@
     "deleteOnNodeConfirm": "Delete the model files on {{node}}?",
     "deleteOnNodeDescription": "Deployments that use these files must be stopped first.",
     "deleteCacheDescription": "Only the cache on this node is removed; the files in the storage stay.",
-    "nodeDeleted": "Model files deleted"
+    "nodeDeleted": "Model files deleted",
+    "retryingSource": "Retrying this address: {{note}}",
+    "retrying": "retrying: {{note}}"
   },
   "storageDelete": {
     "readOnly": "{{storage}} is read-only: its files are never deleted from here.",

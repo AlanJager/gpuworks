@@ -108,7 +108,7 @@ func TestListingTimeoutCancellationDoesNotAdvanceSources(t *testing.T) {
 	f := timeoutFetcher(t, r, h, next.URL)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	f.cfg.OnRetry = func(_ string, _ int, _ time.Duration, _ error) { cancel() }
+	f.cfg.OnRetry = func(_ string, _, _ int, _ time.Duration, _ error) { cancel() }
 	_, err := f.List(ctx, commit)
 	if !errors.Is(err, context.Canceled) || attempts.Load() != 1 || nextAttempts.Load() != 0 || len(r.switches) != 0 || ListingErrorCode(err) != "" {
 		t.Fatalf("cancellation moved to another source: attempts=%d next=%d switches=%+v error=%v", attempts.Load(), nextAttempts.Load(), r.switches, err)

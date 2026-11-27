@@ -16,6 +16,15 @@ test("a copy names its source node, a download the host the agent reports", () =
     { host: "huggingface.co", switched: "hf-mirror.com stalled 2 times in a row: https://hf-mirror.com/x" },
     "after a source failed, the host it moved to and why",
   );
+  assert.deepEqual(
+    transferOrigin({ acquisition: "download", message: "downloading from modelscope.cn (retrying in 8s, attempt 4 of 16 after: read: connection reset by peer)" }),
+    { host: "modelscope.cn", retrying: "retrying in 8s, attempt 4 of 16 after: read: connection reset by peer" },
+    "while it tries the same host again, which attempt comes next and what the last one hit",
+  );
+  assert.deepEqual(
+    transferOrigin({ acquisition: "download", message: "downloading from huggingface.co (rate limited by the source; retrying in 1m50s, attempt 2 of 16)" }),
+    { host: "huggingface.co", retrying: "rate limited by the source; retrying in 1m50s, attempt 2 of 16" },
+  );
 });
 
 test("anything else says nothing about a source", () => {

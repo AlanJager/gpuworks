@@ -98,7 +98,9 @@ export function DeploymentPreparation({ dep, rows, onChanged }: { dep?: Deployme
       const downloading = !ready && isDownloading(item);
       const compact = !ready && (phase === "syncing" || phase === "copying");
       const measurable = (view?.total_known ?? item.size_bytes > 0) && item.size_bytes > 0;
-      const percent = Math.min(100, Math.max(0, Math.round(item.downloaded / item.size_bytes * 100)));
+      // Below 100 until the file is there: the last bytes are a check, and a
+      // progress bar that reads 100% while the download retries looks stuck.
+      const percent = ready ? 100 : Math.min(99.9, Math.max(0, Math.floor(item.downloaded / item.size_bytes * 1000) / 10));
       const transmitted = item.transferred_bytes || item.downloaded || 0;
       const sharedDownload = downloading && ["nfs", "nfs_cache", "shared_dir"].includes(item.storage_type ?? "");
       const origin = transferOrigin(item);

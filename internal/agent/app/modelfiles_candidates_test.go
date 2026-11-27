@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -75,9 +76,18 @@ func TestDownloadRepoWalksTheTasksCandidates(t *testing.T) {
 			messages = append(messages, status.Message)
 		}
 	}
-	if len(messages) < 2 || messages[0] != "downloading from "+deadHost ||
-		!strings.HasPrefix(messages[1], "downloading from "+liveHost+" (switched: "+deadHost+" failed") {
+	// The dead address is named, then each retry of it says which attempt
+	// comes next and why (GWKS-526), and the switch names the live one.
+	switched := slices.IndexFunc(messages, func(m string) bool {
+		return strings.HasPrefix(m, "downloading from "+liveHost+" (switched: "+deadHost+" failed")
+	})
+	if len(messages) < 2 || messages[0] != "downloading from "+deadHost || switched < 1 {
 		t.Fatalf("progress messages = %q", messages)
+	}
+	for _, m := range messages[1:switched] {
+		if !strings.HasPrefix(m, "downloading from "+deadHost+" (retrying in ") || !strings.Contains(m, "connection refused") {
+			t.Fatalf("a message between the dead address and the switch is not its retry: %q", messages)
+		}
 	}
 	if !n.registries.Cooled(deadHost) || n.registries.Cooled(liveHost) {
 		t.Fatal("the node's prober must remember the address that failed, and only that one")

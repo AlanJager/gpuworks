@@ -36,9 +36,12 @@ function SourceText({ row }: { row: Parameters<typeof transferOrigin>[0] }) {
   if (!origin) return <>{label}</>;
   if ("node" in origin) return <>{label} · {t("files.fromNode", { node: origin.node })}</>;
   const host = t("files.fromHost", { host: origin.host });
-  // After a source failed the agent says why it moved on; the reason is long,
-  // so it stays behind the host.
-  return <>{label} · {origin.switched ? <Tooltip title={t("files.switchedSource", { reason: origin.switched })}><span style={{ textDecoration: "underline dotted" }}>{host}</span></Tooltip> : host}</>;
+  // After a source failed the agent says why it moved on, or which attempt of
+  // the same address it is making; the reason is long, so it stays behind the
+  // host.
+  const note = origin.switched ? t("files.switchedSource", { reason: origin.switched })
+    : origin.retrying ? t("files.retryingSource", { note: origin.retrying }) : "";
+  return <>{label} · {note ? <Tooltip title={note}><span style={{ textDecoration: "underline dotted" }}>{host}</span></Tooltip> : host}</>;
 }
 
 const FILE_PAGE_SIZE = 10;
@@ -51,9 +54,16 @@ function TransferProgress({ row }: { row: ModelFile }) {
   if (!("node_uuid" in row) && !moving && !complete) return <>—</>;
   const rate = moving ? rateLabel(row.rate_bps) : "";
   const eta = transferEtaSeconds(row);
-  const details = [modelPresenceBytes(row), rate, eta > 0 ? remainingText(t, eta) : ""].filter(Boolean).join(" · ");
+  // While the agent retries the same address it says which attempt comes
+  // next and why; nothing then moves, so the note takes the rate's place.
+  const origin = transferOrigin(row);
+  const retrying = moving && origin && "retrying" in origin && origin.retrying ? t("files.retrying", { note: origin.retrying }) : "";
+  const details = [modelPresenceBytes(row), retrying || rate, eta > 0 && !retrying ? remainingText(t, eta) : ""].filter(Boolean).join(" · ");
+  // The last byte before presence is a check, not a transfer: showing 100%
+  // while the agent still verifies and retries reads as a hang (GWKS-526).
+  const percent = complete ? 100 : Math.min(99.9, Math.floor((row.progress || 0) * 1000) / 10);
   return <Space direction="vertical" size={0} className="model-file-progress">
-    <Progress percent={complete ? 100 : Math.round((row.progress || 0) * 100)} size="small" status={moving ? "normal" : undefined}
+    <Progress percent={percent} size="small" status={moving ? "normal" : undefined}
       format={complete ? () => <Space size={4}><CheckCircleFilled />{t("files.completed")}</Space> : undefined} />
     <Typography.Text type="secondary" title={details}>{details}</Typography.Text>
   </Space>;

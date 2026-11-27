@@ -29,18 +29,23 @@ export const acquisitionLabel: Record<string, string> = {
 /**
  * Where a transfer's bytes come from: the node a copy is made from, or the
  * host a download is made from. The agent says the host in its progress
- * message ("downloading from <host>"), so a mirror shows as the mirror; after
- * it leaves an address that failed, the message adds why
- * ("downloading from <host> (switched: <reason>)").
+ * message ("downloading from <host>"), so a mirror shows as the mirror. It
+ * appends what it is doing about a source that failed: why it left the last
+ * one ("(switched: <reason>)"), or when it tries the same one again ("(retrying
+ * in <wait>, attempt <n> of <m> after: <reason>)", or "(rate limited by the
+ * source; retrying in ...)").
  */
 export function transferOrigin(
   row: { acquisition?: string; message?: string; source_node_name?: string; source_node_uuid?: string },
-): { node: string } | { host: string; switched?: string } | null {
+): { node: string } | { host: string; switched?: string; retrying?: string } | null {
   if (row.acquisition === "peer" && (row.source_node_name || row.source_node_uuid))
     return { node: row.source_node_name || (row.source_node_uuid ?? "").slice(0, 8) };
-  const match = /^downloading from (\S+)(?: \(switched: (.*)\))?$/.exec((row.message ?? "").trim());
+  const match = /^downloading from (\S+?)(?: \((.*)\))?$/.exec((row.message ?? "").trim());
   if (!match) return null;
-  return match[2] ? { host: match[1], switched: match[2] } : { host: match[1] };
+  const [, host, note] = match;
+  if (!note) return { host };
+  if (note.startsWith("switched: ")) return { host, switched: note.slice("switched: ".length) };
+  return { host, retrying: note };
 }
 
 export function rateLabel(bytes: number): string {

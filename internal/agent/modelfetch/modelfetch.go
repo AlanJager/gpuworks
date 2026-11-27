@@ -68,8 +68,9 @@ type Config struct {
 	Retry RetryPolicy
 	// OnSwitch is called whenever the fetch moves to another address.
 	OnSwitch func(Switch)
-	// OnRetry is called before a same-address retry.
-	OnRetry func(file string, attempt int, delay time.Duration, err error)
+	// OnRetry is called before a same-address retry, with the attempt it is
+	// about to make and how many that address gets.
+	OnRetry func(file string, attempt, attempts int, delay time.Duration, err error)
 	// StallTimeout replaces the downloader's stall limit; zero keeps it.
 	StallTimeout time.Duration
 	// Logins are the node's logins; a request carries one only as
@@ -169,7 +170,7 @@ func (f *Fetcher) List(ctx context.Context, revision string) ([]modelrepo.File, 
 			}
 			pause := min(max(delay, retryAfter), MaxThrottleWait)
 			if f.cfg.OnRetry != nil {
-				f.cfg.OnRetry(ListingRetry, attempt, pause, err)
+				f.cfg.OnRetry(ListingRetry, attempt, maxAttempts, pause, err)
 			}
 			if err := sleep(ctx, pause); err != nil {
 				return nil, err
@@ -294,7 +295,7 @@ func (f *Fetcher) fetchFrom(ctx context.Context, candidate proto.ModelFetchCandi
 			return fmt.Sprintf("failed %d times: %s", attempt, address), err
 		}
 		if f.cfg.OnRetry != nil {
-			f.cfg.OnRetry(file.Path, attempt, pause, err)
+			f.cfg.OnRetry(file.Path, attempt, maxAttempts, pause, err)
 		}
 		if err := sleep(ctx, pause); err != nil {
 			return "", err
