@@ -189,8 +189,6 @@ There is a single writer connection (`SetMaxOpenConns(1)` in `store/database_ope
 
 Feature sources and banner sources are called on request threads and likewise answer from snapshots, never scanning nodes, deployments or tables. The contract tests in `testenv/extmodule` show what breaking the rule does: a guard that writes its own table cannot proceed until the insert transaction ends.
 
-A banner source can give a banner an `AckKey` so that the people who see it can acknowledge it: the console shows "Acknowledge" on that banner and, once it is used, no longer shows that user a banner with the same key. The source decides which banners can be acknowledged and what the key is; when the same matter should be raised again (a new stage, a new deadline), the source gives a new key and the banner shows again. A key must match `api.BannerAckKeyPattern`: 1 to 128 characters of letters, digits and `._:-`, starting with a letter or digit; a time in a key is written in UTC ending in `Z` (such as `2027-01-01T00:00:00Z`), since the `+` of a zone offset is outside the set. A key that does not match is dropped by the manifest without an error: the banner shows as usual but cannot be acknowledged. Acknowledgements are kept only in the browser (per user) and never stored by the server, so another browser, or clearing site data, shows the banner once more. Overlay pages read and write the same record through the SDK's `useBannerAck`, so acknowledging the matter on a page also removes the banner above every page. Banners pushed by plugins (`table.banners@1`) carry no acknowledge key.
-
 ## Availability
 
 Open-source code speaks only of availability: a feature source answers each feature key with full, read-only, locked or hidden, optionally with limits, a link and a coded notice.
@@ -228,6 +226,8 @@ The entries a UI module can add:
 - Admin-only: each kind of entry above can be marked `admin: true` and then follows the role of the user the session check read. A user who is not an administrator sees no menu entry, tab or control, and the page answers as not found; a session whose user could not be read is treated the same way. This shapes only what is shown: the server's route access levels still guard the API.
 
 Banners: a banner whose link opens the current page (query and fragment aside) is left out on that page, which states the matter itself.
+
+A banner source can give a banner an `AckKey` so that the people who see it can acknowledge it: the console shows "Acknowledge" on that banner and, once it is used, no longer shows that user a banner with the same key. The source decides which banners can be acknowledged and what the key is; when the same matter should be raised again (a new stage, a new deadline), the source gives a new key and the banner shows again. A key must match `api.BannerAckKeyPattern`: 1 to 128 characters of letters, digits and `._:-`, starting with a letter or digit; a time in a key is written in UTC ending in `Z` (such as `2027-01-01T00:00:00Z`), since the `+` of a zone offset is outside the set. A key that does not match is dropped by the manifest without an error: the banner shows as usual but cannot be acknowledged. Acknowledgements are kept only in the browser (per user) and never stored by the server, so another browser, or clearing site data, shows the banner once more. Until the console knows who is signed in (right after a sign-in, before `/auth/me` answers) it shows no banner that has a key and records no acknowledgement. Overlay pages read and write the same record through the SDK's `useBannerAck` (which offers no acknowledgement while `ready` is false), so acknowledging the matter on a page also removes the banner above every page. Banners pushed by plugins (`table.banners@1`) carry no acknowledge key.
 
 The SDK carries a major version, `SDK_MAJOR` (1 for now), which goes up only when an export is removed or changes meaning; adding an export leaves it alone, and `ui/tests/consoleExtensionsSdk.test.ts` pins the export list. Files go through the SDK's `downloadFile`, `saveBlob` and `sendForm`:
 
@@ -532,10 +532,10 @@ The core's part of the first five pushed tables (`availability`, `fleet_capacity
 <!-- translation-source-sha256: 9ecb281ae30f5bf0846d54c4585c8451f859dab2bb0912982eb541919e54d968 ### The management server's host identity -->
 <!-- translation-source-sha256: 4ae6c783942232690aaca56e9e4a5788c45162e113ef31e26f3d30165bb45d96 ## Tables and migrations -->
 <!-- translation-source-sha256: 191416e1552e2dd08bfb393247073d478d665d64f255c1d4249e957211f051c2 ## Hooks and call threads -->
-<!-- translation-source-sha256: e1cd3a89c363f5a6a244af5d387e52bed2bb593a0a1c04cdb201fd8a871eff1f ## Purity rules -->
+<!-- translation-source-sha256: be530f73e0c666ae072bec0b9e53f42c2dbf56c02ee693e60fe50bfe16d85a0f ## Purity rules -->
 <!-- translation-source-sha256: 7fd33a4504aa9548513615ac32ce91d81275e546b83f2e68035dd0dabc880199 ## Availability -->
 <!-- translation-source-sha256: 49104ef54f5450fc2a6dd85b95ca1d4f4e212c3f2851adfd0b94fac6a6e53460 ### Availability of the whole server -->
-<!-- translation-source-sha256: 2f0d63478baf7bf38b004b38e55e2a5b16a71c2d155f644580d42c62bbfa9988 ## Console overlay -->
+<!-- translation-source-sha256: 2668224de1381f7abfff8f6a8f7e79d9a0ba9de9f06163994fc1054e81dda1a0 ## Console overlay -->
 <!-- translation-source-sha256: e9fcf7fac20aca4c21f4dfcc449146cf5207289490a5ff3489950b61e20a7fac ## Codes and texts -->
 <!-- translation-source-sha256: 6fa8885393d900cd0bd114408d5214c5a1e5d017fd8793abcb7c51e96cdf5e7c ## Upgrades and installation -->
 <!-- translation-source-sha256: 2f477a9aaaaec4ed58b18dac635e88c1238e37faa62845c0718220b02d485332 ## Installable extensions -->
