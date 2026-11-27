@@ -525,7 +525,7 @@ A Slurm cluster joins through one health check: an administrator creates the clu
 | GET | `/api/v1/models/{id}/logo` | Get the model logo image | JWT |
 | GET | `/api/v1/models/{id}` | Get model details | JWT |
 | PATCH | `/api/v1/models/{id}` | Change the source ID of a local / HTTP-directory model (`{"source_id"}`; `source_id_editable` in the details says whether it can be changed). A public-repository model returns 400 `MODEL_SOURCE_ID_FIXED`, a name another model already has returns 409 `MODEL_SOURCE_ID_TAKEN`, and an in-progress copy, download, or removal returns 409 `MODEL_TRANSFER_ACTIVE`. Existing copies keep their paths | JWT |
-| DELETE | `/api/v1/models/{id}` | Delete a model | JWT(admin) |
+| DELETE | `/api/v1/models/{id}` | Delete a model. When deployments reference it the answer is 409 `MODEL_IN_USE`, with `params.deployments` listing each `{id, name, state, instances}` and `deletable_with_deployments` saying whether all of them are stopped with no instance row left (a stopped or failed row still there means teardown or a resource release is not done); then `?delete_stopped_deployments=true` deletes those deployments together with the model in one transaction, and a running one still refuses the whole deletion | JWT(admin) |
 | POST | `/api/v1/models/{id}/metadata/refresh` | Fetch model metadata again (config/README/logo). When nothing was read, the error is what the source site answered: 404 `MODEL_REPO_NOT_FOUND` / `MODEL_REVISION_NOT_FOUND`, 403 `MODEL_REPO_ACCESS_DENIED` (`params.host`, `params.repo`, and `params.status` are the site and its HTTP status); when the site gave no answer about the repository, 502 `MODEL_METADATA_UNREACHABLE` or `MODEL_METADATA_FORBIDDEN` | JWT |
 | POST | `/api/v1/models/{id}/download` | Start a public repository download: `storage_id` selects the storage (defaults to the default storage when omitted). For local storage, also provide `node_uuid` or `node_uuids`; for shared storage, one writer node downloads the model once | JWT |
 | POST | `/api/v1/models/{id}/download/cancel` | Cancel a model download in a specified storage (`storage_id`; local storage also requires `node_uuid`); retain downloaded data for retry | JWT |
@@ -2488,7 +2488,7 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: b4e11dbe33d4099c767c7382b562dcb10ba534decc2f13323aff9b76eaaa6000 ### Node Labels: Written and Generated -->
 <!-- translation-source-sha256: ef212efdc5066e17d7f34f501c04bdf5fff146663300d792622af350973fd155 ## Kubernetes (Cluster Connection) -->
 <!-- translation-source-sha256: 8ab144ebfbe02539abc2194f2d702b2abac1a76b8a0a10c4a97990a187475ac2 ## Slurm (Cluster Connection) -->
-<!-- translation-source-sha256: 2dd4e617d003c4e3845edf5709bedf120c6277dc4b81abc90fd6b89dcdd76ff7 ## Models -->
+<!-- translation-source-sha256: 34458ecc198f79d5634621f57a96eae24f02cd75824c3cd6ee01156846ca5164 ## Models -->
 <!-- translation-source-sha256: ab28007bbf4439f05dfaebb1a257aacc117d93ef9772d3c38d99e5e912aaf634 ### List Filtering and Presence Summary -->
 <!-- translation-source-sha256: 536c79e56bf4d787dec94eef14773f9e978accf7d42427e195db79e5fa0ac045 ### Register an Existing Node Path -->
 <!-- translation-source-sha256: d6e0454e5b9786f76756fd05f5a8910b36c3a416df848d787506a6b893575848 ## Images / Storages (Image Catalog and Storage Policies) -->

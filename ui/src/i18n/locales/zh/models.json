@@ -120,8 +120,8 @@
   },
   "delete": {
     "confirm": "删除模型“{{name}}”？",
-    "listDescription": "节点副本记录也会一并清理；被部署引用的模型不能删除。",
-    "tileDescription": "被部署引用的模型不能删除。"
+    "listDescription": "节点副本记录也会一并清理；若有部署在使用该模型，会列出是哪些。",
+    "tileDescription": "若有部署在使用该模型，会列出是哪些。"
   },
   "view": {
     "aria": "模型展示方式",
@@ -415,5 +415,17 @@
     "next": "{{seconds}} 秒后重试（第 {{attempt}}/{{attempts}} 次）",
     "afterFailure": "{{seconds}} 秒后重试（第 {{attempt}}/{{attempts}} 次），上次失败：{{cause}}",
     "throttled": "来源限流，{{seconds}} 秒后重试（第 {{attempt}}/{{attempts}} 次）"
+  },
+  "inUse": {
+    "title": "“{{name}}”正被部署使用",
+    "idle": "这 {{count}} 个部署都已停止，也没有实例了。",
+    "running": "有的部署仍在运行或清理，请先停止或删除。",
+    "row": "{{state}} · 实例：{{count}}",
+    "deleteWith": "删除模型及这 {{count}} 个部署",
+    "state": {
+      "active": "运行中",
+      "stopped": "已停止",
+      "deleting": "删除中"
+    }
   }
 }

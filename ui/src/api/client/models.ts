@@ -8,7 +8,7 @@ export const modelsApi = {
   modelsPage: (query: ListQuery) => getJSON<ModelPage>(`/api/v1/models?${listQueryString(query)}`),
   modelPresence: (ids: number[]) => getJSON<Record<number, ModelPresenceSummary>>(`/api/v1/models/presence?ids=${ids.join(",")}`),
   model: (id: number) => getJSON<Model>(`/api/v1/models/${id}`),
-  deleteModel: (id: number) => sendJSON<void>("DELETE", `/api/v1/models/${id}`),
+  deleteModel: (id: number, opts?: { withStoppedDeployments?: boolean }) => sendJSON<void>("DELETE", `/api/v1/models/${id}${opts?.withStoppedDeployments ? "?delete_stopped_deployments=true" : ""}`),
   createModel: (body: {
     source: string;
     source_id: string;
