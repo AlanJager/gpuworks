@@ -32,17 +32,20 @@ type fakeIdentity struct {
 	provide  atomic.Uint32
 	host     *app.Host
 	accounts *app.Accounts
-	initErr  error
-	lastURL  atomic.Pointer[string]
+	// declareErr is what DeclareIdentitySources answered.
+	declareErr error
+	lastURL    atomic.Pointer[string]
 }
 
 func (m *fakeIdentity) Name() string { return m.name }
 
 func (m *fakeIdentity) Init(_ context.Context, h *app.Host) error {
 	m.host, m.accounts = h, h.Accounts()
-	if err := h.DeclareIdentitySources(m.sources...); err != nil {
-		m.initErr = err
-		return nil
+	if m.declareErr = h.DeclareIdentitySources(m.sources...); m.declareErr != nil {
+		// Kept, not returned: the exclusivity test needs a server that starts
+		// so it can read the refusal. The module then starts with no routes
+		// and no sign-in entry.
+		return nil //nolint:nilerr // the refusal is what the test reads
 	}
 	h.DeclareFeatures(featuregate.Feature{Key: idFeature})
 	if err := h.ProvideFeatures(fakeAccess{m}); err != nil {
@@ -339,8 +342,8 @@ func TestIdentitySourcesAreExclusiveAndProvisioningIsTheSites(t *testing.T) {
 		cfg.Extensions = app.Extensions{Modules: []app.Module{first, second}}
 	})
 	var pe *messages.ProductError
-	if !errors.As(second.initErr, &pe) || pe.Code() != messages.ErrorIdentitySourceConflict {
-		t.Fatalf("a second module declaring acme = %v", second.initErr)
+	if !errors.As(second.declareErr, &pe) || pe.Code() != messages.ErrorIdentitySourceConflict {
+		t.Fatalf("a second module declaring acme = %v", second.declareErr)
 	}
 	if err := first.host.DeclareIdentitySources("late"); !errors.Is(err, app.ErrHostClosed) {
 		t.Fatalf("declaring after Init = %v, want ErrHostClosed", err)
