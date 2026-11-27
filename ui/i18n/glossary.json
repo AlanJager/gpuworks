@@ -1440,6 +1440,36 @@
       }
     },
     {
+      "term_en": "Extension Level",
+      "translations": {
+        "zh": "扩展等级"
+      }
+    },
+    {
+      "term_en": "Table Kind",
+      "translations": {
+        "zh": "表种类"
+      }
+    },
+    {
+      "term_en": "Identity Connector",
+      "translations": {
+        "zh": "身份连接器"
+      }
+    },
+    {
+      "term_en": "External Identity",
+      "translations": {
+        "zh": "外部身份"
+      }
+    },
+    {
+      "term_en": "Disabled User",
+      "translations": {
+        "zh": "停用用户"
+      }
+    },
+    {
       "term_en": "Authority",
       "translations": {
         "zh": "权威"
