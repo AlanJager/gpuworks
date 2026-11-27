@@ -5,8 +5,6 @@ import (
 	"fmt"
 
 	"gorm.io/gorm"
-
-	"gpuworks.ai/gpuworks/internal/proto"
 )
 
 // ModelReference is a deployment that names a model: what keeps the model
@@ -15,16 +13,21 @@ type ModelReference struct {
 	ID    uint
 	Name  string
 	State DeploymentState
-	// Instances counts the instances that may still hold the model: every one
-	// not stopped or failed.
+	// Instances counts the deployment's instance rows, whatever their state.
+	// A stopped deployment the controller has finished with has none: a row
+	// left, even a stopped or failed one, is a teardown the agent has not
+	// confirmed or a resource lease still being released
+	// (inferenceNodeHandler.AfterInstanceTerminal), which deleting the row
+	// here would orphan.
 	Instances int
 	// CatalogSelectionSnapshot is the deployment's, for what a caller that
 	// deletes it must release besides its rows (its managed directories).
 	CatalogSelectionSnapshot string
 }
 
-// Idle reports whether the deployment is stopped and runs nothing, so
-// deleting it together with its model loses no running service.
+// Idle reports whether the deployment is stopped and the controller has
+// finished with it (no instance row at all), so deleting it together with
+// its model skips no teardown and orphans no lease.
 func (r ModelReference) Idle() bool { return r.State == DeployStopped && r.Instances == 0 }
 
 // ModelReferenceError is a refused model deletion: the deployments that name
@@ -40,7 +43,7 @@ func (e *ModelReferenceError) Error() string {
 func (e *ModelReferenceError) Unwrap() error { return ErrReferenced }
 
 // AllIdle reports whether every deployment that names the model is stopped
-// and runs nothing (ModelReference.Idle).
+// with no instance row left (ModelReference.Idle).
 func (e *ModelReferenceError) AllIdle() bool {
 	for _, ref := range e.Deployments {
 		if !ref.Idle() {
@@ -50,9 +53,9 @@ func (e *ModelReferenceError) AllIdle() bool {
 	return len(e.Deployments) > 0
 }
 
-// modelReferences lists the deployments that name model id in tx, with the
-// instances of each that are not stopped or failed: two queries, however many
-// deployments there are.
+// modelReferences lists the deployments that name model id in tx, with each
+// one's instance rows counted: two queries, however many deployments there
+// are.
 func modelReferences(tx *gorm.DB, id uint) ([]ModelReference, error) {
 	var deps []Deployment
 	if err := tx.Select("ID", "Name", "State", "CatalogSelectionSnapshot").Where("model_id = ?", id).Order("id").Find(&deps).Error; err != nil {
@@ -70,7 +73,7 @@ func modelReferences(tx *gorm.DB, id uint) ([]ModelReference, error) {
 		N            int
 	}
 	if err := tx.Model(&Instance{}).Select("deployment_id, COUNT(*) AS n").
-		Where("deployment_id IN ? AND state NOT IN ?", ids, []string{proto.InstStopped, proto.InstFailed}).
+		Where("deployment_id IN ?", ids).
 		Group("deployment_id").Scan(&counts).Error; err != nil {
 		return nil, err
 	}
@@ -89,8 +92,8 @@ func modelReferences(tx *gorm.DB, id uint) ([]ModelReference, error) {
 // deployment keeps the model definition authoritative, even after it stops:
 // a model any deployment names is refused with a *ModelReferenceError
 // listing them. With withIdleDeployments the deployments go too, in the same
-// transaction, when every one of them is stopped and runs nothing; a running
-// one still refuses the whole deletion (GWKS-530). It returns the deployments
+// transaction, when every one of them is stopped and has no instance row left;
+// any other still refuses the whole deletion (GWKS-530). It returns the deployments
 // it deleted.
 func (s *Store) DeleteModel(id uint, withIdleDeployments bool) ([]ModelReference, error) {
 	var gone map[uint]deletedDeployment

@@ -418,9 +418,9 @@
   },
   "inUse": {
     "title": "“{{name}}”正被部署使用",
-    "idle": "这 {{count}} 个部署都已停止，没有运行中的实例。",
-    "running": "其中有部署在运行，请先停止或删除。",
-    "row": "{{state}} · 运行中实例：{{count}}",
+    "idle": "这 {{count}} 个部署都已停止，也没有实例了。",
+    "running": "有的部署仍在运行或清理，请先停止或删除。",
+    "row": "{{state}} · 实例：{{count}}",
     "deleteWith": "删除模型及这 {{count}} 个部署",
     "state": {
       "active": "运行中",

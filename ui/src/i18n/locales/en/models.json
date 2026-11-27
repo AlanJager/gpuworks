@@ -418,9 +418,9 @@
   },
   "inUse": {
     "title": "“{{name}}” is used by deployments",
-    "idle": "These {{count}} deployments are stopped and run nothing.",
-    "running": "Stop or delete the running ones first.",
-    "row": "{{state}} · running instances: {{count}}",
+    "idle": "These {{count}} deployments are stopped with no instances left.",
+    "running": "Some are still running or tearing down; stop or delete them first.",
+    "row": "{{state}} · instances: {{count}}",
     "deleteWith": "Delete the model and these {{count}} deployments",
     "state": {
       "active": "running",
