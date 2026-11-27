@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/auth"
+	"gpuworks.ai/gpuworks/internal/server/featuregate"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -209,4 +211,49 @@ type dtoUser struct {
 	ID       uint   `json:"id"`
 	Username string `json:"username"`
 	Disabled bool   `json:"disabled"`
+}
+
+// While the platform is locked, an administrator can still take access away:
+// disable an account and remove one of its external identities. Enabling an
+// account and adding a link give access, so they are refused like any change.
+func TestALockedPlatformStillTakesAccessAway(t *testing.T) {
+	limiter := newSwitchLimiter(featuregate.Full)
+	rig := newTokenRig(t, func(d *Deps) { d.Extensions = ExtensionDeps{Platform: limiter} })
+	t.Cleanup(func() { _ = rig.st.Close() })
+	user, _ := disabledAccountUser(t, rig, "member")
+	identities := fmt.Sprintf("/api/v1/users/%d/identities", user.ID)
+	rec := rig.do(rig.session, http.MethodPost, identities, `{"source":"acme_oidc","subject":"u-1"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("link before the lock = %d %s", rec.Code, rec.Body)
+	}
+	var link struct {
+		ID uint `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &link); err != nil || link.ID == 0 {
+		t.Fatalf("link body = %s", rec.Body)
+	}
+
+	limiter.set(PlatformLimit{Access: featuregate.Locked})
+	refused := func(method, path, body string) {
+		t.Helper()
+		rec := rig.do(rig.session, method, path, body)
+		if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), messages.ErrorPlatformLocked) {
+			t.Fatalf("locked %s %s = %d %s, want 403 %s", method, path, rec.Code, rec.Body, messages.ErrorPlatformLocked)
+		}
+	}
+	// Taking access away is served.
+	if rec := rig.do(rig.session, http.MethodPost, fmt.Sprintf("/api/v1/users/%d/disable", user.ID), ""); rec.Code != http.StatusOK ||
+		!strings.Contains(rec.Body.String(), `"disabled":true`) {
+		t.Fatalf("locked disable = %d %s, want 200", rec.Code, rec.Body)
+	}
+	if rec := rig.do(rig.session, http.MethodDelete, fmt.Sprintf("%s/%d", identities, link.ID), ""); rec.Code != http.StatusNoContent {
+		t.Fatalf("locked unlink = %d %s, want 204", rec.Code, rec.Body)
+	}
+	// Giving access is refused.
+	refused(http.MethodPost, fmt.Sprintf("/api/v1/users/%d/enable", user.ID), "")
+	refused(http.MethodPost, identities, `{"source":"acme_oidc","subject":"u-2"}`)
+	// Reading stays served.
+	if rec := rig.do(rig.session, http.MethodGet, "/api/v1/users", ""); rec.Code != http.StatusOK {
+		t.Fatalf("locked list = %d %s, want 200", rec.Code, rec.Body)
+	}
 }

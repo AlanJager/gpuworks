@@ -186,6 +186,7 @@ read POST /api/v1/providers/test
 recovery DELETE /api/v1/diagnostics/debug-session
 recovery DELETE /api/v1/plugins/overrides/{oid}
 recovery DELETE /api/v1/plugins/{id}
+recovery DELETE /api/v1/users/{id}/identities/{identityID}
 recovery GET /*
 recovery GET /api/v1/agent/connect
 recovery GET /api/v1/auth/me
@@ -228,6 +229,7 @@ recovery POST /api/v1/slurm/gpu-nodes
 recovery POST /api/v1/updates/prefetch
 recovery POST /api/v1/updates/server
 recovery POST /api/v1/updates/server/upload
+recovery POST /api/v1/users/{id}/disable
 recovery PUT /api/v1/updates/auto-check
 recovery PUT /api/v1/updates/channel
 serve CONNECT /api/v1/playground/v1/*
