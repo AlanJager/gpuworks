@@ -1039,6 +1039,7 @@
   "cardScheduling": {
     "stoppedTag": "已禁用调度",
     "allowedTag": "已启用调度",
+    "heldTag": "扩展保持停止调度",
     "state": {
       "stopped": "管理员已禁用调度，直到手动启用",
       "allowed": "管理员已启用调度，直到手动禁用",

@@ -297,6 +297,7 @@
     "NODE_OFFLINE": "The node is offline.",
     "NODE_ENROLLMENT_REFUSED": "A new node cannot join the fleet now; nothing was created.",
     "NODE_SCHEDULING_HELD": "An extension holds this node out of scheduling, so it cannot be made schedulable now. What already runs there keeps running.",
+    "CARD_SCHEDULING_HELD": "An extension holds this card out of scheduling, so it cannot be made schedulable now. You can still stop it. What already runs on it keeps running.",
     "NODE_SCHEDULABLE": "Cordon or drain the node before evicting its replicas.",
     "NODE_RUNTIME_INVALID": "Runtime must be auto, Docker, nerdctl, or runveil (API value udocker).",
     "NODE_RUNTIME_KUBE_NODE": "A Kubernetes node's runtime is its cluster's and cannot be switched.",

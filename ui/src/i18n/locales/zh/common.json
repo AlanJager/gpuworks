@@ -297,6 +297,7 @@
     "NODE_OFFLINE": "计算节点已离线。",
     "NODE_ENROLLMENT_REFUSED": "当前不能再接入新节点，未创建任何节点。",
     "NODE_SCHEDULING_HELD": "扩展模块将该节点保持在停止调度状态，现在不能恢复调度。节点上已运行的服务不受影响。",
+    "CARD_SCHEDULING_HELD": "扩展模块将该卡保持在停止调度状态，现在不能设为可调度，但仍可禁用调度。卡上已运行的服务不受影响。",
     "NODE_SCHEDULABLE": "请先停止调度或驱逐该节点，再强制撤下副本。",
     "NODE_RUNTIME_INVALID": "运行时必须是自动、Docker、nerdctl 或 runveil（API 值为 udocker）。",
     "NODE_RUNTIME_KUBE_NODE": "Kubernetes 节点的运行时由所在集群决定，不能切换。",

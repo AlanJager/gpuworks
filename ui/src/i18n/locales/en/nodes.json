@@ -1039,6 +1039,7 @@
   "cardScheduling": {
     "stoppedTag": "Scheduling disabled",
     "allowedTag": "Scheduling enabled",
+    "heldTag": "Held by an extension",
     "state": {
       "stopped": "Disabled by an administrator; remains disabled until enabled",
       "allowed": "Enabled by an administrator; remains enabled until disabled",
