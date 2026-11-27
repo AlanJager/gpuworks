@@ -327,6 +327,67 @@ test("finished result rows keep one line each: times as a range, the UUID behind
   assert.equal(within(skippedRow).queryByText("node is offline"), null, "a known skip reason is not repeated as server prose");
 });
 
+test("the record pages through the server ten rows at a time, filters by phase, and says it is loading while a new page is on its way", async () => {
+  const state = backend([run({ state: "finished", counts: counts({ total: 12, processed: 12, succeeded: 11, failed: 1, queued: 0, active: 0 }) })]);
+  state.items = Array.from({ length: 12 }, (_, i) => item({ node_uuid: `n${i}`, name: `record-${i}`, phase: i === 11 ? "failed" : "succeeded" }));
+  const asked: Array<{ page: number; pageSize: number; phase: string }> = [];
+  const serve = api.agentUpgradeItems;
+  let hold: (() => void) | undefined;
+  api.agentUpgradeItems = async (id, page = 1, pageSize = 20, phase = "") => {
+    asked.push({ page, pageSize, phase });
+    if (page === 2 && !phase) await new Promise<void>((resolve) => { hold = resolve; });
+    return serve(id, page, pageSize, phase);
+  };
+  const user = userEvent.setup(); mount(true, 7);
+  const drawer = await screen.findByRole("dialog", { name: i18n.t("nodes:batchUpgrade.runTitle", { id: 7 }) });
+  await within(drawer).findByText("record-0");
+  assert.deepEqual(asked.at(-1), { page: 1, pageSize: 10, phase: "" }, "every result asks for no state");
+  const tbody = drawer.querySelector("tbody")!;
+  assert.equal(within(tbody).getAllByRole("row").length, 10);
+
+  // Next page: the old rows stay under a loading cover until page 2 answers.
+  await user.click(within(drawer).getByRole("button", { name: locale.common.resourceTable.nextPage }));
+  await waitFor(() => assert.deepEqual(asked.at(-1), { page: 2, pageSize: 10, phase: "" }));
+  const table = drawer.querySelector("table")!.closest("[aria-busy]");
+  assert.equal(table?.getAttribute("aria-busy"), "true", "the table says a new page is on its way");
+  assert.ok(within(drawer).getByText("record-0"), "the previous page stays visible meanwhile");
+  await act(async () => hold?.());
+  await within(drawer).findByText("record-10");
+  assert.equal(drawer.querySelector("[aria-busy]"), null, "the cover lifts once the page arrived");
+  assert.equal(within(tbody).getAllByRole("row").length, 2);
+
+  // A phase filter asks the server for that state and starts again at page 1.
+  await user.click(within(drawer).getByRole("combobox", { name: k.filter }));
+  await user.click(await screen.findByRole("option", { name: k.phase.failed }));
+  await waitFor(() => assert.deepEqual(asked.at(-1), { page: 1, pageSize: 10, phase: "failed" }));
+  await within(drawer).findByText("record-11");
+  assert.equal(within(drawer).queryByRole("button", { name: locale.common.resourceTable.nextPage }), null, "one page of results needs no pager");
+
+  // Back to every result: the request drops the state again.
+  await user.click(within(drawer).getByRole("combobox", { name: k.filter }));
+  await user.click(await screen.findByRole("option", { name: k.allResults }));
+  await waitFor(() => assert.deepEqual(asked.at(-1), { page: 1, pageSize: 10, phase: "" }));
+
+  // A poll of the same page does not cover the table.
+  const before = asked.length;
+  await act(async () => Events.emit("agent_upgrade"));
+  await waitFor(() => assert.ok(asked.length > before));
+  assert.equal(drawer.querySelector("[aria-busy]"), null);
+});
+
+test("the record's progress bar turns red when any attempt failed, was interrupted or is unknown", async () => {
+  backend([run({ state: "finished", counts: counts({ total: 2, processed: 2, succeeded: 1, failed: 1, queued: 0, active: 0 }) })]);
+  mount(true, 7);
+  const drawer = await screen.findByRole("dialog", { name: i18n.t("nodes:batchUpgrade.runTitle", { id: 7 }) });
+  await within(drawer).findByText(k.processingNotSuccess);
+  assert.equal(within(drawer).getByRole("progressbar").getAttribute("data-tone"), "danger");
+  cleanup();
+  backend([run({ state: "finished", counts: counts({ total: 2, processed: 2, succeeded: 2, queued: 0, active: 0 }) })]);
+  mount(true, 7);
+  const ok = await screen.findByRole("dialog", { name: i18n.t("nodes:batchUpgrade.runTitle", { id: 7 }) });
+  await waitFor(() => assert.equal(within(ok).getByRole("progressbar").getAttribute("data-tone"), "brand"));
+});
+
 test("an attempt the system settled shows why in the reader's language, and only an operator's release shows a note", async () => {
   const state = backend([run({ state: "finished", counts: counts({ total: 3, processed: 3, unconfirmed: 3, active: 0, queued: 0 }) })]);
   state.items = [

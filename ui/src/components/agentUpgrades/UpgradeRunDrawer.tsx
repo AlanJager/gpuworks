@@ -54,7 +54,18 @@ export default function UpgradeRunDrawer({ runID, isAdmin, onClose, onContinue, 
   const [page, setPage] = useState(1);
   const [phase, setPhase] = useState(ALL);
   const filter = phase === ALL ? "" : phase;
-  const items = usePolling(() => api.agentUpgradeItems(runID, page, PAGE_SIZE, filter), interval, [runID, page, filter, interval]);
+  // The page the rows on screen belong to. A new page or filter keeps the old
+  // rows until its answer arrives (usePolling keeps data across a dependency
+  // change); until then the table says it is loading. Polls of the same page
+  // do not, so the table does not flicker every five seconds.
+  const wanted = `${page}\u0000${filter}`;
+  const [shownFor, setShownFor] = useState(wanted);
+  const items = usePolling(async () => {
+    const answer = await api.agentUpgradeItems(runID, page, PAGE_SIZE, filter);
+    setShownFor(wanted);
+    return answer;
+  }, interval, [runID, page, filter, interval]);
+  const switching = shownFor !== wanted;
   const refresh = () => { void status.refresh(); void items.refresh(); onChanged(); };
   useEvents("agent_upgrade", refresh);
   const [busy, setBusy] = useState(false);
@@ -101,6 +112,8 @@ export default function UpgradeRunDrawer({ runID, isAdmin, onClose, onContinue, 
         </div>
         <Button variant="secondary" onClick={refresh}>{t("batchUpgrade.refresh")}</Button>
       </div>
+      <div className="relative" aria-busy={switching || undefined}>
+      {switching && rows.length > 0 && <div className="absolute inset-0 z-10 flex items-start justify-center bg-surface-floating/60 pt-10"><Spinner label={t("batchUpgrade.loadingRun")} /></div>}
       <Table size="sm" className="table-fixed" containerClassName="max-w-full overflow-x-auto" style={{ width: TABLE_WIDTH, minWidth: "100%", tableLayout: "fixed" }}>
         <TableHeader>
           <TableRow>
@@ -136,6 +149,7 @@ export default function UpgradeRunDrawer({ runID, isAdmin, onClose, onContinue, 
           </TableRow>)}
         </TableBody>
       </Table>
+      </div>
       {(items.data?.total ?? 0) > PAGE_SIZE && <Pager page={page} pageSize={PAGE_SIZE} total={items.data?.total ?? 0} onChange={setPage} />}
     </div>
   </SideDrawer>;
