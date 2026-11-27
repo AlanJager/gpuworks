@@ -72,6 +72,9 @@ func applyServerConfig(cfg *app.Config, file serverconfig.File, given map[string
 	if d, err := time.ParseDuration(file.SessionMaxLifetime); err == nil && d > 0 {
 		cfg.SessionMaxLifetime = d
 	}
+	if file.Auth.LocalPassword != "" {
+		cfg.AuthLocalPassword = file.Auth.LocalPassword
+	}
 	if file.UdockerBundleSource != "" {
 		cfg.UdockerBundleSource = file.UdockerBundleSource
 	}

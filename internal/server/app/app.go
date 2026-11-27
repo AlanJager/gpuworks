@@ -392,7 +392,7 @@ func assembleBusiness(cfg Config, log *slog.Logger, b *bus.Bus, st *store.Store,
 	if err := startExtensions(cfg, a, master, &apiDeps); err != nil {
 		return nil, err
 	}
-	handler := a.apiRouter(apiDeps, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies, Cookie: cfg.sessionCookie()})
+	handler := a.apiRouter(apiDeps, auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime, Proxies: proxies, Cookie: cfg.sessionCookie(), LocalPassword: cfg.AuthLocalPassword})
 	a.scaleReplicas = planning.Scaling{Store: st, Resolve: networks.Resolve, Online: h.Online, UCXNetlinkHang: h.UCXNetlinkHang}.ScaleScheduled
 	handler = api.WithSecurityHeaders(proxies, accessLogHandlerFor(log, cfg.DataDir, a.routeByFunction(cfg.experienceGuard(handler))))
 

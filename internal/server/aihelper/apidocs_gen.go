@@ -346,4 +346,8 @@ var routeDocs = map[string]string{
 	"/api/v1/usage-report": "用户体验改进计划状态 `{enabled, editable, last_day?, last_attempt?: {at, day, ok, error?}, next_due_at?}`：是否加入（`server.yaml` 的 `usage_report`）、能否在控制台修改、最近一份送达的报告覆盖的 UTC 日、本进程最近一次投递、下一份报告的预计时间（[用户体验改进计划](usage-report.md)）",
 
 	"/api/v1/usage-report/preview": "下一份报告的原文（`application/json`，与实际发送的字节相同，不取走进程内计数）；未接入改进计划的服务端 404 `USAGE_REPORT_UNAVAILABLE`",
+
+	"/api/v1/users": "全部账号，含已停用的：`{items:[{id,username,role,local_admin,disabled,disabled_at,created_at,updated_at}], total}`",
+
+	"/api/v1/users/{}/identities": "该账号的外部身份链接：`{items:[{id,source,subject,created_at,last_sign_in_at}], total}`",
 }

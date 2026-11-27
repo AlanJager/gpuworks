@@ -46,6 +46,8 @@ ssh_proxy: ""              # socks5://host:port，SSH 到节点经此代理
 update_channel: release    # release（正式发布版）/ nightly（滚动预览版）；不写则跟随构建
 auto_check_updates: false  # 关闭自动检测新版本；不写即开启
 usage_report: false        # 不发日报，自动检查不带节点数/GPU型号但仍带安装标识与版本；不写即加入
+auth:
+  local_password: all      # all（默认）：所有用户都能用密码登录；local_admin：只有本地管理员能用密码登录
 ```
 
 | 键 | 默认 | 说明 | 覆盖参数 |
@@ -71,6 +73,7 @@ usage_report: false        # 不发日报，自动检查不带节点数/GPU型�
 | `update_channel` | 空（跟随构建：master 构建为 `nightly`，`v*` tag 构建为 `release`） | 检查更新、官方目录更新与升级读哪个发布渠道：`release`（正式发布版）或 `nightly`（滚动预览版）。设置页「版本与更新」切换渠道时写入本键并立即生效；`gpuworks upgrade` 不带 `--channel` 时也读它。发布通道之前的版本不认识这个键、会拒绝启动：降级到那些版本前先删掉这一行（`gpuworks upgrade --archive` 降级时旧版本起不来会自动回滚） | `gpuworks upgrade --channel` |
 | `auto_check_updates` | 空（开启） | 是否自动检测新版本：开启时打开控制台会触发检查（同时拉取发布方的[通知](usage-report.md#发布方通知)），`false` 时 server 不自动检查，只在设置页点「检查更新」时读取版本索引与通知。自动检查总会附带安装标识、server 版本与 agent 版本分布（用于统计装机数与版本），节点数与 GPU 型号只在加入改进计划（`usage_report`）时附带，见下文「更新检查报告什么」。设置页「版本与更新」的开关写入本键并立即生效，开启时删除该键。只有关闭时才写入；更早的版本不认识这个键、会拒绝启动，降级前先删掉这一行 | — |
 | `usage_report` | 空（加入） | 是否加入[用户体验改进计划](usage-report.md)：每天向发布方发送一份匿名日报，并在自动检查更新时附带节点数与 GPU 型号（见下文「更新检查报告什么」）。`false` 时不发日报、检查更新不再附带节点数与 GPU 型号；自动检查仍会附带安装标识与版本，要完全不发送还需关闭 `auto_check_updates`。设置页「用户体验改进计划」的开关写入本键并立即生效，开启时删除该键。**私有化交付在 server 首次启动前写入 `usage_report: false`**（首次启动会立刻发送一份）；环境变量 `GPUWORKS_ALLOW_DEGRADED_AGENT_STARTUP`、`GPUWORKS_USAGE_REPORT=off` 同样强制关闭。只有关闭时才写入；更早的版本不认识这个键、会拒绝启动，降级前先删掉这一行 | — |
+| `auth.local_password` | `all` | 谁能用本地密码登录：`all` 时所有用户都可以；`local_admin` 时只有 `local_admin` 为真的管理员（安装时创建的那个、`gpuworks reset-password` 恢复过的）可以，其余用户改经外部身份登录（[ADR 0085](../adr/0085-external-identity-connectors.md)）。本地管理员的密码登录永远可用，所以所有身份连接器都不可达时仍能登录。密码校验通过之后才判断，返回 `403 LOCAL_PASSWORD_DISABLED`。只能编辑文件，重启生效；更早的版本不认识 `auth` 这个键、会拒绝启动，降级前先删掉整节 | — |
 | `plugins` | 空 | 插件包的信任与站点策略：主机信任的证书签发者与只能收窄的策略，见下文[插件的信任与站点策略](#插件的信任与站点策略)。只能编辑文件，`gpuworks plugin` 子命令每次运行时读取；更早的版本不认识这个键、会拒绝启动，降级前先删掉整节 | `gpuworks plugin --config` |
 | `extensions.<名称>` | 空 | 单独构建的服务器所加模块的配置，每个模块一节、以模块名为键，由该模块按自己的格式严格解析；顶层其他键仍不认识即拒绝启动。没有模块认领的一节只在启动时记一条警告，不影响启动（在不同构建之间迁移数据目录时会遇到）。社区版不读其中任何内容；更早的版本不认识 `extensions` 这个键、会拒绝启动，降级前先删掉整节 | — |
 

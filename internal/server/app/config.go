@@ -109,6 +109,11 @@ type Config struct {
 
 	SessionIdleTimeout time.Duration // inactivity deadline for management sessions
 	SessionMaxLifetime time.Duration // absolute login deadline
+	// AuthLocalPassword is server.yaml's auth.local_password (ADR 0085):
+	// "all" (the default) lets every user sign in with a password,
+	// "local_admin" only the local administrators, the floor that stays
+	// reachable when every identity connector is down.
+	AuthLocalPassword string
 
 	ProxyMaxBodyBytes int64 // max /v1 request body spooled to disk before routing (413 beyond)
 

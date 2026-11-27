@@ -59,7 +59,29 @@ func (s *Store) AuthenticateUser(username, password string) (*User, error) {
 	if !auth.VerifyPassword(password, u.PasswordHash) {
 		return nil, ErrNotFound
 	}
+	// Checked after the password, so a disabled account is told apart only
+	// for someone who already proved they hold its password.
+	if u.DisabledAt != nil {
+		return nil, ErrUserDisabled
+	}
 	return &u, nil
+}
+
+// userDisabled reports whether a user's account is disabled. It is read on the
+// paths that authenticate a long-lived credential (an inference API key): the
+// row's own copy is what counts, and a cache in another process reaches it when
+// its TTL runs out (ADR 0085 decision 7). A key without an account row (the
+// historical user 0 keys of ADR 0073, or an owner deleted outside the API) is
+// not disabled: only an account that exists can be disabled.
+func userDisabled(db *gorm.DB, userID uint) (bool, error) {
+	if userID == 0 {
+		return false, nil
+	}
+	var disabled int64
+	if err := db.Model(&User{}).Where("id = ? AND disabled_at IS NOT NULL", userID).Count(&disabled).Error; err != nil {
+		return false, err
+	}
+	return disabled > 0, nil
 }
 
 // SetUserPassword replaces a user's password hash.
@@ -214,6 +236,10 @@ func (s *Store) ResolveAPIKey(presented string) (APIKeyIdentity, bool) {
 		return APIKeyIdentity{}, false
 	}
 	if !verifyAPIKeyHash(presented, k.Hash) {
+		return APIKeyIdentity{}, false
+	}
+	if disabled, err := userDisabled(s.db, k.UserID); err != nil || disabled {
+		// Refused, and not cached: a cache entry would outlive an enable.
 		return APIKeyIdentity{}, false
 	}
 	identity := APIKeyIdentity{KeyID: k.ID, UserID: k.UserID, Restricted: k.Restricted, Priority: k.priorityBinding()}

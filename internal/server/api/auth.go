@@ -56,8 +56,23 @@ func (a *apiHandlers) login(w http.ResponseWriter, r *http.Request) {
 		writeProductError(w, http.StatusUnauthorized, ErrorInvalidCredentials, "invalid username or password", nil)
 		return
 	}
+	if errors.Is(err, store.ErrUserDisabled) {
+		// Only someone who proved the account's password learns this.
+		a.usageCounters().Inc(usagereport.KindLogin, "failed")
+		writeProductError(w, http.StatusForbidden, ErrorUserDisabled, "this account is disabled; ask an administrator to enable it", nil)
+		return
+	}
 	if err != nil {
 		a.writeManagementAuthError(w, err)
+		return
+	}
+	// auth.local_password: local_admin keeps the password form for the
+	// administrators the platform cannot lose (ADR 0085 decision 8); checked
+	// after the password, so it tells nothing to anyone else.
+	if a.sessionPolicy.LocalPassword == auth.LocalPasswordLocalAdmin && !u.LocalAdmin {
+		a.usageCounters().Inc(usagereport.KindLogin, "failed")
+		writeProductError(w, http.StatusForbidden, ErrorLocalPasswordDisabled,
+			"this server signs users in through an identity source; local passwords are limited to local administrators", nil)
 		return
 	}
 	policy := a.sessionPolicy.Normalized()
@@ -191,7 +206,11 @@ func (a *apiHandlers) managementStreamAllowed(r *http.Request, admin bool) bool 
 }
 
 func (a *apiHandlers) writeManagementAuthError(w http.ResponseWriter, err error) {
-	if errors.Is(err, store.ErrNotFound) || errors.Is(err, auth.ErrInvalidToken) || errors.Is(err, auth.ErrExpiredToken) {
+	// A disabled account's session is answered like a gone one: it was
+	// deleted when the account was disabled, and 401 is what the console's
+	// session handling already means.
+	if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrUserDisabled) ||
+		errors.Is(err, auth.ErrInvalidToken) || errors.Is(err, auth.ErrExpiredToken) {
 		writeProductError(w, http.StatusUnauthorized, ErrorAuthenticationRequired, "authentication required", nil)
 		return
 	}

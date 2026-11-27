@@ -1128,7 +1128,15 @@
     "PROVIDER_HTTP_UNREACHABLE": "The endpoint did not answer the request.",
     "PROVIDER_KIND_UNKNOWN": "Unknown external platform type.",
     "PROVIDER_AUTH_FAILED": "The platform rejected the credentials.",
-    "PROVIDER_TEST_UNAVAILABLE": "The connection test could not be completed. Try again later."
+    "PROVIDER_TEST_UNAVAILABLE": "The connection test could not be completed. Try again later.",
+    "STORE_UNAVAILABLE": "The account store is not available on this server.",
+    "USER_NOT_FOUND": "No account has this id.",
+    "USER_DISABLED": "This account is disabled. An administrator can enable it again.",
+    "LOCAL_PASSWORD_DISABLED": "This server signs users in through an identity source. Only local administrators can sign in with a password.",
+    "LAST_LOCAL_ADMIN": "This is the last enabled local administrator. The platform keeps one so it stays reachable, so this account cannot be disabled.",
+    "EXTERNAL_IDENTITY_INVALID": "The source must match [a-z][a-z0-9_]{1,31} and the subject must be 1 to 256 bytes.",
+    "EXTERNAL_IDENTITY_TAKEN": "This external identity is already linked to an account.",
+    "EXTERNAL_IDENTITY_NOT_FOUND": "No external identity of this account has this id."
   },
   "apiErrorDetail": "{{category}}: {{detail}}",
   "checkStatus": {

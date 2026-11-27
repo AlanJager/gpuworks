@@ -168,6 +168,8 @@ read GET /api/v1/telemetry/export
 read GET /api/v1/terminal/sessions
 read GET /api/v1/usage-report
 read GET /api/v1/usage-report/preview
+read GET /api/v1/users
+read GET /api/v1/users/{id}/identities
 read GET /api/v1/x/sample/things
 read POST /api/v1/ai/ask
 read POST /api/v1/ai/configs/test

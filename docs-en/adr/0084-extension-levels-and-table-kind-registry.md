@@ -76,7 +76,7 @@ Not implemented. Order:
 3. Existing methods expressible as data become thin wrappers one by one, one commit each; decision-function methods are marked frozen in the docs.
 4. A line in `CLAUDE.md` under "文档与计划": an ADR that adds an extensible capability must have an "扩展等级" section.
 
-<!-- translation-source-sha256: ecf6e0f641304146454339b4cac02c402df051e3a3b2a1f3e33e6b9e2ced10d1 # ADR 0084: Extension Levels and Criteria; Pushed Table Kinds Described by a Registry, and Compiled Modules Push the Same Tables as Plugin Packages -->
+<!-- translation-source-sha256: d916e562ce621552fbde500f599adca029657685782e9cb529b5a3956400d3f5 # ADR 0084: Extension Levels and Criteria; Pushed Table Kinds Described by a Registry, and Compiled Modules Push the Same Tables as Plugin Packages -->
 <!-- translation-source-sha256: 7ed5284792c5426a692a11983dc57b9f5565fce3ee0e7f26b95e030e1b75cfbe ## Background -->
 <!-- translation-source-sha256: 15ea9c439ba805251621605eb4f64b9d943aa52ec64bbe314b5ce9e5795390d7 ## Decision -->
 <!-- translation-source-sha256: 281313ddafa375dc6ee90cce339fa01b05733cdb2acc19e165a6b3a9c99f0928 ## Extension level of this ADR -->

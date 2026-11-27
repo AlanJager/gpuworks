@@ -2093,6 +2093,12 @@
       "translations": {
         "zh": "繁忙婉拒"
       }
+    },
+    {
+      "term_en": "Disabled Account",
+      "translations": {
+        "zh": "停用账号"
+      }
     }
   ],
   "do_not_translate": [

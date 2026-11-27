@@ -81,6 +81,21 @@ func (c *platformTokenCache) forget(hash string) {
 	delete(c.verified, hash)
 }
 
+// forgetUser drops every remembered token of one user, after the user was
+// disabled or enabled (DisableUser). The next request re-reads the token and
+// its user, and reaches the user's current state.
+func (c *platformTokenCache) forgetUser(userID uint) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for hash, v := range c.verified {
+		if v.user.ID == userID {
+			delete(c.verified, hash)
+			delete(c.lastUsed, v.token.ID)
+		}
+	}
+	c.generation++
+}
+
 // usedAt keeps a remembered token's last use in step with the row.
 func (c *platformTokenCache) usedAt(hash string, now time.Time) {
 	c.mu.Lock()
@@ -171,6 +186,12 @@ func (s *Store) VerifyPlatformToken(presented string) (*PlatformToken, *User, bo
 		s.platformTokens.remember(generation, hash, v)
 	}
 	if v.token.ExpiresAt != nil && !now.Before(*v.token.ExpiresAt) {
+		return nil, nil, false
+	}
+	// A disabled user's tokens are refused. The cached user is as new as the
+	// cache entry (platformTokenCacheTTL); disabling through this store
+	// forgets the user's entries in the same process.
+	if v.user.DisabledAt != nil {
 		return nil, nil, false
 	}
 	if s.platformTokens.dueLastUsed(v.token.ID, now) {

@@ -159,7 +159,9 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 请求同时带 Bearer 与 Cookie 时优先使用 Bearer；无效 Bearer 不会回退到 Cookie。
 
 用户名或密码错误返回 `401 INVALID_CREDENTIALS`；登录过于频繁返回 `429 LOGIN_THROTTLED`，
-按响应头 `Retry-After` 指定的秒数等待后重试。其他错误见[常见 HTTP 状态与错误码](api-conventions.md#常见-http-状态与错误码)。
+按响应头 `Retry-After` 指定的秒数等待后重试。账号已停用返回 `403 USER_DISABLED`；`server.yaml` 的
+`auth.local_password` 为 `local_admin` 而该用户不是本地管理员时返回 `403 LOCAL_PASSWORD_DISABLED`
+（两者都在密码校验通过之后才判断，不向其他人透露账号状态）。其他错误见[常见 HTTP 状态与错误码](api-conventions.md#常见-http-状态与错误码)。
 
 ### 修改密码
 
@@ -195,6 +197,7 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 | 调用 `auth/me` 或被动轮询 | 不延长空闲期限 |
 | 通过登录会话执行管理写请求，或调用 `auth/activity` 报告真实操作 | 延长空闲期限，但不延长从登录起计算的绝对期限 |
 | 修改或重置密码（控制台或 `reset-password`） | 撤销该用户的管理会话，关联的 JWT 同时失效；不撤销平台 API 令牌和 API key |
+| 账号被停用（`POST /api/v1/users/{id}/disable`） | 立即删除该用户的全部管理会话；登录、平台令牌与推理 API key 一律拒绝（`USER_DISABLED`）；数据和 key 保留，重新启用后照常可用 |
 | 退出登录 | 撤销所提交凭证对应的会话，关联的 JWT 同时失效，并清除 Cookie；重复退出仍可成功 |
 | 升级前未绑定会话的 JWT 或旧 Cookie | 需要重新登录 |
 
@@ -204,6 +207,28 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 
 会话失效返回 `401 AUTHENTICATION_REQUIRED`；会话存储不可用返回 503。
 登录、退出，以及使用登录会话的管理写请求会检查请求来源；跨来源请求返回 `403 MANAGEMENT_ORIGIN_REJECTED`。
+
+## Accounts（账号与外部身份）
+
+账号默认只有安装时创建的那个管理员。管理员在这里查看账号、停用与恢复账号，并维护账号到外部身份源的链接
+（[ADR 0085](../adr/0085-external-identity-connectors.md)）；身份连接器（例如钉钉）在登录时按链接找到账号，
+它不能创建管理员，也不能停用或改动管理员。
+
+| Method | Path | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | `/api/v1/users` | 全部账号，含已停用的：`{items:[{id,username,role,local_admin,disabled,disabled_at,created_at,updated_at}], total}` | 管理员登录会话 |
+| POST | `/api/v1/users/{id}/disable` | 停用账号：删除其全部会话，登录、平台令牌与推理 API key 一律拒绝。返回更新后的账号 | 管理员登录会话 |
+| POST | `/api/v1/users/{id}/enable` | 恢复账号；数据与 key 照常可用。返回更新后的账号 | 管理员登录会话 |
+| GET | `/api/v1/users/{id}/identities` | 该账号的外部身份链接：`{items:[{id,source,subject,created_at,last_sign_in_at}], total}` | 管理员登录会话 |
+| POST | `/api/v1/users/{id}/identities` | 新增链接：`{source, subject}`，返回 201 与这条链接 | 管理员登录会话 |
+| DELETE | `/api/v1/users/{id}/identities/{identityID}` | 删除该账号的一条链接，返回 204 | 管理员登录会话 |
+
+- 这些路由只接受登录会话：平台 API 令牌返回 `403 PLATFORM_TOKEN_NOT_ALLOWED`，成员返回 `403 ADMINISTRATOR_REQUIRED`。
+- 账号不存在（或 id 不是正整数）返回 `404 USER_NOT_FOUND`；链接不存在、或属于别的账号，返回 `404 EXTERNAL_IDENTITY_NOT_FOUND`。
+- `source` 是身份连接器的来源名，须匹配 `[a-z][a-z0-9_]{1,31}`；`subject` 是身份源里不变的 id，1 到 256 字节。不合规返回 `400 EXTERNAL_IDENTITY_INVALID`，同一对已经链接过返回 `409 EXTERNAL_IDENTITY_TAKEN`。
+- 不能停用最后一个启用的本地管理员（`local_admin` 为真的管理员），返回 `403 LAST_LOCAL_ADMIN`：平台要保留一个能在身份源不可达时登录的账号，这也让管理员无法把自己锁在外面。停用普通管理员或成员不受限制。
+- 停用立即生效于本进程；集群里其他成员最晚在推理 API key 缓存（5 分钟）与平台令牌缓存（1 分钟）到期时生效。会话按请求读库，所有成员立即失效。
+- 链接只能按 `(source, subject)` 查找账号，永不按用户名或邮箱自动匹配；把已有账号链接到外部身份只能由管理员在这里显式操作。
 
 ## Nodes（节点接入）
 
