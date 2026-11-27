@@ -226,12 +226,15 @@ test("the identity sources the server offers are links under the password form",
   const link = within(nav).getByRole("link", { name: "Acme ID" });
   assert.equal(link.getAttribute("href"), "/api/v1/auth/sign-in/start?source=acme");
   assert.ok(screen.getByLabelText("Password"), "the password form stays for everyone");
-  // Keyboard: Tab from the submit button reaches the entry, and Enter
-  // follows it.
+  // Keyboard: the entry is the next stop after the password form's last
+  // control, and Enter follows it.
   const user = userEvent.setup();
-  screen.getByRole("button", { name: "Sign in" }).focus();
-  for (let i = 0; i < 5 && document.activeElement !== link; i++) await user.tab();
-  assert.equal(document.activeElement, link, "Tab from the password form reaches the entry");
+  screen.getByRole("button", { name: "Forgot password?" }).focus();
+  await user.tab();
+  assert.ok(document.activeElement === link, "one Tab from the password form reaches the entry");
+  await user.tab({ shift: true });
+  assert.ok(document.activeElement === screen.getByRole("button", { name: "Forgot password?" }), "Shift+Tab goes back to the form");
+  link.focus();
   let followed = "";
   link.addEventListener("click", (e) => { followed = link.getAttribute("href") ?? ""; e.preventDefault(); });
   await user.keyboard("{Enter}");

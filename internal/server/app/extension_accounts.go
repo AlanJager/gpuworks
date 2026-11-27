@@ -153,8 +153,6 @@ func accountError(err error, username string) error {
 		return messages.WrapProductError(messages.ErrorExternalIdentityTaken, "the external identity is already linked", nil, err)
 	case errors.Is(err, store.ErrInvalidIdentity):
 		return messages.WrapProductError(messages.ErrorExternalIdentityInvalid, "the source or subject is not a valid external identity", nil, err)
-	case errors.Is(err, store.ErrUserDisabled):
-		return messages.WrapProductError(messages.ErrorUserDisabled, "this account is disabled", nil, err)
 	}
 	return err
 }

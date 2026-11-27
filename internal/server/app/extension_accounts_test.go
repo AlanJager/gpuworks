@@ -17,7 +17,6 @@ func TestAccountStoreErrorsBecomeProductCodes(t *testing.T) {
 		store.ErrUsernameTaken:    messages.ErrorIdentityUsernameTaken,
 		store.ErrIdentityTaken:    messages.ErrorExternalIdentityTaken,
 		store.ErrInvalidIdentity:  messages.ErrorExternalIdentityInvalid,
-		store.ErrUserDisabled:     messages.ErrorUserDisabled,
 	} {
 		var pe *messages.ProductError
 		if got := accountError(err, "alice"); !errors.As(got, &pe) || pe.Code() != want {
