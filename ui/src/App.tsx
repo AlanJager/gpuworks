@@ -35,6 +35,9 @@ import "./pages/inferenceTemplateOrganizationCatalog.css";
 import "./components/detail/detailDrawer.css";
 import "./pages/nodes/nodeDetail.css";
 import "./pages/dashboard.css";
+// Shared by the deploy page and the PD scale dialog of a deployment detail,
+// which can open before the lazily loaded deploy page.
+import "./pages/deploy/deployNodeCard.css";
 import "./pages/scheduling/scheduling.css";
 import "./pages/batches/batches.css";
 import "./pages/scheduling/heatmap.css";

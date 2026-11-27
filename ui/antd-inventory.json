@@ -187,8 +187,9 @@
     "ui/src/pages/deploy/TemplateMatchedNotice.tsx": {"components":{"Alert":1,"Typography":1},"icons":0,"imports":["Alert","Typography"],"sites":2,"types":[]},
     "ui/src/pages/deploy/TemplateRecommendations.tsx": {"components":{"Button":1,"Empty":1,"Space":2,"Spin":1,"Tag":1,"Typography":12},"icons":1,"imports":["Button","Empty","Space","Spin","Tag","Typography"],"sites":18,"types":[]},
     "ui/src/pages/deploy/TokenizeField.tsx": {"components":{"Checkbox":1,"Form":2,"Space":1},"icons":0,"imports":["Checkbox","Form","Space"],"sites":4,"types":[]},
+    "ui/src/pages/deploy/deployNodeCard.css": {"antRules":1},
     "ui/src/pages/deploy/deployRuntimePreview.css": {"antRules":1},
-    "ui/src/pages/deploy/deployWizard.css": {"antRules":23},
+    "ui/src/pages/deploy/deployWizard.css": {"antRules":22},
     "ui/src/pages/deploy/deployWizardResponsive.css": {"antRules":6},
     "ui/src/pages/deploy/useDeployDraftSetup.ts": {"components":{},"icons":0,"imports":[],"sites":0,"types":["FormInstance"]},
     "ui/src/pages/deploy/useDeployEditMode.ts": {"components":{},"icons":0,"imports":[],"sites":0,"types":["FormInstance"]},
@@ -366,5 +367,5 @@
     "ui/src/ui-kit/Spinner.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]},
     "ui/src/ui-kit/feedback/index.tsx": {"components":{},"icons":1,"imports":[],"sites":0,"types":[]}
   },
-  "summary": {"antRules":183,"antdFiles":286,"cssFilesWithAntRules":12,"iconFiles":91,"iconImports":219,"sites":4210}
+  "summary": {"antRules":183,"antdFiles":286,"cssFilesWithAntRules":13,"iconFiles":91,"iconImports":219,"sites":4210}
 }

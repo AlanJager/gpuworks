@@ -1,0 +1,36 @@
+.deploy-node-card {
+  padding: 11px 13px;
+  border: 1px solid #dfe3e8;
+  border-radius: 9px;
+  background: #fafbfc;
+}
+
+.deploy-node-card.is-selected {
+  border-color: #91caff;
+  background: #f6faff;
+}
+
+.deploy-node-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.deploy-node-card-head strong {
+  font-size: 12px;
+}
+
+.deploy-node-card-head span {
+  color: #969aa1;
+  font-size: 10px;
+}
+
+.deploy-node-card .ant-form-item {
+  margin-bottom: 9px;
+}
+
+@media (max-width: 767px) {
+  .deploy-node-card-head { align-items: flex-start; flex-direction: column; }
+}
