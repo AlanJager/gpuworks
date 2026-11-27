@@ -1,8 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -430,5 +432,62 @@ func TestLocalPasswordPolicyLimitsPasswordSignIn(t *testing.T) {
 				t.Fatalf("a refused login handed out a token: %s", rec.Body)
 			}
 		})
+	}
+}
+
+// Every account change is logged with the acting administrator, the account,
+// the action and, for a link, its source; the subject, an identity source's
+// id for a person, is never written.
+func TestAccountChangesAreLoggedWithoutTheSubject(t *testing.T) {
+	var logs bytes.Buffer
+	rig := newTokenRig(t, func(d *Deps) { d.Log = slog.New(slog.NewJSONHandler(&logs, nil)) })
+	t.Cleanup(func() { _ = rig.st.Close() })
+	admin, err := rig.st.AuthenticateUser("admin", "gpuworks-test-password-2026")
+	if err != nil {
+		t.Fatal(err)
+	}
+	user, _ := disabledAccountUser(t, rig, "member")
+	identities := fmt.Sprintf("/api/v1/users/%d/identities", user.ID)
+	rec := rig.do(rig.session, http.MethodPost, identities, `{"source":"acme_oidc","subject":"secret-subject-7"}`)
+	var link struct {
+		ID uint `json:"id"`
+	}
+	if rec.Code != http.StatusCreated || json.Unmarshal(rec.Body.Bytes(), &link) != nil {
+		t.Fatalf("link = %d %s", rec.Code, rec.Body)
+	}
+	for _, req := range []struct{ method, path string }{
+		{http.MethodPost, fmt.Sprintf("/api/v1/users/%d/disable", user.ID)},
+		{http.MethodPost, fmt.Sprintf("/api/v1/users/%d/enable", user.ID)},
+		{http.MethodDelete, fmt.Sprintf("%s/%d", identities, link.ID)},
+	} {
+		if rec := rig.do(rig.session, req.method, req.path, ""); rec.Code >= 300 {
+			t.Fatalf("%s %s = %d %s", req.method, req.path, rec.Code, rec.Body)
+		}
+	}
+	type entry struct {
+		Msg    string `json:"msg"`
+		Action string `json:"action"`
+		Actor  uint   `json:"actor_user_id"`
+		Target uint   `json:"target_user_id"`
+		Source string `json:"source"`
+	}
+	var got []entry
+	for _, line := range strings.Split(strings.TrimSpace(logs.String()), "\n") {
+		var e entry
+		if json.Unmarshal([]byte(line), &e) == nil && e.Msg == "account changed" {
+			got = append(got, e)
+		}
+	}
+	want := []entry{
+		{"account changed", "link", admin.ID, user.ID, "acme_oidc"},
+		{"account changed", "disable", admin.ID, user.ID, ""},
+		{"account changed", "enable", admin.ID, user.ID, ""},
+		{"account changed", "unlink", admin.ID, user.ID, "acme_oidc"},
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("account change logs:\n got %+v\nwant %+v", got, want)
+	}
+	if strings.Contains(logs.String(), "secret-subject-7") {
+		t.Fatalf("the subject reached the log: %s", logs.String())
 	}
 }

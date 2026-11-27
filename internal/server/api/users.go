@@ -10,9 +10,24 @@ import (
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
-// Accounts and external identities (ADR 0085, step 1). Administrators manage
-// accounts; an identity connector, once step 2 lands, links and disables
-// through the store underneath these routes.
+// Accounts and external identities (ADR 0085). Administrators list accounts,
+// disable and enable them, and link them to (source, subject) pairs of an
+// outside identity source. Every change is logged with who made it.
+
+// logAccountChange records an account change: the acting administrator, the
+// account, the action and, for a link, its source. The subject is never
+// logged: it is an identity source's id for a person.
+func (a *apiHandlers) logAccountChange(r *http.Request, action string, target uint, source string) {
+	if a.d.Log == nil {
+		return
+	}
+	actor, _ := a.claimsFromRequest(r)
+	attrs := []any{"action", action, "actor_user_id", actor.UserID, "target_user_id", target}
+	if source != "" {
+		attrs = append(attrs, "source", source)
+	}
+	a.d.Log.Info("account changed", attrs...)
+}
 
 func userDTO(u store.User) dto.User {
 	return dto.User{
@@ -87,6 +102,11 @@ func (a *apiHandlers) setUserDisabled(w http.ResponseWriter, r *http.Request, di
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	action := "enable"
+	if disabled {
+		action = "disable"
+	}
+	a.logAccountChange(r, action, id, "")
 	writeJSON(w, http.StatusOK, userDTO(*u))
 }
 
@@ -145,6 +165,7 @@ func (a *apiHandlers) linkUserIdentity(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	a.logAccountChange(r, "link", id, row.Source)
 	writeJSON(w, http.StatusCreated, externalIdentityDTO(*row))
 }
 
@@ -159,7 +180,7 @@ func (a *apiHandlers) unlinkUserIdentity(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	err := a.d.Store.UnlinkIdentity(id, identityID)
+	removed, err := a.d.Store.UnlinkIdentity(id, identityID)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeProductError(w, http.StatusNotFound, ErrorExternalIdentityNotFound,
@@ -169,6 +190,7 @@ func (a *apiHandlers) unlinkUserIdentity(w http.ResponseWriter, r *http.Request)
 		writeErr(w, http.StatusInternalServerError, err)
 		return
 	}
+	a.logAccountChange(r, "unlink", id, removed.Source)
 	w.WriteHeader(http.StatusNoContent)
 }
 

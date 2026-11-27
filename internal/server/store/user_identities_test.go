@@ -147,11 +147,12 @@ func TestIdentitiesLinkFindAndUnlink(t *testing.T) {
 		t.Fatalf("invalid source = %v, want ErrInvalidIdentity", err)
 	}
 	// A link can only be removed through its own account.
-	if err := st.UnlinkIdentity(other.ID, row.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := st.UnlinkIdentity(other.ID, row.ID); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unlink through another user = %v, want ErrNotFound", err)
 	}
-	if err := st.UnlinkIdentity(u.ID, row.ID); err != nil {
-		t.Fatal(err)
+	removed, err := st.UnlinkIdentity(u.ID, row.ID)
+	if err != nil || removed.Source != "acme_oidc" || removed.Subject != "sub-1" {
+		t.Fatalf("unlink = %+v %v", removed, err)
 	}
 	rows, err := st.ExternalIdentities(u.ID)
 	if err != nil || len(rows) != 0 {

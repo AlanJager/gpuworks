@@ -132,18 +132,21 @@ func identityWriteError(err error) error {
 // of an external identity.
 var ErrInvalidIdentity = errors.New("invalid external identity")
 
-// UnlinkIdentity removes one of the account's links. A link of another
-// account is ErrNotFound, so an administrator cannot take one away by
-// guessing its id.
-func (s *Store) UnlinkIdentity(userID, identityID uint) error {
-	res := s.db.Where("id = ? AND user_id = ?", identityID, userID).Delete(&UserIdentity{})
-	if res.Error != nil {
-		return res.Error
+// UnlinkIdentity removes one of the account's links and answers the link it
+// removed. A link of another account is ErrNotFound, so an administrator
+// cannot take one away by guessing its id.
+func (s *Store) UnlinkIdentity(userID, identityID uint) (*UserIdentity, error) {
+	var removed UserIdentity
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("id = ? AND user_id = ?", identityID, userID).First(&removed).Error; err != nil {
+			return sessionLookupError(err)
+		}
+		return tx.Delete(&UserIdentity{}, removed.ID).Error
+	})
+	if err != nil {
+		return nil, err
 	}
-	if res.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return &removed, nil
 }
 
 // DisableUser disables an account (ADR 0085 decision 7): its sessions are
