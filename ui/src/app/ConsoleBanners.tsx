@@ -25,7 +25,10 @@ export default function ConsoleBanners() {
   const { t } = useTranslation();
   const { pathname } = useLocation();
   const ack = useBannerAck();
-  const banners = useConsoleBanners().filter((banner) => !opensPage(banner.link, pathname) && !ack.acknowledged(banner.ack_key));
+  // A banner with a key waits until the signed-in user is known: whether
+  // they acknowledged it cannot be read before (bannerAck.ts).
+  const banners = useConsoleBanners().filter((banner) => !opensPage(banner.link, pathname) &&
+    !(banner.ack_key && (!ack.ready || ack.acknowledged(banner.ack_key))));
   const { platform } = useConsolePlatform();
   if (banners.length === 0 && !platformNoticeShown(platform, pathname)) return null;
   return (

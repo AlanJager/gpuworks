@@ -247,11 +247,54 @@ test("a banner is acknowledged with the keyboard, and in Chinese", async () => {
   await waitFor(() => assert.equal(region(), null));
 });
 
-test("without a known user an acknowledgement holds for this visit only", async () => {
+// The shell after a sign-in: the session's user is unknown until /auth/me
+// answers (SessionBoundary), then known.
+function SignedIn({ user }: { user?: { id: number; username: string; role: string } }) {
+  return (
+    <I18nextProvider i18n={i18n}>
+      <SessionUserContext.Provider value={user}>
+        <MemoryRouter initialEntries={["/dashboard"]}><ConsoleBanners /></MemoryRouter>
+      </SessionUserContext.Provider>
+    </I18nextProvider>
+  );
+}
+
+test("until the signed-in user is known a banner with a key waits, so an acknowledged one never flashes", async () => {
+  window.localStorage.setItem(bannerAckStorageKey(7, "done:30"), "1");
+  stub(manifest([
+    { id: "done", severity: "info", message: { code: "NO_SUCH_CODE", message: "Already acknowledged" }, ack_key: "done:30" },
+    { id: "soon", severity: "info", message: reminder, ack_key: "soon:30" },
+    { id: "held", severity: "danger", message: { code: "NO_SUCH_CODE", message: "Nodes held" } },
+  ]));
+  const { rerender } = render(<SignedIn />);
+  // A banner without a key is shown at once; none offers to be acknowledged.
+  assert.ok(await screen.findByText("Nodes held"));
+  assert.equal(screen.queryByText("Already acknowledged"), null);
+  assert.equal(screen.queryByText("Renew soon"), null);
+  assert.equal(screen.queryByRole("button", { name: ack }), null);
+  rerender(<SignedIn user={{ id: 7, username: "ops", role: "admin" }} />);
+  assert.ok(await screen.findByText("Renew soon"));
+  assert.equal(screen.queryByText("Already acknowledged"), null, "the acknowledged banner never showed");
+  assert.equal(screen.getAllByRole("button", { name: ack }).length, 1);
+});
+
+test("an acknowledgement made before the user is known records nothing", async () => {
   stub(manifest([{ id: "soon", severity: "info", message: reminder, ack_key: "soon:30" }]));
-  const user = renderBanners(i18n, "/dashboard", null);
-  await user.click(await screen.findByRole("button", { name: ack }));
-  await waitFor(() => assert.equal(region(), null));
+  let acknowledge!: (key: string) => void;
+  function Probe() {
+    const a = useBannerAck();
+    acknowledge = a.acknowledge;
+    return <span data-testid="ready">{String(a.ready)}</span>;
+  }
+  const { rerender } = render(<SessionUserContext.Provider value={undefined}><Probe /></SessionUserContext.Provider>);
+  assert.equal(screen.getByTestId("ready").textContent, "false");
+  act(() => acknowledge("soon:30"));
   const keys = Array.from({ length: window.localStorage.length }, (_, i) => window.localStorage.key(i) ?? "");
   assert.deepEqual(keys.filter((key) => key.startsWith("gpuworks.banner-ack.")), []);
+  rerender(<SessionUserContext.Provider value={{ id: 7, username: "ops", role: "admin" }}><Probe /></SessionUserContext.Provider>);
+  assert.equal(screen.getByTestId("ready").textContent, "true");
+  cleanup();
+  // Once the user is known the banner is there to be acknowledged.
+  renderBanners();
+  assert.ok(await screen.findByRole("button", { name: ack }));
 });

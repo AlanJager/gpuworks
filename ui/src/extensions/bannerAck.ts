@@ -8,6 +8,12 @@ import { useSessionUser } from "../components/sessionUser";
 // user acknowledged. The banners above every page and an overlay page that
 // lists the same matter read this one store, so acknowledging in one place
 // hides it in the other at once (and in the browser's other tabs).
+//
+// Until the console knows who is signed in (right after a sign-in, before
+// /auth/me answers) nothing can be read or recorded: ready is false, and a
+// caller shows neither the acknowledge control nor a banner that has a key,
+// so an acknowledged banner does not flash up and a click is never recorded
+// for nobody.
 
 const prefix = "gpuworks.banner-ack.";
 
@@ -16,8 +22,8 @@ export function bannerAckStorageKey(userID: number, ackKey: string): string {
   return `${prefix}${userID}.${ackKey}`;
 }
 
-// Acknowledgements this visit could not store (no known user, storage
-// refused): they still hold until the page reloads.
+// Acknowledgements this visit could not store (storage refused), by
+// "<user id>.<key>": they still hold until the page reloads.
 const unsaved = new Set<string>();
 let version = 0;
 const listeners = new Set<() => void>();
@@ -44,17 +50,18 @@ function onStorage(event: StorageEvent) {
 
 const snapshot = () => version;
 
-function stored(userID: number | undefined, ackKey: string): boolean {
-  if (unsaved.has(`${userID ?? ""}.${ackKey}`)) return true;
-  if (userID === undefined) return false;
+function stored(userID: number, ackKey: string): boolean {
+  if (unsaved.has(`${userID}.${ackKey}`)) return true;
   try { return window.localStorage.getItem(bannerAckStorageKey(userID, ackKey)) === "1"; }
   catch { return false; }
 }
 
 export interface BannerAck {
+  /** ready is true once the signed-in user is known; until then nothing is acknowledged or can be. */
+  ready: boolean;
   /** acknowledged reports whether the viewer acknowledged ackKey; a banner without a key never is. */
   acknowledged: (ackKey: string | undefined) => boolean;
-  /** acknowledge records the viewer's acknowledgement of ackKey. */
+  /** acknowledge records the viewer's acknowledgement of ackKey; before ready it does nothing. */
   acknowledge: (ackKey: string) => void;
 }
 
@@ -66,17 +73,14 @@ export function useBannerAck(): BannerAck {
   // Neither is memoized: callers use them during render and in handlers, never
   // as effect or memo dependencies.
   useSyncExternalStore(subscribe, snapshot, snapshot);
-  const acknowledged = (ackKey: string | undefined) => !!ackKey && stored(userID, ackKey);
+  const acknowledged = (ackKey: string | undefined) => userID !== undefined && !!ackKey && stored(userID, ackKey);
   const acknowledge = (ackKey: string) => {
-    let saved = false;
-    if (userID !== undefined) {
-      try { window.localStorage.setItem(bannerAckStorageKey(userID, ackKey), "1"); saved = true; }
-      catch { /* kept for this visit below */ }
-    }
-    if (!saved) unsaved.add(`${userID ?? ""}.${ackKey}`);
+    if (userID === undefined) return;
+    try { window.localStorage.setItem(bannerAckStorageKey(userID, ackKey), "1"); }
+    catch { unsaved.add(`${userID}.${ackKey}`); }
     bump();
   };
-  return { acknowledged, acknowledge };
+  return { ready: userID !== undefined, acknowledged, acknowledge };
 }
 
 /** resetBannerAckForTest forgets the acknowledgements kept only in memory. */
