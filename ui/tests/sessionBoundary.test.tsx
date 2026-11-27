@@ -154,3 +154,38 @@ test("an unreadable identity answer still opens the shell, without a user", asyn
   render(<I18nextProvider i18n={i18n}><SessionBoundary>{() => <Who />}</SessionBoundary></I18nextProvider>);
   assert.ok(await screen.findByText("unknown"));
 });
+
+test("signing out and in as someone else never shows the previous user", async () => {
+  const { useSessionUser } = await import("../src/components/sessionUser.ts");
+  let current = { id: 1, username: "alice", role: "admin" };
+  let releaseMe: () => void = () => {};
+  let holdMe = false;
+  globalThis.fetch = async (url) => {
+    const path = String(url);
+    if (path.endsWith("/logout")) return new Response(null, { status: 200 });
+    if (path.endsWith("/login")) { current = { id: 2, username: "bob", role: "member" }; return Response.json({ ok: true }); }
+    if (holdMe) await new Promise<void>((resolve) => { releaseMe = resolve; });
+    return Response.json(current);
+  };
+  const seen: string[] = [];
+  function Who({ logout }: { logout: () => Promise<void> }) {
+    const name = useSessionUser()?.username ?? "unknown";
+    seen.push(name);
+    return <><p>{name}</p><button onClick={() => void logout()}>Log out</button></>;
+  }
+  render(<I18nextProvider i18n={i18n}><ConfigProvider theme={{ token: { motion: false } }}><SessionBoundary>{(logout) => <Who logout={logout} />}</SessionBoundary></ConfigProvider></I18nextProvider>);
+  assert.ok(await screen.findByText("alice"));
+  fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+  const username = await screen.findByRole("textbox", { name: "Username" });
+  holdMe = true;
+  seen.length = 0;
+  fireEvent.change(username, { target: { value: "bob" } });
+  fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret-password" } });
+  fireEvent.click(screen.getByRole("button", { name: auth.submit }));
+  // The shell is back before the new user is read: it knows nobody yet.
+  assert.ok(await screen.findByText("unknown"));
+  holdMe = false;
+  releaseMe();
+  assert.ok(await screen.findByText("bob"));
+  assert.ok(!seen.includes("alice"), `rendered ${seen.join(", ")}`);
+});

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useTranslation } from "react-i18next";
 import { api, type AIAskRequest, type AIFinding, type AIHistoryMessage, type AIImageLimit, type AIModelFit, type AIStreamEvent } from "../api";
 import { APIError, apiErrorText } from "../apiError";
+import { useSessionUser } from "../components/sessionUser";
 import type { LiveStep } from "../components/AIAssistantParts";
 import { keepNewestImages } from "./images";
 import { memoryThreadDB, newestFirst, newThreadID, openThreadDB, overflow, titleFrom, type StoredTurn, type Thread, type ThreadDB } from "./threads";
@@ -195,6 +196,8 @@ export function AssistantProvider({ children, threadDB }: { children: ReactNode;
   const turnsRef = useRef<Turn[]>([]);
   turnsRef.current = turns;
 
+  const sessionUserID = useSessionUser()?.id;
+
   useEffect(() => () => active.current?.ac.abort(), []);
 
   // The account's threads load once: who is signed in, then the browser's
@@ -202,7 +205,8 @@ export function AssistantProvider({ children, threadDB }: { children: ReactNode;
   useEffect(() => {
     let alive = true;
     (async () => {
-      const userID = await api.me().then((user) => user.id, () => 0);
+      // /auth/me is asked only while the session boundary has read no user.
+      const userID = sessionUserID ?? await api.me().then((user) => user.id, () => 0);
       const db = threadDB ?? await openThreadDB().catch(() => memoryThreadDB());
       const list = await db.list(userID).catch(() => [] as Thread[]);
       if (!alive) return;
@@ -210,7 +214,7 @@ export function AssistantProvider({ children, threadDB }: { children: ReactNode;
       setThreads(list.sort(newestFirst));
     })();
     return () => { alive = false; };
-  }, [threadDB]);
+  }, [threadDB, sessionUserID]);
 
   // Whether the service in use takes images is asked each time the panel
   // opens: the setting may have changed since.

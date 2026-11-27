@@ -67,6 +67,7 @@ export default function SessionBoundary({ children, onLogout }: { children: (log
       if (!response.ok) throw await apiResponseError(response, "");
       onLogout?.();
       request.current?.abort();
+      setUser(undefined);
       setAuthenticated(false);
       setError("");
       notifySessionExpired();
@@ -75,7 +76,11 @@ export default function SessionBoundary({ children, onLogout }: { children: (log
     }
   }
 
+  // Whoever signed in may not be who was signed in before: the pages ask
+  // /auth/me themselves until the session check that
+  // notifySessionAuthenticated starts has read the new user.
   const loggedIn = () => {
+    setUser(undefined);
     setAuthenticated(true);
     setExpired(false);
     setError("");

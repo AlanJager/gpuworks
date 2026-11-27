@@ -211,11 +211,13 @@ afterEach(async () => {
   globalThis.fetch = originalFetch;
 });
 
-function renderPage(userID?: number, entry = "/nodes") {
+// The session's user is the one /auth/me answers with (stubApi: an admin), so a test that makes
+// the account a member passes the role here too.
+function renderPage(userID?: number, entry = "/nodes", role = "admin") {
   return render(
     <I18nextProvider i18n={i18n}>
       <MemoryRouter initialEntries={[entry]}>
-        <SessionUserContext.Provider value={userID === undefined ? undefined : { id: userID, username: "preview", role: "admin" }}>
+        <SessionUserContext.Provider value={userID === undefined ? undefined : { id: userID, username: "preview", role }}>
           <NodesPage />
         </SessionUserContext.Provider>
       </MemoryRouter>
@@ -304,7 +306,7 @@ test("a member sees the fleet mismatch without the upgrade action", async () => 
   api.me = async () => ({ role: "member" }) as never;
   const nodes = api.nodesPage;
   api.nodesPage = async query => ({ ...await nodes(query), agent_fleet: { target: "56cb84fa", align: 3, check: 0 } });
-  renderPage(101);
+  renderPage(101, "/nodes", "member");
   assert.ok(await screen.findByText("3 nodes run an Agent version that differs from the server"));
   assert.equal(screen.queryByRole("button", { name: "Upgrade all" }), null);
   assert.equal(screen.queryByRole("link", { name: "See why they cannot upgrade" }), null);

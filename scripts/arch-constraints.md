@@ -264,6 +264,14 @@ grep -rqE "['\"](\.\./)+<去掉 ui/ 与扩展名的路径>(\.tsx?)?['\"]|ui/<同
 改动时输出 `["*"]`；`styles.css`、`app.css`、`theme/`、`main/App/navigation.tsx` 与 UI 构建配置同样输出 `["*"]`。
 已知缺口：`App.tsx` 全局引入的页面 CSS（如 `pages/batches/batches.css`）因此记为 `shared`；
 不被任何页面引用的文件（死代码）输出空；不在 import 图里的现存非 md 文件（如静态资源）保守输出 `["*"]`。
+locale JSON 同样不在 import 图里、保守输出 `["*"]`；删掉的 locale 文件同样输出 `["*"]`（语言包按目录 glob 加载，
+没有随之改动的 importer）。`--base` 下有一种改动不计入（`scripts/ui_locale_changes.mjs`）：只新增 key、每种语言
+都新增、key 是 `common` 的 `apiError.` 下的错误码文案、不是已有 key 的复数或 context 变体也不是已有变体的基础
+key、未改动的源码里没有字面引用它。其余情况（改值、删 key 或文件、只在部分语言新增、其他前缀）仍输出 `["*"]`。
+
+**这是一次有意的覆盖面收窄**（[ADR 0086](../docs/adr/0086-ui-check-skips-new-error-texts.md)）：控制台对服务端
+下发的码是通用渲染的（`t(\`apiError.${code}\`)`、`productMessageText`，用在部署预检、诊断、设置页的更新检查等
+处），同一 PR 让已有接口返回新码时，新文案会出现在现有页面上，而 walk 不再走这些页面。收回条件见该 ADR。
 
 ### ui_antd_icon_import_files（软预算 warn，初值 103，2026-11-09）
 
