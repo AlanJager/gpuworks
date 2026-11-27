@@ -251,10 +251,18 @@ test("Escape closes the delete dialog and Tab reaches its controls in order", as
   const { user } = renderActions(slurmEntry({ node_count: 3, delete_with_nodes_allowed: true, delete_with_nodes_blocker: "" }));
   await chooseRowAction(user, group().parentElement as HTMLElement, s.actions.delete);
   await dialog();
+  // Tab only once the dialog holds focus: right after it opens on a loaded
+  // runner, focus may still be on the menu item or the dialog's own frame,
+  // and the first presses would be spent getting there.
+  const opened = screen.getAllByRole("dialog").at(-1)!;
+  await waitFor(() => assert.ok(opened.contains(document.activeElement) && document.activeElement !== opened, "focus moved into the dialog"));
   const order: string[] = [];
-  for (let i = 0; i < 6 && order.length < 4; i += 1) {
+  // One full cycle through the dialog's controls is enough; the focus trap keeps every press inside it.
+  for (let i = 0; i < 10 && !(order.includes(s.delete.uninstall) && order.includes(s.delete.cancel)); i += 1) {
     await user.tab();
-    const name = document.activeElement?.getAttribute("aria-label") || document.activeElement?.textContent || document.activeElement?.getAttribute("role") || "";
+    const active = document.activeElement;
+    if (!active || active === opened) continue;
+    const name = active.getAttribute("aria-label") || active.textContent || active.getAttribute("role") || "";
     if (name && !order.includes(name)) order.push(name);
   }
   assert.ok(order.includes(s.delete.uninstall) && order.includes(s.delete.cancel), order.join("|"));
