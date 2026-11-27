@@ -80,6 +80,10 @@ type ConsoleBanner struct {
 	// shows a banner with this key to that viewer. The source chooses the
 	// key, so a banner that should be raised again (a new stage, a new
 	// deadline) carries a new key; one without a key is never acknowledged.
-	// Matches api.BannerAckKeyPattern, else it is dropped.
+	// The format is api.BannerAckKeyPattern: 1 to 128 characters of letters,
+	// digits and "._:-", starting with a letter or digit; a time in a key is
+	// written in UTC with "Z" (RFC 3339 "2027-01-01T00:00:00Z"), since an
+	// offset's "+" is outside it. The manifest drops a key that does not
+	// match, quietly: the banner is still shown, but cannot be acknowledged.
 	AckKey string `json:"ack_key,omitempty"`
 }

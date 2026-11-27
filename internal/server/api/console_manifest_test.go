@@ -68,6 +68,8 @@ func TestConsoleManifestCarriesFeaturesNavAndBanners(t *testing.T) {
 			{ID: "b4", Severity: "info", Message: dto.ProductMessage{Code: "ACKABLE", Message: "can be acknowledged"}, AckKey: "b4:stage-30:2027-01-01T00:00:00Z"},
 			{ID: "b5", Severity: "info", Message: dto.ProductMessage{Code: "BAD_KEY", Message: "key dropped"}, AckKey: "has space"},
 			{ID: "b6", Severity: "info", Message: dto.ProductMessage{Code: "LONG_KEY", Message: "key dropped"}, AckKey: strings.Repeat("k", 129)},
+			{ID: "b7", Severity: "info", Message: dto.ProductMessage{Code: "LONGEST_KEY", Message: "key kept"}, AckKey: strings.Repeat("k", 128)},
+			{ID: "b8", Severity: "info", Message: dto.ProductMessage{Code: "OFFSET_KEY", Message: "key dropped"}, AckKey: "b8:2027-01-01T08:00:00+08:00"},
 		}
 	})
 	rig := newTokenRig(t, func(d *Deps) {
@@ -89,7 +91,9 @@ func TestConsoleManifestCarriesFeaturesNavAndBanners(t *testing.T) {
 		`{"id":"b2","severity":"info","message":{"code":"OTHER","message":"other"}},` +
 		`{"id":"b4","severity":"info","message":{"code":"ACKABLE","message":"can be acknowledged"},"ack_key":"b4:stage-30:2027-01-01T00:00:00Z"},` +
 		`{"id":"b5","severity":"info","message":{"code":"BAD_KEY","message":"key dropped"}},` +
-		`{"id":"b6","severity":"info","message":{"code":"LONG_KEY","message":"key dropped"}}]}`
+		`{"id":"b6","severity":"info","message":{"code":"LONG_KEY","message":"key dropped"}},` +
+		`{"id":"b7","severity":"info","message":{"code":"LONGEST_KEY","message":"key kept"},"ack_key":"` + strings.Repeat("k", 128) + `"},` +
+		`{"id":"b8","severity":"info","message":{"code":"OFFSET_KEY","message":"key dropped"}}]}`
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != want {
 		t.Fatalf("manifest = %d\n%s\nwant\n%s", rec.Code, rec.Body, want)
 	}
