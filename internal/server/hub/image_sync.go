@@ -263,7 +263,7 @@ func (h *Hub) runDirectImageSync(ctx context.Context, image *store.Image, target
 				if errors.Is(err, errDirectPeerConnection) {
 					code = messages.ErrorPeerDirectConnectFailed
 				}
-				_ = h.store.FailImageSyncIfActiveCode(image.ID, nodeID, transferID, err.Error(), code)
+				h.failOwnedImageSync(image.ID, nodeID, transferID, err.Error(), code)
 				return
 			}
 			break
@@ -307,6 +307,21 @@ func (h *Hub) runDirectImageSync(ctx context.Context, image *store.Image, target
 		h.watchDirectImageTransfer(image.ID, nodeID)
 	}
 	h.finishDirectImageSync(ctx, image.ID, nodeID, transferID, result, confirmationWait)
+}
+
+// failOwnedImageSync records the copy's own failure, unless the transfer has
+// been taken from this goroutine: an operator's cancel takes the owner under
+// imageSyncMu and then writes its own reason, and the copy it cancelled
+// returns "context canceled" in between. Checking the owner under the same
+// lock keeps that error from replacing the reason. A stop of the hub's
+// sessions cancels without taking the owner, so the copy still records it.
+func (h *Hub) failOwnedImageSync(imageID, nodeID uint, transferID, message, code string) {
+	h.imageSyncMu.Lock()
+	defer h.imageSyncMu.Unlock()
+	if h.imageSyncOwners[transferID] == nil {
+		return
+	}
+	_ = h.store.FailImageSyncIfActiveCode(imageID, nodeID, transferID, message, code)
 }
 
 // finishDirectImageSync records what a peer copy that returned without an
