@@ -205,7 +205,7 @@ specs:
   - --mm-encoder-tp-mode
   - data
   - --max-num-seqs
-  - '128'
+  - '96'
   api:
     health_endpoint: /health
     operations:
