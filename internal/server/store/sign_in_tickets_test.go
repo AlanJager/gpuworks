@@ -114,9 +114,9 @@ func TestSignInTicketsAreBoundOneTimeAndShortLived(t *testing.T) {
 	if stored.TokenHash == ticket || strings.Contains(stored.TokenHash, ticket) {
 		t.Fatal("the ticket is stored in clear")
 	}
-	got, source, err := st.RedeemSignInTicket(ticket, testHandle)
-	if err != nil || got.ID != u.ID || source != "acme" {
-		t.Fatalf("redeem = %+v %q %v", got, source, err)
+	got, err := st.RedeemSignInTicket(ticket, "acme", testHandle)
+	if err != nil || got.ID != u.ID {
+		t.Fatalf("redeem = %+v %v", got, err)
 	}
 	var again SignInTicket
 	if err := st.DB().First(&again).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -126,7 +126,7 @@ func TestSignInTicketsAreBoundOneTimeAndShortLived(t *testing.T) {
 	if err := st.DB().First(&signedIn, link.ID).Error; err != nil || signedIn.LastSignInAt == nil {
 		t.Fatalf("last_sign_in_at not set: %+v %v", signedIn, err)
 	}
-	if _, _, err := st.RedeemSignInTicket(ticket, testHandle); !errors.Is(err, ErrSignInTicketInvalid) {
+	if _, err := st.RedeemSignInTicket(ticket, "acme", testHandle); !errors.Is(err, ErrSignInTicketInvalid) {
 		t.Fatalf("a second redemption = %v, want ErrSignInTicketInvalid", err)
 	}
 
@@ -135,11 +135,21 @@ func TestSignInTicketsAreBoundOneTimeAndShortLived(t *testing.T) {
 		t.Fatal(err)
 	}
 	other := strings.Repeat("f", 64)
-	if _, _, err := st.RedeemSignInTicket(stolen, other); !errors.Is(err, ErrSignInTicketInvalid) {
+	if _, err := st.RedeemSignInTicket(stolen, "acme", other); !errors.Is(err, ErrSignInTicketInvalid) {
 		t.Fatalf("redemption with another browser's handle = %v", err)
 	}
-	if _, _, err := st.RedeemSignInTicket(stolen, testHandle); !errors.Is(err, ErrSignInTicketInvalid) {
+	if _, err := st.RedeemSignInTicket(stolen, "acme", testHandle); !errors.Is(err, ErrSignInTicketInvalid) {
 		t.Fatalf("a ticket tried in another browser was not spent: %v", err)
+	}
+
+	// A browser that started a sign-in through another source does not
+	// redeem this source's ticket, even with the right handle.
+	crossed, err := st.IssueSignInTicket(u.ID, link.ID, "acme", testHandle, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.RedeemSignInTicket(crossed, "beta", testHandle); !errors.Is(err, ErrSignInTicketInvalid) {
+		t.Fatalf("redemption for another source = %v", err)
 	}
 
 	expired, err := st.IssueSignInTicket(u.ID, link.ID, "acme", testHandle, time.Minute)
@@ -149,10 +159,10 @@ func TestSignInTicketsAreBoundOneTimeAndShortLived(t *testing.T) {
 	if err := st.DB().Model(&SignInTicket{}).Where("1 = 1").Update("expires_at", time.Now().UTC().Add(-time.Second)).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := st.RedeemSignInTicket(expired, testHandle); !errors.Is(err, ErrSignInTicketInvalid) {
+	if _, err := st.RedeemSignInTicket(expired, "acme", testHandle); !errors.Is(err, ErrSignInTicketInvalid) {
 		t.Fatalf("an expired ticket = %v", err)
 	}
-	if _, _, err := st.RedeemSignInTicket("", testHandle); !errors.Is(err, ErrSignInTicketInvalid) {
+	if _, err := st.RedeemSignInTicket("", "acme", testHandle); !errors.Is(err, ErrSignInTicketInvalid) {
 		t.Fatalf("an empty ticket = %v", err)
 	}
 }
@@ -169,7 +179,7 @@ func TestSignInTicketsRefuseDisabledAccountsAndAreSwept(t *testing.T) {
 	if _, err := st.DisableUser(u.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := st.RedeemSignInTicket(ticket, testHandle); !errors.Is(err, ErrUserDisabled) {
+	if _, err := st.RedeemSignInTicket(ticket, "acme", testHandle); !errors.Is(err, ErrUserDisabled) {
 		t.Fatalf("a disabled account's ticket = %v, want ErrUserDisabled", err)
 	}
 	if _, err := st.EnableUser(u.ID); err != nil {
@@ -212,11 +222,11 @@ func TestExternalAccountsAreCreatedLinkedAndPaged(t *testing.T) {
 	if _, _, err := st.CreateExternalUser("carol2", "acme", "corp:1"); !errors.Is(err, ErrIdentityTaken) {
 		t.Fatalf("a taken identity = %v", err)
 	}
-	if err := st.RenameUser(u.ID, "admin"); !errors.Is(err, ErrUsernameTaken) {
+	if _, err := st.RenameLinkedAccount("acme", "corp:1", "admin"); !errors.Is(err, ErrUsernameTaken) {
 		t.Fatalf("rename to a taken name = %v", err)
 	}
-	if err := st.RenameUser(u.ID, "carol.c"); err != nil {
-		t.Fatal(err)
+	if got, err := st.RenameLinkedAccount("acme", "corp:1", "carol.c"); err != nil || got.Username != "carol.c" {
+		t.Fatalf("rename = %+v %v", got, err)
 	}
 	for i := 2; i <= 5; i++ {
 		linkedUser(t, st, fmt.Sprintf("user%d", i), "acme", fmt.Sprintf("corp:%d", i))
@@ -248,8 +258,8 @@ func TestExternalAccountsAreCreatedLinkedAndPaged(t *testing.T) {
 	}
 }
 
-// Revoking a user's sessions ends them and nobody else's.
-func TestRevokeUserSessionsEndsOnlyThatUsersSessions(t *testing.T) {
+// Revoking a linked account's sessions ends them and nobody else's.
+func TestRevokeLinkedAccountSessionsEndsOnlyThatAccountsSessions(t *testing.T) {
 	st := openUserIdentitiesStore(t)
 	u, _ := linkedUser(t, st, "dave", "acme", "corp:9")
 	if _, _, err := st.CreateManagementSession(u, time.Hour, time.Hour); err != nil {
@@ -262,7 +272,7 @@ func TestRevokeUserSessionsEndsOnlyThatUsersSessions(t *testing.T) {
 	if _, _, err := st.CreateManagementSession(&admin, time.Hour, time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	n, err := st.RevokeUserSessions(u.ID)
+	n, err := st.RevokeLinkedAccountSessions("acme", "corp:9")
 	if err != nil || n != 1 {
 		t.Fatalf("revoked %d %v, want 1", n, err)
 	}
@@ -272,10 +282,10 @@ func TestRevokeUserSessionsEndsOnlyThatUsersSessions(t *testing.T) {
 	}
 }
 
-// Two sign-ins of the same new identity that both pass the reads meet the
-// unique indexes: one creates the account, the other gets a typed error,
-// never a raw constraint failure.
-func TestConcurrentExternalSignUpsMeetTheIndexesAsTypedErrors(t *testing.T) {
+// Concurrent sign-ups of one new identity create one account: the writer
+// connection serializes them, and every later one gets a typed error, never a
+// raw constraint failure.
+func TestConcurrentExternalSignUpsCreateOneAccount(t *testing.T) {
 	st := openUserIdentitiesStore(t)
 	errs := make(chan error, 8)
 	for i := 0; i < 8; i++ {
@@ -296,5 +306,58 @@ func TestConcurrentExternalSignUpsMeetTheIndexesAsTypedErrors(t *testing.T) {
 	}
 	if created != 1 {
 		t.Fatalf("created %d accounts, want 1", created)
+	}
+}
+
+// A username written past CreateExternalUser's read (another process sharing
+// the database) meets the unique index, and the index's failure is read as
+// ErrUsernameTaken, not passed on raw.
+func TestTheUsernameIndexFailureIsATakenUsername(t *testing.T) {
+	st := openUserIdentitiesStore(t)
+	err := st.DB().Create(&User{Username: "admin", Role: "user"}).Error
+	if err == nil {
+		t.Fatal("a second account named admin was written")
+	}
+	if got := identityWriteError(err); !errors.Is(got, ErrIdentityTaken) {
+		t.Fatalf("the index failure reads as %v", got)
+	}
+	err = st.DB().Transaction(func(tx *gorm.DB) error {
+		return createExternalUserRow(tx, &User{Username: "admin", Role: "user"})
+	})
+	if !errors.Is(err, ErrUsernameTaken) {
+		t.Fatalf("an account row meeting the username index = %v, want ErrUsernameTaken", err)
+	}
+}
+
+// A connector's write reads the account's role in its own transaction: an
+// account an administrator promoted after the connector last read it is
+// refused, not written as an ordinary account.
+func TestLinkedAccountWritesRefuseAnAccountPromotedMeanwhile(t *testing.T) {
+	st := openUserIdentitiesStore(t)
+	u, _ := linkedUser(t, st, "erin", "acme", "corp:3")
+	if _, _, err := st.LinkedAccount("acme", "corp:3"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB().Model(&User{}).Where("id = ?", u.ID).Update("role", "admin").Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DisableLinkedAccount("acme", "corp:3"); !errors.Is(err, ErrProtectedAccount) {
+		t.Fatalf("disable = %v, want ErrProtectedAccount", err)
+	}
+	if _, err := st.EnableLinkedAccount("acme", "corp:3"); !errors.Is(err, ErrProtectedAccount) {
+		t.Fatalf("enable = %v, want ErrProtectedAccount", err)
+	}
+	if _, err := st.RenameLinkedAccount("acme", "corp:3", "erin.e"); !errors.Is(err, ErrProtectedAccount) {
+		t.Fatalf("rename = %v, want ErrProtectedAccount", err)
+	}
+	if _, err := st.RevokeLinkedAccountSessions("acme", "corp:3"); !errors.Is(err, ErrProtectedAccount) {
+		t.Fatalf("revoke sessions = %v, want ErrProtectedAccount", err)
+	}
+	got, err := st.UserByID(u.ID)
+	if err != nil || got.DisabledAt != nil || got.Username != "erin" {
+		t.Fatalf("the promoted account was written: %+v %v", got, err)
+	}
+	if _, err := st.DisableLinkedAccount("acme", "corp:none"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("disable without a link = %v, want ErrNotFound", err)
 	}
 }

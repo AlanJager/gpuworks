@@ -1,10 +1,12 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
 
+	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
@@ -46,10 +48,24 @@ func TestPublicExtensionRoutesNeedNoSessionAndAreLimitedPerAddress(t *testing.T)
 	}
 }
 
-type fakeRedeemer struct{}
+// fakeRedeemer answers every redemption with user and err (no user and
+// ErrSignInTicketInvalid by default) and records the source and handle it was
+// asked with.
+type fakeRedeemer struct {
+	user   *store.User
+	err    error
+	source *string
+	handle *string
+}
 
-func (fakeRedeemer) RedeemSignInTicket(string, string) (*store.User, string, error) {
-	return nil, "", store.ErrSignInTicketInvalid
+func (f fakeRedeemer) RedeemSignInTicket(_, source, handle string) (*store.User, error) {
+	if f.source != nil {
+		*f.source, *f.handle = source, handle
+	}
+	if f.user == nil && f.err == nil {
+		return nil, store.ErrSignInTicketInvalid
+	}
+	return f.user, f.err
 }
 func (fakeRedeemer) BindingKey() []byte { return []byte("k") }
 
@@ -114,12 +130,77 @@ func TestSignInRefusalsAreCodesAndNeverRedirectElsewhere(t *testing.T) {
 		`{"local_password":"all","entries":[{"source":"acme","label":"Acme","url":"/api/v1/auth/sign-in/start?source=acme"}]}` {
 		t.Fatalf("options = %d %s", rec.Code, rec.Body)
 	}
-	if rec := serve(h, httptestRequest(http.MethodPost, "/api/v1/auth/sign-in-options", "")); rec.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("POST options = %d, want 405", rec.Code)
+	for _, path := range []string{"/api/v1/auth/sign-in-options", "/api/v1/auth/sign-in/start?source=acme", "/api/v1/auth/complete?ticket=x"} {
+		if rec := serve(h, httptestRequest(http.MethodPost, path, "")); rec.Code != http.StatusMethodNotAllowed {
+			t.Fatalf("POST %s = %d, want 405", path, rec.Code)
+		}
 	}
 	// Without extensions there are no entries and the password form is all.
 	rec = serve(Router(Deps{}), httptestRequest(http.MethodGet, "/api/v1/auth/sign-in-options", ""))
 	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"local_password":"all","entries":[]}` {
 		t.Fatalf("community options = %d %s", rec.Code, rec.Body)
+	}
+	rec = serve(Router(Deps{}, auth.SessionPolicy{LocalPassword: auth.LocalPasswordLocalAdmin}),
+		httptestRequest(http.MethodGet, "/api/v1/auth/sign-in-options", ""))
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"local_password":"local_admin","entries":[]}` {
+		t.Fatalf("options with local_password local_admin = %d %s", rec.Code, rec.Body)
+	}
+}
+
+// A completion redeems the ticket for the source the browser started with,
+// under the handle made for that source and binding, and each refusal lands
+// on the sign-in page with the code that names it: a disabled account, a
+// source withdrawn since the ticket was issued, and a server fault, which is
+// not a ticket problem.
+func TestSignInCompletionAsksForTheStartedSourceAndNamesEachRefusal(t *testing.T) {
+	src := &switchSource{}
+	src.set(map[featuregate.Key]featuregate.Availability{"fake.things": {Access: featuregate.Full}})
+	gate := mustGate(t, src, featuregate.Feature{Key: "fake.things"})
+	router := func(red fakeRedeemer) http.Handler {
+		return Router(Deps{Extensions: ExtensionDeps{Features: gate, Accounts: red,
+			Extensions: []Extension{fakeExtension{name: "fake", routes: []RouteSpec{
+				{Method: http.MethodGet, Pattern: "/x/fake/start", Access: AccessPublic, Feature: "fake.things"}}}},
+			SignIns: []SignInOption{{Source: "acme", Label: "Acme", Start: "/x/fake/start", Module: "fake"}}}})
+	}
+	complete := func(h http.Handler, cookie string) string {
+		req := httptestRequest(http.MethodGet, "/api/v1/auth/complete?ticket=t", "")
+		req.AddCookie(&http.Cookie{Name: signInBindingCookie, Value: cookie})
+		rec := serve(h, req)
+		if rec.Code != http.StatusFound {
+			t.Fatalf("completion = %d %s", rec.Code, rec.Body)
+		}
+		return rec.Header().Get("Location")
+	}
+
+	var source, handle string
+	h := router(fakeRedeemer{source: &source, handle: &handle})
+	rec := serve(h, httptestRequest(http.MethodGet, "/api/v1/auth/sign-in/start?source=acme", ""))
+	started := rec.Result().Cookies()[0].Value
+	sent := strings.TrimPrefix(rec.Header().Get("Location"), "/api/v1/x/fake/start?handle=")
+	if !strings.HasPrefix(started, "acme.") {
+		t.Fatalf("binding cookie = %q, want it to name the source", started)
+	}
+	if got := complete(h, started); got != "/login?code=IDENTITY_TICKET_INVALID" || source != "acme" || handle != sent {
+		t.Fatalf("completion asked for %q %q (handle sent %q), landed on %q", source, handle, sent, got)
+	}
+	// The same binding under another source's name is another handle.
+	_, binding, _ := strings.Cut(started, ".")
+	complete(h, "beta."+binding)
+	if source != "beta" || handle == sent {
+		t.Fatalf("a binding renamed to beta was asked as %q with the acme handle", source)
+	}
+	if got := complete(h, binding); got != "/login?code=IDENTITY_TICKET_INVALID" {
+		t.Fatalf("a binding without a source = %q", got)
+	}
+
+	if got := complete(router(fakeRedeemer{err: store.ErrUserDisabled}), started); got != "/login?code=USER_DISABLED" {
+		t.Fatalf("a disabled account = %q", got)
+	}
+	if got := complete(router(fakeRedeemer{err: errors.New("database is locked")}), started); got != "/login?code=SERVICE_UNAVAILABLE" {
+		t.Fatalf("a store failure = %q", got)
+	}
+	src.set(map[featuregate.Key]featuregate.Availability{"fake.things": {Access: featuregate.Locked}})
+	if got := complete(router(fakeRedeemer{user: &store.User{ID: 7, Username: "alice", Role: "user"}}), started); got != "/login?code=IDENTITY_SOURCE_UNAVAILABLE" {
+		t.Fatalf("a source locked since the ticket was issued = %q", got)
 	}
 }

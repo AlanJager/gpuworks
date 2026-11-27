@@ -8,6 +8,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
@@ -37,13 +38,13 @@ type SignInOption struct {
 // SignInRedeemer redeems a sign-in ticket for its account and answers the
 // key that derives browser-binding handles.
 type SignInRedeemer interface {
-	RedeemSignInTicket(ticket, handle string) (user *store.User, source string, err error)
+	RedeemSignInTicket(ticket, source, handle string) (*store.User, error)
 	BindingKey() []byte
 }
 
 const (
 	// signInBindingCookie holds the browser binding of a sign-in in
-	// progress, for /api/v1/auth only.
+	// progress, "<source>.<binding>", for /api/v1/auth only.
 	signInBindingCookie = "gpuworks_sign_in"
 	signInBindingPath   = "/api/v1/auth"
 	signInBindingTTL    = 10 * time.Minute
@@ -61,37 +62,32 @@ func (a *apiHandlers) signInRoutes(mux interface {
 	mux.Get("/auth/complete", a.signInComplete)
 }
 
-// signInEntry is source's option while its start route's feature is
-// available (full or read-only); a locked or hidden feature has none.
-func (a *apiHandlers) signInEntry(source string) (SignInOption, bool) {
-	for _, o := range a.d.Extensions.SignIns {
-		if o.Source != source {
-			continue
-		}
-		spec, ok := a.signInStartSpec(o)
-		if !ok {
-			return SignInOption{}, false
-		}
-		if spec.Feature != "" {
-			if access := a.d.Extensions.Features.Access(spec.Feature); access != featuregate.Full && access != featuregate.ReadOnly {
-				return SignInOption{}, false
-			}
-		}
-		return o, true
+// signInAvailable reports whether o's start route's feature is available
+// (full or read-only); a locked or hidden feature offers no sign-in. Every
+// option's start route is a public GET (checkSignIns).
+func (a *apiHandlers) signInAvailable(o SignInOption) bool {
+	spec := a.publicGets[o.Start]
+	if spec.Feature == "" {
+		return true
 	}
-	return SignInOption{}, false
+	access := a.d.Extensions.Features.Access(spec.Feature)
+	return access == featuregate.Full || access == featuregate.ReadOnly
 }
 
-// signInStartSpec is the route spec of o's start route.
-func (a *apiHandlers) signInStartSpec(o SignInOption) (RouteSpec, bool) {
-	spec, ok := a.publicGets[o.Start]
-	return spec, ok
+// signInEntry is source's option while it is available.
+func (a *apiHandlers) signInEntry(source string) (SignInOption, bool) {
+	for _, o := range a.d.Extensions.SignIns {
+		if o.Source == source {
+			return o, a.signInAvailable(o)
+		}
+	}
+	return SignInOption{}, false
 }
 
 func (a *apiHandlers) signInOptions(w http.ResponseWriter, _ *http.Request) {
 	out := dto.SignInOptions{LocalPassword: a.sessionPolicy.Normalized().LocalPassword, Entries: []dto.SignInEntry{}}
 	for _, o := range a.d.Extensions.SignIns {
-		if _, ok := a.signInEntry(o.Source); !ok {
+		if !a.signInAvailable(o) {
 			continue
 		}
 		out.Entries = append(out.Entries, dto.SignInEntry{Source: o.Source, Label: o.Label, Icon: o.Icon,
@@ -101,13 +97,13 @@ func (a *apiHandlers) signInOptions(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-// signInStart binds a new sign-in to this browser and sends it to the
-// connector's start route. It never redirects anywhere but a declared start
-// route of an available entry.
+// signInStart binds a new sign-in through source to this browser and sends it
+// to the connector's start route. It never redirects anywhere but a declared
+// start route of an available entry.
 func (a *apiHandlers) signInStart(w http.ResponseWriter, r *http.Request) {
 	source := r.URL.Query().Get("source")
 	o, ok := a.signInEntry(source)
-	if !ok || a.d.Extensions.Accounts == nil {
+	if !ok {
 		writeProductError(w, http.StatusNotFound, messages.ErrorIdentitySourceUnavailable,
 			"no sign-in through this identity source is available", map[string]any{"source": source})
 		return
@@ -118,18 +114,21 @@ func (a *apiHandlers) signInStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	binding := hex.EncodeToString(raw[:])
-	http.SetCookie(w, &http.Cookie{Name: signInBindingCookie, Value: binding, Path: signInBindingPath, HttpOnly: true,
+	http.SetCookie(w, &http.Cookie{Name: signInBindingCookie, Value: o.Source + "." + binding, Path: signInBindingPath, HttpOnly: true,
 		SameSite: http.SameSiteLaxMode, Secure: a.managementCookieSecure(r), MaxAge: int(signInBindingTTL / time.Second),
 		Expires: time.Now().UTC().Add(signInBindingTTL)})
-	target := url.URL{Path: "/api/v1" + o.Start, RawQuery: url.Values{"handle": {a.signInHandle(binding)}}.Encode()}
+	target := url.URL{Path: "/api/v1" + o.Start, RawQuery: url.Values{"handle": {a.signInHandle(o.Source, binding)}}.Encode()}
 	w.Header().Set("Cache-Control", "no-store")
 	http.Redirect(w, r, target.String(), http.StatusFound)
 }
 
-// signInHandle is the handle of a binding: an HMAC under the binding key, so
-// it cannot be turned back into the binding.
-func (a *apiHandlers) signInHandle(binding string) string {
+// signInHandle is the handle of a binding for source: an HMAC under the
+// binding key, so it cannot be turned back into the binding, and a handle made
+// for one source is no handle of another.
+func (a *apiHandlers) signInHandle(source, binding string) string {
 	mac := hmac.New(sha256.New, a.d.Extensions.Accounts.BindingKey())
+	mac.Write([]byte(source))
+	mac.Write([]byte{0})
 	mac.Write([]byte(binding))
 	return hex.EncodeToString(mac.Sum(nil))
 }
@@ -137,8 +136,9 @@ func (a *apiHandlers) signInHandle(binding string) string {
 // signInComplete redeems a ticket in the browser that started the sign-in:
 // it looks only at the binding cookie, not at Sec-Fetch-Site or Origin,
 // because the return from the identity source is a cross-site top-level GET
-// (ADR 0085 decision 3). It answers by redirect, to the console on success and
-// to the sign-in page with ?code=<CODE> on a refusal.
+// (ADR 0085 decision 3). The ticket must have been issued for the source the
+// browser started with. It answers by redirect, to the console on success and
+// to the sign-in page with ?code=<CODE> otherwise.
 func (a *apiHandlers) signInComplete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	// The binding is spent whatever happens next.
@@ -148,18 +148,27 @@ func (a *apiHandlers) signInComplete(w http.ResponseWriter, r *http.Request) {
 		a.usageCounters().Inc(usagereport.KindLogin, "failed")
 		http.Redirect(w, r, signInFailurePath+"?code="+url.QueryEscape(code), http.StatusFound)
 	}
+	// A server with no sign-in entry has no Accounts; nothing can complete.
 	cookie, err := r.Cookie(signInBindingCookie)
-	if err != nil || cookie.Value == "" || a.d.Extensions.Accounts == nil || a.d.Store == nil {
+	if err != nil || a.d.Extensions.Accounts == nil {
 		fail(messages.ErrorIdentityTicketInvalid)
 		return
 	}
-	u, source, err := a.d.Extensions.Accounts.RedeemSignInTicket(r.URL.Query().Get("ticket"), a.signInHandle(cookie.Value))
+	source, binding, ok := strings.Cut(cookie.Value, ".")
+	if !ok || source == "" || binding == "" {
+		fail(messages.ErrorIdentityTicketInvalid)
+		return
+	}
+	u, err := a.d.Extensions.Accounts.RedeemSignInTicket(r.URL.Query().Get("ticket"), source, a.signInHandle(source, binding))
 	switch {
+	case errors.Is(err, store.ErrSignInTicketInvalid):
+		fail(messages.ErrorIdentityTicketInvalid)
+		return
 	case errors.Is(err, store.ErrUserDisabled):
 		fail(messages.ErrorUserDisabled)
 		return
 	case err != nil:
-		fail(messages.ErrorIdentityTicketInvalid)
+		a.signInFault(fail, "redeem a sign-in ticket", source, err)
 		return
 	}
 	// The source's sign-in may have been withdrawn (its feature locked)
@@ -171,10 +180,20 @@ func (a *apiHandlers) signInComplete(w http.ResponseWriter, r *http.Request) {
 	policy := a.sessionPolicy.Normalized()
 	credential, session, err := a.d.Store.CreateManagementSession(u, policy.IdleTimeout, policy.MaxLifetime)
 	if err != nil {
-		fail(messages.ErrorIdentityTicketInvalid)
+		a.signInFault(fail, "create the session of a sign-in", source, err)
 		return
 	}
 	a.setManagementCookie(w, r, credential, session.AbsoluteExpiresAt)
 	a.usageCounters().Inc(usagereport.KindLogin, "ok")
 	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// signInFault is a completion the server could not carry out: it is logged and
+// the browser lands on the sign-in page with SERVICE_UNAVAILABLE, as a password
+// sign-in answers 503 when the store fails.
+func (a *apiHandlers) signInFault(fail func(string), step, source string, err error) {
+	if a.d.Log != nil {
+		a.d.Log.Error("sign-in through an identity source failed", "step", step, "source", source, "err", err)
+	}
+	fail(messages.ErrorServiceUnavailable)
 }

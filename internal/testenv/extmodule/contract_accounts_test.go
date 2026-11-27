@@ -10,31 +10,35 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/accounts"
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/app"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
 	"gpuworks.ai/gpuworks/internal/server/messages"
+	"gpuworks.ai/gpuworks/internal/server/serverconfig"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/testenv"
 )
 
-const idFeature featuregate.Key = "fakeid.sign_in"
-
-// fakeIdentity is an identity connector without an identity source: its
-// start route signs in the subject named in the query at once and sends the
-// browser to the core's completion, the way a real connector does after
-// its callback. hold keeps the ticket URL instead of redirecting, so a test
-// can carry it to another browser.
+// fakeIdentity is an identity connector without an external identity
+// provider: its start route signs in the subject named in the query at once
+// and sends the browser to the core's completion, the way a real connector
+// does after its callback. hold keeps the ticket URL instead of redirecting,
+// so a test can carry it to another browser.
 type fakeIdentity struct {
-	name     string
-	sources  []string
-	provide  atomic.Uint32
-	host     *app.Host
-	accounts *app.Accounts
+	name           string
+	sources        []string
+	provide        atomic.Uint32
+	host           *app.Host
+	accounts       *accounts.Accounts
+	sharesFeatures bool
 	// declareErr is what DeclareIdentitySources answered.
 	declareErr error
 	lastURL    atomic.Pointer[string]
+	// lastHandle is the handle the core sent its start route.
+	lastHandle atomic.Pointer[string]
 }
 
 func (m *fakeIdentity) Name() string { return m.name }
@@ -47,16 +51,26 @@ func (m *fakeIdentity) Init(_ context.Context, h *app.Host) error {
 		// and no sign-in entry.
 		return nil //nolint:nilerr // the refusal is what the test reads
 	}
-	h.DeclareFeatures(featuregate.Feature{Key: idFeature})
-	if err := h.ProvideFeatures(fakeAccess{m}); err != nil {
-		return err
+	h.DeclareFeatures(featuregate.Feature{Key: m.feature()})
+	// A server has one feature source; a second connector's feature is
+	// answered by the first's.
+	if !m.sharesFeatures {
+		if err := h.ProvideFeatures(fakeAccess{m}); err != nil {
+			return err
+		}
 	}
 	h.MountAPI(fakeIdentityRoutes{m})
 	return h.OfferSignIn(app.SignInEntry{Source: m.sources[0], Label: "Acme ID", Start: "/x/" + m.name + "/start"})
 }
 
-func newFakeIdentity(name string) *fakeIdentity {
-	m := &fakeIdentity{name: name, sources: []string{"acme"}}
+// feature gates the module's start route and so its sign-in entry.
+func (m *fakeIdentity) feature() featuregate.Key { return featuregate.Key(m.name + ".sign_in") }
+
+func newFakeIdentity(name string, sources ...string) *fakeIdentity {
+	if len(sources) == 0 {
+		sources = []string{"acme"}
+	}
+	m := &fakeIdentity{name: name, sources: sources}
 	m.provide.Store(uint32(featuregate.Full))
 	return m
 }
@@ -73,10 +87,12 @@ func (r fakeIdentityRoutes) Name() string { return r.m.name }
 
 func (r fakeIdentityRoutes) Routes(mt api.Mounter) {
 	mt.Handle(api.RouteSpec{Method: http.MethodGet, Pattern: "/x/" + r.m.name + "/start", Access: api.AccessPublic,
-		Action: r.m.name + ".start", Feature: idFeature}, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		Action: r.m.name + ".start", Feature: r.m.feature()}, http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		q := req.URL.Query()
+		handle := q.Get("handle")
+		r.m.lastHandle.Store(&handle)
 		ticket, err := r.m.accounts.SignIn(r.m.sources[0], q.Get("subject"),
-			app.Profile{Username: q.Get("username")}, q.Get("handle"))
+			accounts.Profile{Username: q.Get("username")}, handle)
 		if err != nil {
 			var pe *messages.ProductError
 			if errors.As(err, &pe) {
@@ -157,9 +173,8 @@ func TestAModuleSignsABrowserInThroughTheCore(t *testing.T) {
 
 	c := browser(t)
 	start := e.URL() + "/api/v1/auth/sign-in/start?source=acme"
-	// The fake connector reads subject and username from its own start
-	// query, so they ride on the redirect target; send them through start's
-	// handle by adding them to the connector URL the core redirects to.
+	// The fake connector reads subject and username from its query, so add
+	// them to the start URL the core redirects to.
 	c.CheckRedirect = func(req *http.Request, _ []*http.Request) error {
 		if strings.HasSuffix(req.URL.Path, "/x/fakeid/start") {
 			q := req.URL.Query()
@@ -273,7 +288,7 @@ func TestAModuleCannotActOnAdministratorsOrOtherSources(t *testing.T) {
 	if _, err := e.Store().LinkIdentity(admin.ID, "acme", "boss"); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := e.Store().CreateManagementSession(&admin, 3600e9, 3600e9); err != nil {
+	if _, _, err := e.Store().CreateManagementSession(&admin, time.Hour, time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	acc := m.accounts
@@ -290,7 +305,7 @@ func TestAModuleCannotActOnAdministratorsOrOtherSources(t *testing.T) {
 	if _, err := acc.RevokeSessions("acme", "boss"); !isCode(err, messages.ErrorIdentityProtectedUser) {
 		t.Fatalf("sign out an administrator = %v", err)
 	}
-	if _, err := acc.Upsert("acme", "boss", app.Profile{Username: "renamed"}); !isCode(err, messages.ErrorIdentityProtectedUser) {
+	if _, err := acc.Upsert("acme", "boss", accounts.Profile{Username: "renamed"}); !isCode(err, messages.ErrorIdentityProtectedUser) {
 		t.Fatalf("rename an administrator = %v", err)
 	}
 	if got, err := e.Store().UserByID(admin.ID); err != nil || got.Username != "admin" || got.DisabledAt != nil {
@@ -300,11 +315,11 @@ func TestAModuleCannotActOnAdministratorsOrOtherSources(t *testing.T) {
 	if err := e.Store().DB().Model(&store.ManagementSession{}).Where("user_id = ?", admin.ID).Count(&sessions).Error; err != nil || sessions == 0 {
 		t.Fatalf("administrator's sessions = %d %v", sessions, err)
 	}
-	if _, err := acc.Upsert("acme", "boss", app.Profile{Username: "admin"}); err != nil {
+	if _, err := acc.Upsert("acme", "boss", accounts.Profile{Username: "admin"}); err != nil {
 		t.Fatalf("an upsert that changes nothing on an administrator = %v", err)
 	}
 
-	if _, err := acc.Upsert("other", "x", app.Profile{Username: "x"}); !isCode(err, messages.ErrorIdentitySourceConflict) {
+	if _, err := acc.Upsert("other", "x", accounts.Profile{Username: "x"}); !isCode(err, messages.ErrorIdentitySourceConflict) {
 		t.Fatalf("upsert in a source the module does not own = %v", err)
 	}
 	if err := acc.Disable("other", "x"); !isCode(err, messages.ErrorIdentitySourceConflict) {
@@ -314,13 +329,13 @@ func TestAModuleCannotActOnAdministratorsOrOtherSources(t *testing.T) {
 		t.Fatalf("list a source the module does not own = %v", err)
 	}
 
-	if _, err := acc.Upsert("acme", "corp:1", app.Profile{Username: "erin"}); err != nil {
+	if _, err := acc.Upsert("acme", "corp:1", accounts.Profile{Username: "erin"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := acc.Disable("acme", "corp:1"); err != nil {
 		t.Fatalf("disable an ordinary user = %v", err)
 	}
-	if _, err := acc.Upsert("acme", "corp:1", app.Profile{Username: "erin.e"}); err != nil {
+	if _, err := acc.Upsert("acme", "corp:1", accounts.Profile{Username: "erin.e"}); err != nil {
 		t.Fatalf("rename an ordinary user = %v", err)
 	}
 	page, next, err := acc.List("acme", 0, 10)
@@ -350,7 +365,7 @@ func TestIdentitySourcesAreExclusiveAndProvisioningIsTheSites(t *testing.T) {
 	}
 
 	m := newFakeIdentity("fakeid")
-	e := identityEnv(t, m, func(cfg *app.Config) { cfg.AuthExternalProvision = app.ProvisionExisting })
+	e := identityEnv(t, m, func(cfg *app.Config) { cfg.AuthExternalProvision = serverconfig.ProvisionExisting })
 	c := browser(t)
 	c.CheckRedirect = func(req *http.Request, _ []*http.Request) error {
 		if strings.HasSuffix(req.URL.Path, "/x/fakeid/start") {
@@ -367,5 +382,117 @@ func TestIdentitySourcesAreExclusiveAndProvisioningIsTheSites(t *testing.T) {
 	}
 	if _, _, err := e.Store().LinkedAccount("acme", "stranger"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("an account was created: %v", err)
+	}
+}
+
+// heldSignIn starts a sign-in through source in c with the connector holding
+// the ticket, so c has the binding and the test decides when to complete.
+func heldSignIn(t *testing.T, e *testenv.Env, c *http.Client, module, source, subject, username string) {
+	t.Helper()
+	c.CheckRedirect = func(req *http.Request, _ []*http.Request) error {
+		if strings.HasSuffix(req.URL.Path, "/x/"+module+"/start") {
+			q := req.URL.Query()
+			q.Set("subject", subject)
+			q.Set("username", username)
+			q.Set("hold", "1")
+			req.URL.RawQuery = q.Encode()
+		}
+		if req.URL.Path == "/" || req.URL.Path == "/login" {
+			return http.ErrUseLastResponse
+		}
+		return nil
+	}
+	if status, _, body := get(t, c, e.URL()+"/api/v1/auth/sign-in/start?source="+source); status != http.StatusNoContent {
+		t.Fatalf("held sign-in through %s = %d %s", source, status, body)
+	}
+}
+
+// A ticket another connector obtained with the handle a browser was given for
+// one source does not complete that browser's sign-in: the handle is the
+// source's, and so is the ticket the browser may redeem.
+func TestATicketOfAnotherSourceDoesNotCompleteASignIn(t *testing.T) {
+	first := newFakeIdentity("fakeid", "acme")
+	second := newFakeIdentity("otherid", "beta")
+	second.sharesFeatures = true
+	e := testenv.NewOnDiskConfigured(t, func(cfg *app.Config) {
+		cfg.Extensions = app.Extensions{Modules: []app.Module{first, second}}
+	})
+	victim := browser(t)
+	heldSignIn(t, e, victim, "fakeid", "acme", "victim", "victor")
+	handle := *first.lastHandle.Load()
+	ticket, err := second.accounts.SignIn("beta", "attacker", accounts.Profile{Username: "mallory"}, handle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, location, _ := get(t, victim, e.URL()+"/api/v1/auth/complete?ticket="+url.QueryEscape(ticket))
+	if status != http.StatusFound || location != "/login?code="+messages.ErrorIdentityTicketInvalid {
+		t.Fatalf("another source's ticket = %d %q", status, location)
+	}
+	if signedIn(t, e, victim) {
+		t.Fatal("the browser was signed in through a source it did not start with")
+	}
+}
+
+// A ticket issued before the source's feature was locked, or before its
+// account was disabled, does not open a session: each refusal lands on the
+// sign-in page with its own code.
+func TestACompletionRefusesAWithdrawnSourceAndADisabledAccount(t *testing.T) {
+	m := newFakeIdentity("fakeid")
+	e := identityEnv(t, m, nil)
+
+	c := browser(t)
+	heldSignIn(t, e, c, "fakeid", "acme", "corp:5", "frank")
+	m.provide.Store(uint32(featuregate.Locked))
+	status, location, _ := get(t, c, e.URL()+*m.lastURL.Load())
+	if status != http.StatusFound || location != "/login?code="+messages.ErrorIdentitySourceUnavailable {
+		t.Fatalf("completion after the feature was locked = %d %q", status, location)
+	}
+	if signedIn(t, e, c) {
+		t.Fatal("a withdrawn source opened a session")
+	}
+
+	m.provide.Store(uint32(featuregate.Full))
+	c = browser(t)
+	heldSignIn(t, e, c, "fakeid", "acme", "corp:5", "frank")
+	u, _, err := e.Store().LinkedAccount("acme", "corp:5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Store().DisableUser(u.ID); err != nil {
+		t.Fatal(err)
+	}
+	status, location, _ = get(t, c, e.URL()+*m.lastURL.Load())
+	if status != http.StatusFound || location != "/login?code="+messages.ErrorUserDisabled {
+		t.Fatalf("completion for a disabled account = %d %q", status, location)
+	}
+	if signedIn(t, e, c) {
+		t.Fatal("a disabled account opened a session")
+	}
+}
+
+// A connector that asks for a username another account has gets
+// IDENTITY_USERNAME_TAKEN naming it, from a sign-in and from a directory
+// sync, and nothing is created.
+func TestATakenUsernameIsRefusedWithTheName(t *testing.T) {
+	m := newFakeIdentity("fakeid")
+	e := identityEnv(t, m, nil)
+	handle := strings.Repeat("a", 64)
+	for name, call := range map[string]func() error{
+		"sign-in": func() error {
+			_, err := m.accounts.SignIn("acme", "corp:8", accounts.Profile{Username: "admin"}, handle)
+			return err
+		},
+		"upsert": func() error {
+			_, err := m.accounts.Upsert("acme", "corp:8", accounts.Profile{Username: "admin"})
+			return err
+		},
+	} {
+		var pe *messages.ProductError
+		if err := call(); !errors.As(err, &pe) || pe.Code() != messages.ErrorIdentityUsernameTaken || pe.Params()["username"] != "admin" {
+			t.Fatalf("%s with a taken username = %v", name, err)
+		}
+	}
+	if _, _, err := e.Store().LinkedAccount("acme", "corp:8"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("a refused account left a link: %v", err)
 	}
 }

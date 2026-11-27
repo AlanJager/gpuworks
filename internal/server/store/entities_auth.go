@@ -51,6 +51,11 @@ func (UserIdentity) TableName() string { return "user_identities" }
 // so a demoted user loses it without a write.
 func (u User) IsLocalAdmin() bool { return u.LocalAdmin && u.Role == "admin" }
 
+// IsAdmin reports whether the account is an administrator; the local
+// administrators are among them. An administrator is out of an identity
+// connector's reach (ADR 0085 decision 4).
+func (u User) IsAdmin() bool { return u.Role == "admin" }
+
 // SignInTicket is a one-time sign-in ticket an identity connector obtained for
 // a user (ADR 0085 decision 3): the core redeems it at /api/v1/auth/complete in
 // the browser that started the sign-in, then deletes it. Only the ticket's

@@ -181,24 +181,26 @@ Cookie 设置为 `HttpOnly`、`SameSite=Lax`，其中保存的是不透明会话
 |---|---|
 | `local_password` | `server.yaml` 的 `auth.local_password`：`all`，或 `local_admin`（只有本地管理员用密码登录，见[配置](configuration.md)） |
 | `entries[].source` | 连接器的来源名 |
-| `entries[].label` / `icon` | 按钮文字与可选图标名，由连接器给出，原样显示 |
+| `entries[].label` | 按钮文字，由连接器给出，原样显示 |
+| `entries[].icon` | 连接器给出的图标名，原样返回；这是预留字段，控制台目前不显示它 |
 | `entries[].url` | 按钮链接，即 server 的登录起点 |
 
 所属功能被锁定或隐藏的连接器不出现在 `entries` 里。登录页只按这份列表渲染；`local_password` 为 `local_admin` 且有可用的连接器时，密码表单折叠在「以本地管理员身份用密码登录」之后。
 
 一次登录的经过：
 
-1. 浏览器打开 `GET /api/v1/auth/sign-in/start?source=<来源>`。server 生成一个随机的浏览器绑定，写进一次性 Cookie（`HttpOnly`、`SameSite=Lax`、10 分钟，路径 `/api/v1/auth`；`Secure` 与会话 Cookie 相同），再 302 到连接器的起始路由，查询参数 `handle` 是由绑定派生、反推不出绑定的句柄。来源不存在或不可用时返回 `404 IDENTITY_SOURCE_UNAVAILABLE`（`params.source`），不会跳转到别处。
+1. 浏览器打开 `GET /api/v1/auth/sign-in/start?source=<来源>`。server 生成一个随机的浏览器绑定，连同来源名写进一次性 Cookie（`HttpOnly`、`SameSite=Lax`、10 分钟，路径 `/api/v1/auth`；`Secure` 与会话 Cookie 相同），再 302 到连接器的起始路由，查询参数 `handle` 是由来源与绑定派生、反推不出绑定的句柄。来源不存在或不可用时返回 `404 IDENTITY_SOURCE_UNAVAILABLE`（`params.source`），不会跳转到别处。
 2. 连接器把浏览器带去身份源，回来后自己校验，再向 server 换取绑定到 `handle` 的一次性票据（60 秒内有效，只能用一次，库里只存哈希）。
-3. 连接器把浏览器 302 到 `GET /api/v1/auth/complete?ticket=<票据>`。server 只核对票据与浏览器带来的绑定 Cookie 是否对应，不看 `Origin` 与 `Sec-Fetch-Site`（经身份源跳回的这次请求本来就是跨站的）。对应且账号启用时建立会话、写会话 Cookie，302 到 `/`；绑定 Cookie 无论成败都被清除。
+3. 连接器把浏览器 302 到 `GET /api/v1/auth/complete?ticket=<票据>`。server 只核对票据与浏览器带来的绑定 Cookie 是否对应（票据须是为浏览器开始登录时的那个来源签发的），不看 `Origin` 与 `Sec-Fetch-Site`（经身份源跳回的这次请求本来就是跨站的）。对应且账号启用时建立会话、写会话 Cookie，302 到 `/`；绑定 Cookie 无论成败都被清除。
 
-兑换失败时 302 到 `/login?code=<码>`，登录页显示该码的文字：
+兑换不成时 302 到 `/login?code=<码>`，登录页显示该码的文字：
 
 | 码 | 情况 |
 |---|---|
-| `IDENTITY_TICKET_INVALID` | 票据不存在、过期、已用过，或与这个浏览器的绑定不对应（例如在另一个浏览器打开了兑换链接）；试过一次的票据即作废 |
+| `IDENTITY_TICKET_INVALID` | 票据不存在、过期、已用过，不是为这个浏览器开始登录的来源签发的，或与这个浏览器的绑定不对应（例如在另一个浏览器打开了兑换链接）；试过一次的票据即作废 |
 | `IDENTITY_SOURCE_UNAVAILABLE` | 签发票据之后，该来源的登录已不可用（功能被锁定或隐藏） |
 | `USER_DISABLED` | 账号已停用 |
+| `SERVICE_UNAVAILABLE` | server 读写数据库失败，没能兑换票据或建立会话；错误记在 server 日志里，重新开始登录即可 |
 
 整台服务端被限制时，这三条路由与连接器的公开路由照常可用：它们是登录。
 

@@ -180,24 +180,26 @@ An identity connector is an extension module that integrates the site's identity
 |---|---|
 | `local_password` | `auth.local_password` of `server.yaml`: `all`, or `local_admin` (only local administrators sign in with a password; see [Configuration](configuration.md)) |
 | `entries[].source` | The connector's source name |
-| `entries[].label` / `icon` | The button text and an optional icon name, given by the connector and shown as is |
+| `entries[].label` | The button text, given by the connector and shown as is |
+| `entries[].icon` | The icon name the connector gave, returned as is; the field is reserved, and the console does not show it today |
 | `entries[].url` | The button's link: the server's sign-in start |
 
 A connector whose feature is locked or hidden is not listed in `entries`. The sign-in page renders only this list; when `local_password` is `local_admin` and a connector is available, the password form is folded behind "Sign in with a password as a local administrator".
 
 How one sign-in goes:
 
-1. The browser opens `GET /api/v1/auth/sign-in/start?source=<source>`. The server makes a random browser binding, writes it into a one-time cookie (`HttpOnly`, `SameSite=Lax`, 10 minutes, path `/api/v1/auth`; `Secure` as for the session cookie) and redirects (302) to the connector's start route, with the query parameter `handle`: derived from the binding, and impossible to turn back into it. An unknown or unavailable source returns `404 IDENTITY_SOURCE_UNAVAILABLE` (`params.source`) and never redirects anywhere else.
+1. The browser opens `GET /api/v1/auth/sign-in/start?source=<source>`. The server makes a random browser binding, writes it with the source name into a one-time cookie (`HttpOnly`, `SameSite=Lax`, 10 minutes, path `/api/v1/auth`; `Secure` as for the session cookie) and redirects (302) to the connector's start route, with the query parameter `handle`: derived from the source and the binding, and impossible to turn back into the binding. An unknown or unavailable source returns `404 IDENTITY_SOURCE_UNAVAILABLE` (`params.source`) and never redirects anywhere else.
 2. The connector takes the browser to the identity source, checks the result when it comes back, then gets from the server a one-time ticket bound to `handle` (valid for 60 seconds, usable once, stored only as a hash).
-3. The connector redirects (302) the browser to `GET /api/v1/auth/complete?ticket=<ticket>`. The server only checks that the ticket matches the binding cookie the browser brings, and looks at neither `Origin` nor `Sec-Fetch-Site` (this request, returning through the identity source, is cross-site by nature). When they match and the account is enabled, it creates the session, writes the session cookie and redirects (302) to `/`; the binding cookie is cleared either way.
+3. The connector redirects (302) the browser to `GET /api/v1/auth/complete?ticket=<ticket>`. The server only checks that the ticket matches the binding cookie the browser brings (the ticket must have been issued for the source the browser started with), and looks at neither `Origin` nor `Sec-Fetch-Site` (this request, returning through the identity source, is cross-site by nature). When they match and the account is enabled, it creates the session, writes the session cookie and redirects (302) to `/`; the binding cookie is cleared either way.
 
-A refused redemption redirects (302) to `/login?code=<code>`, and the sign-in page shows the code's text:
+A redemption that does not go through redirects (302) to `/login?code=<code>`, and the sign-in page shows the code's text:
 
 | Code | When |
 |---|---|
-| `IDENTITY_TICKET_INVALID` | The ticket does not exist, expired, was used, or does not match this browser's binding (for example, the redemption link was opened in another browser); a ticket tried once is spent |
+| `IDENTITY_TICKET_INVALID` | The ticket does not exist, expired, was used, was not issued for the source this browser started with, or does not match this browser's binding (for example, the redemption link was opened in another browser); a ticket tried once is spent |
 | `IDENTITY_SOURCE_UNAVAILABLE` | Sign-in through the source became unavailable after the ticket was issued (its feature was locked or hidden) |
 | `USER_DISABLED` | The account is disabled |
+| `SERVICE_UNAVAILABLE` | The server failed to read or write the database and could not redeem the ticket or create the session; the error is in the server log, and starting the sign-in again is enough |
 
 While the whole server is limited, these three routes and the connectors' public routes keep working: they are signing in.
 
@@ -2538,7 +2540,7 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: e84017100ea5bd395dd6f4ddc000ef7b85d4ce62c29e008d613c0bf11ff9495b ### How Setting Changes Reach Nodes -->
 <!-- translation-source-sha256: 4342e04bfce6eab4362717ba8850c530848c154203552f228a69f8b87c66f971 ## Auth -->
 <!-- translation-source-sha256: dfc4613cc2a88f811c4b1d0c1db326b19ef7263ba6659098e9fa8812b0b44a23 ### Login Request and Response -->
-<!-- translation-source-sha256: ffa1c0836abd082505c7d983e461d56229392f711c9160ee864dfd2a27545796 ### Signing In Through an Identity Connector -->
+<!-- translation-source-sha256: 84cc2a9bb303616379e78a84db018facd3a771a6fec6ffb1fcf0a820df6bd4d2 ### Signing In Through an Identity Connector -->
 <!-- translation-source-sha256: 0c5e5b2fbfc149bc9864e31a84b6c0bcf78d7b74a8bfeb0e3924ff0b27a78a43 ### Change Password -->
 <!-- translation-source-sha256: 0567ae0b4b828c1e3b362f672b58365c8847feb841dd46ff763a72b9cd395ffe ### When Sessions Expire -->
 <!-- translation-source-sha256: 60f52e5578eaeb214401ce94f2639e999f5f048d60dfef2ae192cdc06720c4af ### Login Endpoint Errors and Origin Checks -->

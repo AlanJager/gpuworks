@@ -44,17 +44,16 @@ func (s *Store) IssueSignInTicket(userID, identityID uint, source, handle string
 
 // RedeemSignInTicket uses a ticket once: it is deleted whether or not it
 // matches, so a ticket tried in the wrong browser cannot be tried again.
-// It answers the account and the identity source the ticket was issued for
-// when the ticket is unexpired and bound to handle, and the account is
-// enabled; a disabled account is ErrUserDisabled, anything else
-// ErrSignInTicketInvalid. A redeemed ticket records the sign-in on its
-// identity link.
-func (s *Store) RedeemSignInTicket(ticket, handle string) (*User, string, error) {
+// It answers the ticket's account when the ticket is unexpired, was issued
+// for source and bound to handle, and the account is enabled; a disabled
+// account is ErrUserDisabled, anything else ErrSignInTicketInvalid. A redeemed
+// ticket records the sign-in on its identity link. Any other error is the
+// database's, and the transaction rolled back: the ticket is not spent.
+func (s *Store) RedeemSignInTicket(ticket, source, handle string) (*User, error) {
 	if ticket == "" {
-		return nil, "", ErrSignInTicketInvalid
+		return nil, ErrSignInTicketInvalid
 	}
 	var user User
-	var source string
 	// outcome is decided inside the transaction, which commits in every
 	// case once the ticket was found: its deletion must stand.
 	var outcome error
@@ -71,8 +70,7 @@ func (s *Store) RedeemSignInTicket(ticket, handle string) (*User, string, error)
 			return err
 		}
 		now := time.Now().UTC()
-		source = t.Source
-		if !now.Before(t.ExpiresAt) ||
+		if !now.Before(t.ExpiresAt) || t.Source != source ||
 			subtle.ConstantTimeCompare([]byte(t.Handle), []byte(handle)) != 1 {
 			outcome = ErrSignInTicketInvalid
 			return nil
@@ -91,10 +89,10 @@ func (s *Store) RedeemSignInTicket(ticket, handle string) (*User, string, error)
 		return tx.Model(&UserIdentity{}).Where("id = ? AND user_id = ?", t.IdentityID, t.UserID).Update("last_sign_in_at", now).Error
 	})
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
 	if outcome != nil {
-		return nil, "", outcome
+		return nil, outcome
 	}
-	return &user, source, nil
+	return &user, nil
 }

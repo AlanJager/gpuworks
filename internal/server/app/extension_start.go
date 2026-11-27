@@ -9,6 +9,7 @@ import (
 	"slices"
 	"time"
 
+	"gpuworks.ai/gpuworks/internal/server/accounts"
 	"gpuworks.ai/gpuworks/internal/server/api"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
 	"gpuworks.ai/gpuworks/internal/server/holdpass"
@@ -46,7 +47,7 @@ type extensionSet struct {
 	routes *api.DynamicExtension
 	// accounts are the identity sources the modules declared, and signIns
 	// the sign-in entries they offer (extension_accounts.go).
-	accounts *accountsHandle
+	accounts *accounts.Registry
 	signIns  []api.SignInOption
 }
 
@@ -81,10 +82,7 @@ func startExtensions(cfg Config, a *App, master string, deps *api.Deps) (err err
 		}
 	}()
 	set := &extensionSet{holds: holdpass.NewScoped(applySchedulingHolds(a.store), a.log.With("component", "scheduling_holds"), holdPassFloor),
-		accounts: &accountsHandle{st: a.store, provision: cfg.AuthExternalProvision, owner: map[string]string{}}}
-	if set.accounts.provision == "" {
-		set.accounts.provision = ProvisionAuto
-	}
+		accounts: accounts.NewRegistry(accountStore{a.store}, cfg.AuthExternalProvision)}
 	section := serverconfig.File{Extensions: cfg.Sections}
 	plugins := &pluginsModule{cfg: cfg, st: a.store}
 	for _, m := range append(slices.Clip(cfg.Extensions.Modules), Module(plugins)) {
@@ -168,8 +166,8 @@ type signInRedeemer struct {
 	key []byte
 }
 
-func (r signInRedeemer) RedeemSignInTicket(ticket, handle string) (*store.User, string, error) {
-	return r.st.RedeemSignInTicket(ticket, handle)
+func (r signInRedeemer) RedeemSignInTicket(ticket, source, handle string) (*store.User, error) {
+	return r.st.RedeemSignInTicket(ticket, source, handle)
 }
 
 func (r signInRedeemer) BindingKey() []byte { return r.key }

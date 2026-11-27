@@ -23,10 +23,10 @@
 
 3. **两种连接器形状。**
    - **跳转式**（OIDC、SAML、OAuth2 办公平台）：
-     1. 登录页列出入口（决策 6），用户点击后先到核心的 `GET /api/v1/auth/sign-in/start?source=…`。核心生成一个随机的**浏览器绑定**：设置一个一次性的 `HttpOnly`、`Secure`、`SameSite=Lax`、10 分钟有效的 Cookie 存放它，再把浏览器重定向到连接器声明的 `start` 路由，查询参数里带一个由绑定派生、不能反推出绑定的句柄（以 master key 派生的密钥做 HMAC）；
+     1. 登录页列出入口（决策 6），用户点击后先到核心的 `GET /api/v1/auth/sign-in/start?source=…`。核心生成一个随机的**浏览器绑定**：连同来源名存进一次性的 `HttpOnly`、`Secure`、`SameSite=Lax`、10 分钟有效的 Cookie，再把浏览器重定向到连接器声明的 `start` 路由，查询参数里带一个由来源与绑定派生、不能反推出绑定的句柄（以 master key 派生的密钥做 HMAC）；
      2. 连接器把浏览器带去身份源，句柄随自己的 state 往返；身份源带回结果到连接器的 `public` 回调路由，连接器自己校验（state、nonce、签名、换取令牌）；
      3. 连接器调用宿主的 `accounts.sign_in`（决策 4），交出 `{source, subject, profile, handle}`；核心按链接找到或建立用户（决策 5），返回一个绑定到这个句柄的一次性登录票据；
-     4. 连接器把浏览器重定向到核心的 `GET /api/v1/auth/complete?ticket=…`。核心核对票据与浏览器带来的绑定 Cookie 是否对应，一致才建立会话、设置会话 Cookie，再删掉绑定 Cookie、跳到控制台。
+     4. 连接器把浏览器重定向到核心的 `GET /api/v1/auth/complete?ticket=…`。核心核对票据与浏览器带来的绑定 Cookie 是否对应：票据须是为 Cookie 里的来源签发、绑定到由它算出的句柄，一致才建立会话、设置会话 Cookie，再删掉绑定 Cookie、跳到控制台。
 
      票据 60 秒内有效、只能用一次、只存哈希，绑定签发时的来源与句柄。兑换**只认浏览器绑定**，不看 `Sec-Fetch-Site` 与 `Origin`：经身份源跳回的这次顶层 GET 本来就是跨站的，`managementOriginAllowed` 会拒绝它；而顶层 GET 不带 `Origin`，那个检查也绑定不了任何东西。绑定挡住登录 CSRF：攻击者用自己的身份换到的票据绑定在攻击者的浏览器上，诱导受害者打开兑换链接时，受害者的浏览器没有对应的 Cookie，兑换以 `IDENTITY_TICKET_INVALID` 拒绝。连接器的路由不需要设置核心 Cookie，自己的 state Cookie 照常经 `Cookies` 设置。
    - **密码式**（LDAP）：登录时核心查到用户名链接到某个密码式来源，就在登录请求里同步调用该连接器的校验接口（`POST /gwx/v1/accounts/verify`，超时 5 秒），只得到「通过、不通过、身份源不可达」三种结果。这正是 ADR 0071 决策 3 允许的那一处同步调用。没有链接的用户照常校验本地密码；身份源不可达时，本地用户与已有会话不受影响，不做离线校验缓存（ADR 0071 决策 19）。
@@ -43,7 +43,7 @@
    **管理员不受连接器管辖。** 对 `users.local_admin` 为真或 `users.role` 为 `admin` 的用户，`disable`、`enable`、`revoke_sessions`，以及会改变用户名的 `upsert`，一律以 `IDENTITY_PROTECTED_USER` 拒绝；管理员账号的停用、恢复、改名与踢下线只能由管理员在核心接口里操作。`sign_in` 不受这一条影响：管理员显式链接过外部身份后可以用它登录。这样，连接器（包括被攻破的插件包）不能停用本地管理员或删掉其会话，ADR 0071 决策 11 的兜底不会被连接器主动破坏，而不只是在连接器掉线时成立。实施时由契约测试证明：编译模块和假插件进程都不能停用、恢复、改名或踢下线本地管理员与平台管理员。
 
 5. **找到还是建立用户，规则由核心定。**
-   - 已有 `(source, subject)` 链接：就是这个用户；`username` 变了时按站点策略更新或保留。
+   - 已有 `(source, subject)` 链接：就是这个用户。登录从不改用户名；用户名只经目录同步（`upsert`）改，且同样受管理员保护。
    - 没有链接：站点策略 `auth.external.provision` 为 `auto`（默认）时建立新用户，角色为 `user`，没有本地密码；为 `existing` 时拒绝（`IDENTITY_NOT_PROVISIONED`），只有管理员事先链接过的人能登录。
    - **永不按用户名或邮箱自动链接到已有用户**：那等于让身份源或插件接管任何同名本地账号（含管理员）。把已有用户链接到外部身份只能由管理员在核心接口里显式操作。
    - 新用户的 `username` 与已有用户冲突时拒绝（`IDENTITY_USERNAME_TAKEN{username}`），由连接器换一个（例如加来源前缀）后重试，核心不自动改名。
