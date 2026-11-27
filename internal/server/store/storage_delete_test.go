@@ -42,7 +42,7 @@ func TestDeleteStorageSelectedModelsPreserveGuards(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err := f.st.DeleteModel(removed.ID); err != nil {
+				if _, err := f.st.DeleteModel(removed.ID, false); err != nil {
 					t.Fatal(err)
 				}
 				modelIDs = append(modelIDs, removed.ID)

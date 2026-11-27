@@ -5,12 +5,14 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 
 	"github.com/go-chi/chi/v5"
 
+	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/deployment"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/modelmeta"
@@ -145,20 +147,55 @@ func (a *apiHandlers) deleteModel(w http.ResponseWriter, r *http.Request) {
 		writeProductError(w, http.StatusBadRequest, ErrorModelIDInvalid, "invalid model id", nil)
 		return
 	}
-	if err := a.d.Store.DeleteModel(id); err != nil {
+	withIdle := false
+	if values, present := r.URL.Query()["delete_stopped_deployments"]; present {
+		var err error
+		if len(values) != 1 {
+			withIdle, err = false, strconv.ErrSyntax
+		} else {
+			withIdle, err = strconv.ParseBool(values[0])
+		}
+		if err != nil {
+			writeProductError(w, http.StatusBadRequest, ErrorFieldInvalid, "delete_stopped_deployments must be a boolean", map[string]any{"field": "delete_stopped_deployments", "detail": "boolean"})
+			return
+		}
+	}
+	deleted, err := a.d.Store.DeleteModel(id, withIdle)
+	if err != nil {
+		var refused *store.ModelReferenceError
 		switch {
 		case errors.Is(err, store.ErrNotFound):
 			writeErr(w, http.StatusNotFound, err)
 		case errors.Is(err, store.ErrCacheDeletionPending):
 			writeErr(w, http.StatusConflict, err)
-		case errors.Is(err, store.ErrReferenced):
-			writeProductError(w, http.StatusConflict, ErrorModelInUse, "The model is referenced by a deployment. Delete the related deployments first.", nil)
+		case errors.As(err, &refused):
+			writeProductError(w, http.StatusConflict, ErrorModelInUse, "The model is referenced by a deployment. Delete the related deployments first.", modelInUseParams(refused))
 		default:
 			writeErr(w, http.StatusInternalServerError, err)
 		}
 		return
 	}
+	// The deployments deleted with the model go the way a force delete's do:
+	// they ran nothing, so only their managed directories are left (ADR 0077).
+	if releaser, ok := a.d.NodeSync.(interface{ ReleaseDeploymentDirs(uint) int }); ok {
+		for _, dep := range deleted {
+			if deploy.SnapshotDeclaresManagedDirs(dep.CatalogSelectionSnapshot) {
+				releaser.ReleaseDeploymentDirs(dep.ID)
+			}
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// modelInUseParams says which deployments keep a model, and whether they can
+// all go with it (every one stopped and running nothing): the console lists
+// them and offers the deletion of both only then.
+func modelInUseParams(refused *store.ModelReferenceError) map[string]any {
+	deployments := make([]map[string]any, len(refused.Deployments))
+	for i, ref := range refused.Deployments {
+		deployments[i] = map[string]any{"id": ref.ID, "name": ref.Name, "state": string(ref.State), "instances": ref.Instances}
+	}
+	return map[string]any{"deployments": deployments, "count": len(deployments), "deletable_with_deployments": refused.AllIdle()}
 }
 
 // updateModelInferenceConfig stores the model's editable operation contract

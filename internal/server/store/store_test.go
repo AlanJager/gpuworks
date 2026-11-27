@@ -207,13 +207,13 @@ func TestDeleteModelRejectsDeploymentReferenceAndCleansDerivedRows(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DeleteModel(model.ID); !errors.Is(err, ErrReferenced) {
+	if _, err := s.DeleteModel(model.ID, false); !errors.Is(err, ErrReferenced) {
 		t.Fatalf("DeleteModel error = %v, want ErrReferenced", err)
 	}
 	if err := s.DB().Delete(&Deployment{}, dep.ID).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := s.DeleteModel(model.ID); err != nil {
+	if _, err := s.DeleteModel(model.ID, false); err != nil {
 		t.Fatal(err)
 	}
 	var models, files, profiles int64

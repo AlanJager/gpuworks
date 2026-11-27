@@ -525,7 +525,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/models/{id}/logo` | 模型 logo 图片 | JWT |
 | GET | `/api/v1/models/{id}` | 模型详情 | JWT |
 | PATCH | `/api/v1/models/{id}` | 修改本地 / HTTP 目录模型的来源 ID（`{"source_id"}`，详情的 `source_id_editable` 表示可改）；公共仓库模型 400 `MODEL_SOURCE_ID_FIXED`，与已有模型重名 409 `MODEL_SOURCE_ID_TAKEN`，有进行中的复制、下载或删除 409 `MODEL_TRANSFER_ACTIVE`；已有副本路径不变 | JWT |
-| DELETE | `/api/v1/models/{id}` | 删除模型 | JWT(admin) |
+| DELETE | `/api/v1/models/{id}` | 删除模型。有部署引用时返回 409 `MODEL_IN_USE`，`params.deployments` 列出各部署 `{id, name, state, instances}`，`deletable_with_deployments` 表示它们是否全部已停止且没有运行中的实例；此时带 `?delete_stopped_deployments=true` 会把这些部署与模型在同一事务里一起删除，仍有运行中的则整体拒绝 | JWT(admin) |
 | POST | `/api/v1/models/{id}/metadata/refresh` | 重新拉取模型元数据（config/README/logo）。什么都没读到时按来源站点的回答报错：404 `MODEL_REPO_NOT_FOUND` / `MODEL_REVISION_NOT_FOUND`、403 `MODEL_REPO_ACCESS_DENIED`（`params.host`、`params.repo`、`params.status` 为站点与它的 HTTP 状态码）；站点没有给出关于仓库的回答时 502 `MODEL_METADATA_UNREACHABLE` 或 `MODEL_METADATA_FORBIDDEN` | JWT |
 | POST | `/api/v1/models/{id}/download` | 发起公共仓库下载：`storage_id` 选存储（省略为默认存储），本地存储再给 `node_uuid` 或 `node_uuids`，共享存储由一台写入节点下载一次 | JWT |
 | POST | `/api/v1/models/{id}/download/cancel` | 取消指定存储的模型下载（`storage_id`，本地存储另带 `node_uuid`）；保留已下载数据以供重试 | JWT |

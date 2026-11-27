@@ -163,3 +163,52 @@ test("deleting the last row of a page steps back to the previous page instead of
     api.deleteModel = originalDelete;
   }
 });
+
+test("a model only stopped deployments use names them and can go together with them (GWKS-530)", async () => {
+  const { APIError } = await import("../src/apiError.ts");
+  const calls: Array<{ id: number; with: boolean }> = [];
+  const originalDelete = api.deleteModel;
+  api.deleteModel = (async (id: number, opts?: { withStoppedDeployments?: boolean }) => {
+    calls.push({ id, with: !!opts?.withStoppedDeployments });
+    if (!opts?.withStoppedDeployments) {
+      throw new APIError("MODEL_IN_USE", { count: 2, deletable_with_deployments: true, deployments: [{ id: 68, name: "qwen3-8-27b", state: "stopped", instances: 0 }, { id: 77, name: "qwen3-8-27b-b", state: "stopped", instances: 0 }] }, "in use", 409);
+    }
+  }) as never;
+  try {
+    renderPage("list");
+    await screen.findByText("model-45");
+    const row = screen.getByText("model-45").closest("tr")!;
+    fireEvent.click(within(row).getByRole("button", { name: models.action.more }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Delete model/ }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog", { name: models.inUse.title.replace("{{name}}", "model-45") });
+    const link = within(dialog).getByRole("link", { name: "qwen3-8-27b" });
+    assert.equal(link.getAttribute("href"), "/deployments?deployment=68");
+    assert.ok(within(dialog).getByRole("link", { name: "qwen3-8-27b-b" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: models.inUse.deleteWith.replace("{{count}}", "2") }));
+    await waitFor(() => assert.deepEqual(calls, [{ id: 45, with: false }, { id: 45, with: true }]));
+  } finally {
+    api.deleteModel = originalDelete;
+  }
+});
+
+test("a model a running deployment uses names it and offers no deletion of both", async () => {
+  const { APIError } = await import("../src/apiError.ts");
+  const originalDelete = api.deleteModel;
+  api.deleteModel = (async () => {
+    throw new APIError("MODEL_IN_USE", { count: 1, deletable_with_deployments: false, deployments: [{ id: 9, name: "live", state: "active", instances: 1 }] }, "in use", 409);
+  }) as never;
+  try {
+    renderPage("list");
+    await screen.findByText("model-45");
+    const row = screen.getByText("model-45").closest("tr")!;
+    fireEvent.click(within(row).getByRole("button", { name: models.action.more }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Delete model/ }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog", { name: models.inUse.title.replace("{{name}}", "model-45") });
+    assert.ok(within(dialog).getByRole("link", { name: "live" }));
+    assert.equal(within(dialog).queryByRole("button", { name: /Delete the model/ }), null);
+  } finally {
+    api.deleteModel = originalDelete;
+  }
+});

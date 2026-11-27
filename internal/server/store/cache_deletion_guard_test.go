@@ -22,7 +22,7 @@ func TestPendingCacheDeletionProtectsParentsAndStorageConfig(t *testing.T) {
 		name   string
 		change func(*storageFixture) error
 	}{
-		{"delete model", func(f *storageFixture) error { return f.st.DeleteModel(f.model.ID) }},
+		{"delete model", func(f *storageFixture) error { _, err := f.st.DeleteModel(f.model.ID, false); return err }},
 		{"delete node", func(f *storageFixture) error { return f.st.DeleteNode(f.n1.UUID) }},
 		{"delete storage", func(f *storageFixture) error { return f.st.DeleteStorage(f.cache.ID) }},
 		{"direct node mount path", func(f *storageFixture) error { return f.st.SetStorageNodePath(f.cache.ID, f.n1.ID, "/other/mount") }},

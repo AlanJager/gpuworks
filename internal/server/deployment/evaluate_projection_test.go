@@ -33,7 +33,7 @@ func TestEvaluateWeightSourceRegistrationProjection(t *testing.T) {
 	}
 	for _, model := range models {
 		if model.SourceID == "Acme/Deploy-FP8" {
-			if err := st.DeleteModel(model.ID); err != nil {
+			if _, err := st.DeleteModel(model.ID, false); err != nil {
 				t.Fatal(err)
 			}
 		}

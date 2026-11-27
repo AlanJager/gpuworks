@@ -120,8 +120,8 @@
   },
   "delete": {
     "confirm": "Delete model “{{name}}”?",
-    "listDescription": "Node copy records will also be removed. Models referenced by a deployment cannot be deleted.",
-    "tileDescription": "Models referenced by a deployment cannot be deleted."
+    "listDescription": "Node copy records will also be removed. If deployments use the model, you will see which ones.",
+    "tileDescription": "If deployments use the model, you will see which ones."
   },
   "view": {
     "aria": "Model display mode",
@@ -415,5 +415,17 @@
     "next": "retrying in {{seconds}}s (attempt {{attempt}} of {{attempts}})",
     "afterFailure": "retrying in {{seconds}}s (attempt {{attempt}} of {{attempts}}) after: {{cause}}",
     "throttled": "rate limited by the source; retrying in {{seconds}}s (attempt {{attempt}} of {{attempts}})"
+  },
+  "inUse": {
+    "title": "“{{name}}” is used by deployments",
+    "idle": "These {{count}} deployments are stopped and run nothing.",
+    "running": "Stop or delete the running ones first.",
+    "row": "{{state}} · running instances: {{count}}",
+    "deleteWith": "Delete the model and these {{count}} deployments",
+    "state": {
+      "active": "running",
+      "stopped": "stopped",
+      "deleting": "deleting"
+    }
   }
 }

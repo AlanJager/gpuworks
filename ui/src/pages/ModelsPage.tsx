@@ -39,6 +39,8 @@ import {
   RegisterPathModal,
 } from "./ModelsPageParts";
 import { ModelCopyModal } from "./models/ModelCopyModal";
+import ModelInUseDialog, { modelReferences, type ModelReference } from "./models/ModelInUseDialog";
+import { APIError } from "../apiError";
 import { ModelPresenceSummary } from "./models/ModelPresenceSummary";
 import { RegisterModal } from "./models/RegisterModelModal";
 import { allOperationsLabelKey, operationLabelKey, operationTypes, operationTypesOf } from "../modelInference";
@@ -165,9 +167,11 @@ export default function ModelsPage() {
   const [focusFiles, setFocusFiles] = useState(false);
   const [copyFor, setCopyFor] = useState<Model | null>(null);
   const [view, setView] = useState<"grid" | "list">(() => localStorage.getItem("gpuworks-model-view") === "list" ? "list" : "grid");
-	const removeModel = async (model: ModelCore) => {
+	const [inUse, setInUse] = useState<{ model: ModelCore; deployments: ModelReference[]; deletable: boolean } | null>(null);
+	const removeModel = async (model: ModelCore, withStoppedDeployments = false) => {
 		try {
-			await api.deleteModel(model.id);
+			await api.deleteModel(model.id, { withStoppedDeployments });
+			setInUse(null);
 			message.success(t("message.deleted"));
 			// Deleting the page's last row empties it; step back one page instead
 			// of refetching an empty page above a non-empty list.
@@ -177,6 +181,12 @@ export default function ModelsPage() {
 				refetch();
 			}
 		} catch (e) {
+			// The deployments that keep it are named, with the deletion of both
+			// offered when the server says they are all stopped (GWKS-530).
+			if (e instanceof APIError && e.code === "MODEL_IN_USE") {
+				const refs = modelReferences(e.params);
+				if (refs.deployments.length > 0) { setInUse({ model, ...refs }); return; }
+			}
 			message.error(t("message.deleteFailed", { detail: (e as Error).message }));
 		}
 	};
@@ -490,6 +500,8 @@ export default function ModelsPage() {
         >
           {t("delete.listDescription")}
         </Modal>
+        {inUse && <ModelInUseDialog name={inUse.model.name || inUse.model.source_id} deployments={inUse.deployments} deletable={inUse.deletable}
+          onDeleteWith={() => removeModel(inUse.model, true)} onClose={() => setInUse(null)} />}
         <RegisterPathModal
         model={pathFor}
         onClose={() => setPathFor(null)}
