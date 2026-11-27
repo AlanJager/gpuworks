@@ -69,7 +69,7 @@ class AgentUpgradeResultsLayout(unittest.TestCase):
         page.add_script_tag(content=self.bundle)
         drawer = page.get_by_role("dialog", name="Agent 升级批次 9001")
         expect(drawer.get_by_text("MOCK-success", exact=True)).to_be_visible()
-        page.wait_for_function("""() => [...document.querySelectorAll('.ant-drawer-content-wrapper')]
+        page.wait_for_function("""() => [...document.querySelectorAll('[role=dialog]')]
             .every(el => el.getAnimations({subtree: true}).every(a => a.playState !== 'running'))""")
         return page, drawer
 
@@ -88,14 +88,14 @@ class AgentUpgradeResultsLayout(unittest.TestCase):
                 widths = drawer.locator("thead th").evaluate_all("cells=>cells.map(x=>x.getBoundingClientRect().width)")
                 self.assertEqual(len(widths), 6)
                 self.assertGreaterEqual(min(widths), 140)
-                time_cell = drawer.locator("tbody tr.ant-table-row").first.locator("td").nth(5)
+                time_cell = drawer.locator("tbody tr[data-row=result]").first.locator("td").nth(5)
                 # One range on one line; the finish drops the date it shares with the start.
                 expect(time_cell).to_have_text("2026-10-30 11:20:01 → 11:20:59")
-                line = time_cell.locator("span").first.evaluate("x=>({height:x.getBoundingClientRect().height,lineHeight:parseFloat(getComputedStyle(x).lineHeight)})")
+                line = time_cell.locator("span").first.evaluate("x=>{const c=getComputedStyle(x);return {height:x.getBoundingClientRect().height,lineHeight:parseFloat(c.lineHeight)||parseFloat(c.fontSize)*1.6}}")
                 self.assertLessEqual(line["height"], line["lineHeight"] + 1, line)
                 # A row is one line unless it carries a failure's own detail,
                 # which stays readable in full: that is where a failure is explained.
-                heights = drawer.locator("tbody tr.ant-table-row").evaluate_all("rs=>rs.map(r=>r.getBoundingClientRect().height)")
+                heights = drawer.locator("tbody tr[data-row=result]").evaluate_all("rs=>rs.map(r=>r.getBoundingClientRect().height)")
                 self.assertLessEqual(max(heights[1:]), 48, heights)
                 self.capture(page, f"results-{width}.png")
 
@@ -111,7 +111,7 @@ class AgentUpgradeResultsLayout(unittest.TestCase):
         self.capture(page, "results-unknown-1024.png")
         # The table scrolls as a whole now that nothing is pinned to the right;
         # what matters is that the last column is reachable.
-        drawer.locator(".ant-table-content, .ant-table-body").first.evaluate("el=>{el.scrollLeft=el.scrollWidth}")
+        drawer.locator("[data-slot=table-container]").first.evaluate("el=>{el.scrollLeft=el.scrollWidth}")
         time_cell = row.locator("td").last
         expect(time_cell).to_be_visible()
         self.assertEqual(len(drawer.locator("thead th").evaluate_all("cells=>cells.map(x=>x.getBoundingClientRect().width)")), 6)

@@ -92,6 +92,18 @@ test("progress exposes a bounded determinate value", () => {
   mount(<Progress label="Completed requests" value={120} />);
   assert.equal(screen.getByRole("progressbar").getAttribute("aria-valuenow"), "100");
 });
+test("progress fills in brand by default and in the tone the caller states", () => {
+  const fill = (tone?: "brand" | "warning" | "danger") => {
+    const view = mount(<Progress label="Done" value={50} tone={tone} />);
+    const bar = screen.getByRole("progressbar", { name: "Done" });
+    const result = [bar.getAttribute("data-tone"), (bar.firstElementChild as HTMLElement).className.split(" ").find((name) => name.startsWith("bg-"))];
+    view.unmount();
+    return result;
+  };
+  assert.deepEqual(fill(), ["brand", "bg-brand"]);
+  assert.deepEqual(fill("warning"), ["warning", "bg-warning-strong"]);
+  assert.deepEqual(fill("danger"), ["danger", "bg-danger-strong"]);
+});
 test("segmented view switches with keyboard without selecting disabled choices", async () => {
   function Example() {
     const [value, setValue] = useState("a");
