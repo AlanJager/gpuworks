@@ -8,7 +8,7 @@ import (
 )
 
 func activePhase(phase string) bool {
-	return phase == "transferring" || phase == "waiting_registration" || phase == "observing_recovery"
+	return phase == "draining" || phase == "transferring" || phase == "waiting_registration" || phase == "observing_recovery"
 }
 func countItems(items []store.AgentUpgradeItem) Counts {
 	c := Counts{Total: len(items)}

@@ -60,8 +60,11 @@ type Proxy struct {
 	// SetAccountant behaves exactly as it did before accounting existed.
 	acct *Accountant
 	// priority is the snapshot of request priority classes (priority.go).
-	priority   *priorityClasses
-	routes     *routeTable
+	priority *priorityClasses
+	routes   *routeTable
+	// avoid is the instances an agent upgrade prefers other replicas over
+	// (avoid.go).
+	avoid      avoidSet
 	serving    *servingDialer
 	balancer   *balancer
 	load       *engineLoad

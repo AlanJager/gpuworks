@@ -98,6 +98,133 @@ func TestAgentUpgradeGlobalReservationIdempotencyAndCAS(t *testing.T) {
 	}
 }
 
+// drainingAttempt leaves an attempt in the stage between claiming a node and
+// dispatching its upgrade: the gateway prefers the node's siblings while its
+// requests finish.
+func drainingAttempt(t *testing.T) (*Store, uint) {
+	t.Helper()
+	st := newTestStore(t)
+	now := time.Date(2026, 11, 27, 9, 0, 0, 0, time.UTC)
+	run, err := st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: "drain", RequestFingerprint: "drain", TargetVersion: "target"}, []AgentUpgradeItem{{NodeUUID: "n1", Phase: "queued"}}, now, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, err := st.AgentUpgradeItems(run.ID)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("items=%+v err=%v", items, err)
+	}
+	if ok, err := st.ClaimAgentUpgradeDrain(items[0].ID, now, time.Time{}); err != nil || !ok {
+		t.Fatalf("claim the drain=%v %v", ok, err)
+	}
+	if ok, err := st.ClaimAgentUpgradeDrain(items[0].ID, now, time.Time{}); err != nil || ok {
+		t.Fatalf("second drain claim=%v %v; want refused", ok, err)
+	}
+	return st, run.ID
+}
+
+// An attempt draining its node holds the platform's slot like one in flight:
+// another batch cannot claim the platform meanwhile, the runner still sees the
+// attempt as pending, and retention never removes it. The stage lives only in
+// memory at the gateway, so nothing was dispatched: a restarted server returns
+// the attempt to the queue and dispatches it again, interrupting the batch
+// only when the target changed under it.
+func TestDrainingAttemptHoldsTheSlotAndReturnsToTheQueueOnRestart(t *testing.T) {
+	st, runID := drainingAttempt(t)
+	now := time.Date(2026, 11, 27, 9, 5, 0, 0, time.UTC)
+	if blocker, err := st.AgentUpgradeBlocker(time.Time{}); err != nil || blocker == nil || blocker.NodeUUID != "n1" || blocker.Phase != "draining" {
+		t.Fatalf("draining attempt = %+v, %v; want it holding the slot", blocker, err)
+	}
+	pending, err := st.AgentUpgradePendingItems()
+	if err != nil || len(pending) != 1 || pending[0].Phase != "draining" {
+		t.Fatalf("pending=%+v err=%v; want the draining attempt", pending, err)
+	}
+	if _, err := st.CreateAgentUpgrade(&AgentUpgradeRun{IdempotencyKey: "meanwhile", RequestFingerprint: "meanwhile", TargetVersion: "target"}, []AgentUpgradeItem{{NodeUUID: "n2", Phase: "queued"}}, now, time.Time{}); !errors.Is(err, ErrAgentUpgradeConflict) {
+		t.Fatalf("a second batch started while a node drained: %v", err)
+	}
+	// A finished batch newer than the draining one does not let retention
+	// remove the attempt still going on.
+	newer := &AgentUpgradeRun{IdempotencyKey: "later", RequestFingerprint: "later"}
+	if err := st.DB().Create(newer).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DB().Create(&AgentUpgradeItem{RunID: newer.ID, NodeUUID: "n9", Phase: "succeeded", FinishedAt: &now}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PruneAgentUpgrades(1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AgentUpgradeRun(runID); err != nil {
+		t.Fatalf("retention removed the draining attempt: %v", err)
+	}
+	if err := st.RecoverAgentUpgrades("target"); err != nil {
+		t.Fatal(err)
+	}
+	item, err := st.AgentUpgradeItem(runID, "n1")
+	if err != nil || item.Phase != "queued" || item.StartedAt != nil || item.DeadlineAt != nil || item.BaselineSessionID != "" {
+		t.Fatalf("after a restart = %+v, %v; want it queued again, unclaimed", item, err)
+	}
+	if run, err := st.AgentUpgradeRun(runID); err != nil || run.InterruptedReason != "" {
+		t.Fatalf("run = %+v, %v; the same target must go on", run, err)
+	}
+}
+
+// A target that changed while the node drained interrupts the batch, as it
+// does for any attempt the restart finds unfinished: the queue returns, but
+// nothing is dispatched for the old target.
+func TestRestartMidDrainInterruptsABatchWhoseTargetChanged(t *testing.T) {
+	st, runID := drainingAttempt(t)
+	if err := st.RecoverAgentUpgrades("another"); err != nil {
+		t.Fatal(err)
+	}
+	if item, err := st.AgentUpgradeItem(runID, "n1"); err != nil || item.Phase != "queued" {
+		t.Fatalf("item = %+v, %v; want it queued again", item, err)
+	}
+	if run, err := st.AgentUpgradeRun(runID); err != nil || run.InterruptedReason != "target_changed" {
+		t.Fatalf("run = %+v, %v; want the batch interrupted", run, err)
+	}
+}
+
+// A drained attempt that cannot be dispatched goes back to the queue as it
+// was before its claim; one that already left the stage is not touched.
+func TestRequeueAgentUpgradeDrainClearsTheClaim(t *testing.T) {
+	st, runID := drainingAttempt(t)
+	item, err := st.AgentUpgradeItem(runID, "n1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := st.RequeueAgentUpgradeDrain(item.ID); err != nil || !ok {
+		t.Fatalf("requeue=%v %v", ok, err)
+	}
+	if item, err = st.AgentUpgradeItem(runID, "n1"); err != nil || item.Phase != "queued" || item.StartedAt != nil {
+		t.Fatalf("item = %+v, %v; want it queued, unclaimed", item, err)
+	}
+	if ok, err := st.RequeueAgentUpgradeDrain(item.ID); err != nil || ok {
+		t.Fatalf("requeue of a queued attempt = %v %v; want nothing changed", ok, err)
+	}
+}
+
+// Stopping a batch cancels its draining attempt with its queue: it dispatched
+// nothing, and nothing may return it to the queue of a stopped batch.
+func TestStopAgentUpgradeCancelsADrainingAttempt(t *testing.T) {
+	st, runID := drainingAttempt(t)
+	if err := st.StopAgentUpgrade(runID, time.Now().UTC(), "admin"); err != nil {
+		t.Fatal(err)
+	}
+	item, err := st.AgentUpgradeItem(runID, "n1")
+	if err != nil || item.Phase != "cancelled" || item.Reason != "stopped" || item.StartedAt != nil {
+		t.Fatalf("item = %+v, %v; want it cancelled, unstarted", item, err)
+	}
+	if ok, err := st.RequeueAgentUpgradeDrain(item.ID); err != nil || ok {
+		t.Fatalf("requeue after the stop = %v %v; want nothing changed", ok, err)
+	}
+	if err := st.RecoverAgentUpgrades("target"); err != nil {
+		t.Fatal(err)
+	}
+	if item, err = st.AgentUpgradeItem(runID, "n1"); err != nil || item.Phase != "cancelled" {
+		t.Fatalf("item after recovery = %+v, %v; want it still cancelled", item, err)
+	}
+}
+
 func TestAgentUpgradeContinueHandoffIsAtomic(t *testing.T) {
 	st := newTestStore(t)
 	now := time.Now().UTC()

@@ -31,6 +31,14 @@ func (*upgradeAPITransport) RequestAgentUpgrade(context.Context, string, string)
 	return errors.New("unexpected pull: handler must only record intent")
 }
 
+// upgradeAPIGateway answers that nothing serves on the nodes, so the handler
+// never waits on a drain.
+type upgradeAPIGateway struct{}
+
+func (upgradeAPIGateway) ServedElsewhere(uint, []string) bool { return false }
+func (upgradeAPIGateway) Avoid(uint, []string) func()         { return func() {} }
+func (upgradeAPIGateway) InstancesInFlight([]string) int      { return 0 }
+
 func newAgentUpgradeAPIRig(t *testing.T) (*imageManifestRun, *agentupgrade.Service) {
 	t.Helper()
 	return newAgentUpgradeAPIRigForTarget(t, "target-build")
@@ -54,7 +62,7 @@ func newAgentUpgradeAPIRigForTarget(t *testing.T, target string) (*imageManifest
 			tr.connections[uuid] = agentupgrade.Connection{SessionID: "old-" + uuid, Version: "old-build", Caps: []string{proto.CapUpgradePush}, Ready: true}
 		}
 	}
-	svc, err := agentupgrade.New(r.store, agentupgrade.Config{TargetVersion: target, ArtifactDir: t.TempDir(), Transport: tr, BinaryAvailable: func(name string) bool { return name == "gpuworks-agent-linux-amd64" }, ReadBinary: func(name string) ([]byte, error) {
+	svc, err := agentupgrade.New(r.store, agentupgrade.Config{TargetVersion: target, ArtifactDir: t.TempDir(), Transport: tr, Gateway: upgradeAPIGateway{}, BinaryAvailable: func(name string) bool { return name == "gpuworks-agent-linux-amd64" }, ReadBinary: func(name string) ([]byte, error) {
 		if name != "gpuworks-agent-linux-amd64" {
 			return nil, fmt.Errorf("no artifact %s", name)
 		}
@@ -203,6 +211,9 @@ func TestAgentUpgradeRoutesAuthAndValidation(t *testing.T) {
 		{"GET", "/api/v1/agent-upgrades/no-id", "", 400},
 		{"GET", "/api/v1/agent-upgrades/999999", "", 404},
 		{"GET", "/api/v1/agent-upgrades/999999/items?state=bogus", "", 400},
+		// The stage a node drains in is a phase like any other: the filter
+		// takes it (the run is missing, so 404, not a rejected value).
+		{"GET", "/api/v1/agent-upgrades/999999/items?state=draining", "", 404},
 		{"POST", "/api/v1/agent-upgrades/999999/stop", "", 404},
 		{"DELETE", "/api/v1/agent-upgrades", "", 405},
 	} {

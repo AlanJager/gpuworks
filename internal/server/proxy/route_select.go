@@ -131,7 +131,11 @@ func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string, drai
 		// being busy, whichever of its replicas are left to pick from.
 		adm = adm.waiting()
 	}
-	lease, busy := p.pickAwake(candidates, rd.policy, affinity, false, adm)
+	var avoided map[string]bool
+	if rd.pd == nil {
+		avoided = p.avoid.of(rd.id)
+	}
+	lease, busy := p.pickAvoiding(candidates, avoided, rd.policy, affinity, false, adm)
 	if lease == nil {
 		// Busy is judged before a lease's awake check, so it is the
 		// snapshot's word only while no instance change has passed it: a
@@ -139,7 +143,7 @@ func (p *Proxy) pickRouted(rd *routeDeployment, modelName, affinity string, drai
 		// rows read for the request tell which.
 		return target{}, false, busy && instanceRowsUnchanged(p.store, candidates[0].routedAt)
 	}
-	attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: rd.policy, affinity: affinity, deploymentID: rd.id, accountant: p.acct, admission: adm, prioritized: lease.c.prioritized}
+	attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: rd.policy, affinity: affinity, deploymentID: rd.id, accountant: p.acct, admission: adm, prioritized: lease.c.prioritized, avoided: avoided}
 	return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, pd: rd.pd, affinity: affinity}, true, false
 }
 
@@ -226,9 +230,13 @@ func (p *Proxy) selectDeploymentInstances(dep *store.Deployment, modelName, affi
 	}
 	if len(candidates) > 0 {
 		policy := deploy.NormalizeRoutingPolicy(dep.RoutingPolicy)
-		lease, busy := p.pickAwake(candidates, policy, affinity, true, adm)
+		var avoided map[string]bool
+		if pd == nil {
+			avoided = p.avoid.of(dep.ID)
+		}
+		lease, busy := p.pickAvoiding(candidates, avoided, policy, affinity, true, adm)
 		if lease != nil {
-			attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: policy, affinity: affinity, deploymentID: dep.ID, accountant: p.acct, admission: adm, prioritized: lease.c.prioritized}
+			attempt := &routeAttempt{candidates: candidates, current: lease, tried: map[string]bool{lease.c.instanceUUID: true}, attempts: 1, started: time.Now(), modelName: lease.c.modelName, policy: policy, affinity: affinity, deploymentID: dep.ID, accountant: p.acct, admission: adm, prioritized: lease.c.prioritized, avoided: avoided}
 			return target{nodeUUID: lease.c.nodeUUID, port: lease.c.port, modelName: lease.c.modelName, instanceUUID: lease.c.instanceUUID, lease: lease, candidates: candidates, attempt: attempt, pd: pd, affinity: affinity}, nil, false
 		}
 		if busy {
