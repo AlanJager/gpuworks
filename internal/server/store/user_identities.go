@@ -49,9 +49,12 @@ func (s *Store) ListUsers() ([]User, error) {
 	return out, nil
 }
 
-// FindUserByIdentity answers the account linked to (source, subject), or
-// ErrNotFound. It is how an identity connector signs a user in (ADR 0085
-// decision 5): the pair is the only key, never a username or an email.
+// FindUserByIdentity answers the enabled account linked to (source, subject):
+// ErrNotFound when no account is linked, and ErrUserDisabled, with no account,
+// when the linked one is disabled, so a sign-in through an identity source
+// cannot skip the disabled check (ADR 0085 decisions 5 and 7). The pair is the
+// only key, never a username or an email. An administrator who needs the
+// account whatever its state reads it with ExternalIdentities and UserByID.
 func (s *Store) FindUserByIdentity(source, subject string) (*User, error) {
 	if !identitySourcePattern.MatchString(source) || subject == "" || len(subject) > maxIdentitySubject {
 		return nil, ErrNotFound
@@ -60,7 +63,14 @@ func (s *Store) FindUserByIdentity(source, subject string) (*User, error) {
 	if err := s.reader().Where("source = ? AND subject = ?", source, subject).First(&identity).Error; err != nil {
 		return nil, sessionLookupError(err)
 	}
-	return s.UserByID(identity.UserID)
+	u, err := s.UserByID(identity.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if u.DisabledAt != nil {
+		return nil, ErrUserDisabled
+	}
+	return u, nil
 }
 
 // ExternalIdentities is the accounts' links to outside identity sources, in
@@ -98,12 +108,24 @@ func (s *Store) LinkIdentity(userID uint, source, subject string) (*UserIdentity
 			return err
 		}
 		out = UserIdentity{UserID: userID, Source: source, Subject: subject, CreatedAt: time.Now().UTC()}
-		return tx.Create(&out).Error
+		return identityWriteError(tx.Create(&out).Error)
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &out, nil
+}
+
+// identityWriteError maps the unique (source, subject) index to
+// ErrIdentityTaken: two links of the same pair racing past the read above
+// meet it on insert. It reads SQLite's typed extended result code, like
+// syncGroupWriteError, and never the driver's English text.
+func identityWriteError(err error) error {
+	var coded interface{ Code() int }
+	if errors.As(err, &coded) && coded.Code() == 2067 { // SQLITE_CONSTRAINT_UNIQUE
+		return ErrIdentityTaken
+	}
+	return err
 }
 
 // ErrInvalidIdentity: the source name or the subject does not have the shape

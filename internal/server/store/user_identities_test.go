@@ -257,3 +257,58 @@ func TestIsLocalAdminNeedsTheAdminRole(t *testing.T) {
 		}
 	}
 }
+
+// A link that loses the race to the unique (source, subject) index after the
+// read is ErrIdentityTaken, not a raw constraint error the API would turn
+// into a 500.
+func TestALinkThatMeetsTheUniqueIndexIsTaken(t *testing.T) {
+	st := openUserIdentitiesStore(t)
+	a := insertUser(t, st, "alice", "user", false)
+	b := insertUser(t, st, "bob", "user", false)
+	// The row another writer inserted between this link's read and its
+	// insert: written straight to the table, so LinkIdentity's own read
+	// cannot be what refuses it below.
+	first := UserIdentity{UserID: a.ID, Source: "acme_oidc", Subject: "u-1", CreatedAt: time.Now().UTC()}
+	if err := st.DB().Create(&first).Error; err != nil {
+		t.Fatal(err)
+	}
+	second := UserIdentity{UserID: b.ID, Source: "acme_oidc", Subject: "u-1", CreatedAt: time.Now().UTC()}
+	if err := identityWriteError(st.DB().Create(&second).Error); !errors.Is(err, ErrIdentityTaken) {
+		t.Fatalf("insert over the unique index = %v, want ErrIdentityTaken", err)
+	}
+	// An error that is not that constraint passes through unchanged.
+	other := errors.New("disk I/O error")
+	if err := identityWriteError(other); err != other {
+		t.Fatalf("an unrelated error became %v", err)
+	}
+	if err := identityWriteError(nil); err != nil {
+		t.Fatalf("no error became %v", err)
+	}
+}
+
+// FindUserByIdentity answers only an enabled account: a disabled one is
+// ErrUserDisabled with no account, so a sign-in through the identity source
+// cannot skip the check; enabling makes it findable again.
+func TestFindUserByIdentityRefusesADisabledAccount(t *testing.T) {
+	st := openUserIdentitiesStore(t)
+	u := insertUser(t, st, "alice", "user", false)
+	if _, err := st.LinkIdentity(u.ID, "acme_oidc", "u-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.DisableUser(u.ID); err != nil {
+		t.Fatal(err)
+	}
+	found, err := st.FindUserByIdentity("acme_oidc", "u-1")
+	if !errors.Is(err, ErrUserDisabled) || found != nil {
+		t.Fatalf("find a disabled account = %+v %v, want nil, ErrUserDisabled", found, err)
+	}
+	if _, err := st.FindUserByIdentity("acme_oidc", "nobody"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("find an unlinked pair = %v, want ErrNotFound", err)
+	}
+	if _, err := st.EnableUser(u.ID); err != nil {
+		t.Fatal(err)
+	}
+	if found, err := st.FindUserByIdentity("acme_oidc", "u-1"); err != nil || found.ID != u.ID {
+		t.Fatalf("find after enabling = %+v %v", found, err)
+	}
+}
