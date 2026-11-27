@@ -62,7 +62,8 @@ var ErrNotLinked = errors.New("no account is linked to the external identity")
 // *messages.ProductError carrying the code a connector reads
 // (EXTERNAL_IDENTITY_NOT_FOUND, EXTERNAL_IDENTITY_TAKEN,
 // EXTERNAL_IDENTITY_INVALID, IDENTITY_PROTECTED_USER or
-// IDENTITY_USERNAME_TAKEN; SignIn refuses a disabled account itself. The writes through a source refuse an administrator in the
+// IDENTITY_USERNAME_TAKEN). A disabled account is refused by SignIn, not by
+// the Store. The writes through a source refuse an administrator in the
 // transaction that writes, so an account promoted a moment earlier is never
 // written as an ordinary one.
 type Store interface {
