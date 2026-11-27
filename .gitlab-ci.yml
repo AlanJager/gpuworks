@@ -327,6 +327,7 @@ ui-check:
         - ui/**/*
         - scripts/ui_check_ci.sh
         - scripts/ui_antd_inventory.mjs
+        - scripts/ui_locale_changes.mjs
         - .gitlab-ci.yml
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
     - if: '$CI_PIPELINE_SOURCE == "web"'
