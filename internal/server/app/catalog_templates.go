@@ -117,8 +117,9 @@ func loadTemplateSource(st *store.Store, id uint, includeEnv []string) (template
 	if err != nil {
 		return templateSource{}, fmt.Errorf("deployment %d container overrides: %w", dep.ID, err)
 	}
-	if overrides.EntrypointDisplay != "" || overrides.CmdDisplay != "" || overrides.CommandMode != "" {
-		return templateSource{}, templateexport.Unavailable(templateexport.ReasonCommandOverridden, nil)
+	command, err := templateexport.CommandOf(overrides)
+	if err != nil {
+		return templateSource{}, err
 	}
 	instance, err := runningTemplateInstance(st, dep.ID)
 	if err != nil {
@@ -126,7 +127,7 @@ func loadTemplateSource(st *store.Store, id uint, includeEnv []string) (template
 	}
 	in := templateexport.Input{
 		DeploymentID: dep.ID, DeploymentName: dep.Name, Engine: dep.Engine, Image: instance.Image,
-		UserEnv: overrides.Env, IncludeEnv: includeEnv, VRAMLimitBytes: dep.VRAMLimitBytes,
+		UserEnv: overrides.Env, IncludeEnv: includeEnv, VRAMLimitBytes: dep.VRAMLimitBytes, Command: command,
 		HasContainerOverrides: len(overrides.ExtraMounts) > 0 || len(overrides.DockerArgs) > 0 || len(overrides.EnvUnset) > 0 ||
 			overrides.ShmBytes > 0 || overrides.ModelMountPath != "",
 	}
@@ -265,6 +266,13 @@ func loadTemplateSpec(st *store.Store, dep *store.Deployment, selection deploy.C
 	}
 	in.TemplateArgs = append([]string(nil), selection.ExtraArgs...)
 	in.TemplateEnv = selection.Env
+	// The snapshot records no manual command: the deployment's own command
+	// override holds the script it started on (applySpecManualCommand).
+	for _, stored := range row.Specs {
+		if stored.Name == selection.SpecName && (selection.SpecSource == "" || stored.Source == selection.SpecSource) {
+			in.SourceManualCommand = stored.ManualCommand
+		}
+	}
 	return nil
 }
 
