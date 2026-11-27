@@ -268,6 +268,10 @@ export interface ModelFetchRetry {
   wait_seconds: number;
   throttled?: boolean;
   cause?: string;
+  /** The repository path being retried; absent when listing. */
+  file?: string;
+  /** The retry is of the repository's file list. */
+  listing?: boolean;
 }
 
 /** A model's single copy in a shared storage (dto.ModelStoragePresence). */

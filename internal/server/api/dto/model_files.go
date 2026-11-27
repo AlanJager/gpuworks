@@ -110,6 +110,10 @@ type ModelFetchRetry struct {
 	WaitSeconds int64  `json:"wait_seconds"`
 	Throttled   bool   `json:"throttled,omitempty"`
 	Cause       string `json:"cause,omitempty"`
+	// File is the repository path being retried; empty when Listing.
+	File string `json:"file,omitempty"`
+	// Listing says the retry is of the repository's file list.
+	Listing bool `json:"listing,omitempty"`
 }
 
 // ModelPreparation is the API projection of a transient preparation view.

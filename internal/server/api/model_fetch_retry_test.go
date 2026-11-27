@@ -31,13 +31,13 @@ func TestADownloadsRetryReachesTheModelPageAndThePreparation(t *testing.T) {
 	prep := newTestPreparation()
 	handler := &apiHandlers{d: Deps{Store: st, Preparation: prep}}
 	frame := proto.ModelFileStatus{Key: store.ModelFileKey(file.ID), State: proto.MFDownloading, TransferID: "dl-1", Acquisition: proto.ModelAcquireDownload, BytesDone: 99, BytesTotal: 100, Message: "downloading from modelscope.cn",
-		Retry: &proto.ModelFetchRetry{Attempt: 4, Attempts: 16, WaitSeconds: 8, Cause: "read: connection reset by peer"}}
+		Retry: &proto.ModelFetchRetry{Attempt: 4, Attempts: 16, WaitSeconds: 8, Cause: "read: connection reset by peer", File: "assets/dsv4_performance.png"}}
 	prep.record(node.ID, frame)
 	if err := st.UpdateModelFileStatus(node.ID, frame); err != nil {
 		t.Fatal(err)
 	}
 
-	const wire = `{"attempt":4,"attempts":16,"wait_seconds":8,"cause":"read: connection reset by peer"}`
+	const wire = `{"attempt":4,"attempts":16,"wait_seconds":8,"cause":"read: connection reset by peer","file":"assets/dsv4_performance.png"}`
 	retryOf := func(v any) string {
 		t.Helper()
 		raw, err := json.Marshal(v)

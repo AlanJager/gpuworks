@@ -62,10 +62,13 @@ export function transferPercent(fraction: number, ready: boolean): number {
  */
 export function retryText(t: TFunction, retry: ModelFetchRetry): string {
   const values = { attempt: retry.attempt, attempts: retry.attempts, seconds: retry.wait_seconds };
-  if (retry.throttled) return t("retry.throttled", { ns: "models", ...values });
-  return retry.cause
-    ? t("retry.afterFailure", { ns: "models", ...values, cause: retry.cause })
-    : t("retry.next", { ns: "models", ...values });
+  const note = retry.throttled ? t("retry.throttled", { ns: "models", ...values })
+    : retry.cause ? t("retry.afterFailure", { ns: "models", ...values, cause: retry.cause })
+      : t("retry.next", { ns: "models", ...values });
+  // The file being retried is named, so a download held up by one small file
+  // (a README picture) says so while it is held up.
+  const file = retry.listing ? t("retry.fileList", { ns: "models" }) : retry.file;
+  return file ? t("retry.onFile", { ns: "models", file, note }) : note;
 }
 
 export function rateLabel(bytes: number): string {

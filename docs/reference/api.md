@@ -542,7 +542,7 @@ macOS 忽略 `no_systemd`。
 
 ### 列表筛选与就位汇总
 
-模型详情的本地节点行与共享存储行可带 `transfer_error_code`，列文件阶段的终态分类为：`MODEL_DOWNLOAD_NETWORK_EXHAUSTED`（瞬时网络或上游错误重试耗尽）、`MODEL_DOWNLOAD_SOURCE_NOT_FOUND`（仓库或版本不存在）、`MODEL_DOWNLOAD_SOURCE_ACCESS_DENIED`（401/403）、`MODEL_DOWNLOAD_SOURCE_THROTTLED`（持续限流）、`MODEL_DOWNLOAD_SOURCE_REJECTED`（其他确定的来源拒绝）。`message` 保留原始平台和地址错误详情，页面同时展示分类与详情。`retry` 在下载正等待向同一地址重试时出现，为 `{attempt, attempts, wait_seconds, throttled, cause}`：下一次是第 `attempt` 次（共 `attempts` 次）、`wait_seconds` 秒后重试；`throttled` 表示来源主动要求等待（429/503），否则 `cause` 是上次失败的最内层原文（最多 160 字节，仅作证据展示）。它来自 agent 的实时进度、只在内存中保留，字节继续到达或换地址即消失，不落库；旧 agent 不发送时省略。旧 agent、未知错误或多个来源失败类型不一致时可省略该字段；省略不代表成功。重新发起下载会清理旧下载错误码、分配新的传输 ID，迟到的旧任务回报不能覆盖新任务。
+模型详情的本地节点行与共享存储行可带 `transfer_error_code`，列文件阶段的终态分类为：`MODEL_DOWNLOAD_NETWORK_EXHAUSTED`（瞬时网络或上游错误重试耗尽）、`MODEL_DOWNLOAD_SOURCE_NOT_FOUND`（仓库或版本不存在）、`MODEL_DOWNLOAD_SOURCE_ACCESS_DENIED`（401/403）、`MODEL_DOWNLOAD_SOURCE_THROTTLED`（持续限流）、`MODEL_DOWNLOAD_SOURCE_REJECTED`（其他确定的来源拒绝）。`message` 保留原始平台和地址错误详情，页面同时展示分类与详情。`retry` 在下载正等待向同一地址重试时出现，为 `{attempt, attempts, wait_seconds, throttled, cause, file, listing}`（`file` 是正在重试的仓库内文件路径，最多 256 字节：更长时从前面截掉、保留结尾的文件名并加 `…` 前缀，控制字符、双向控制字符和行、段分隔符替换为 U+FFFD，所以它不一定是原样路径，不能拿去和仓库文件列表做精确匹配；重试的是文件列表时 `listing` 为 `true`、不带 `file`）：下一次是第 `attempt` 次（共 `attempts` 次）、`wait_seconds` 秒后重试；`throttled` 表示来源主动要求等待（429/503），否则 `cause` 是上次失败的最内层原文（最多 160 字节，仅作证据展示）。它来自 agent 的实时进度、只在内存中保留，字节继续到达或换地址即消失，不落库；旧 agent 不发送时省略。旧 agent、未知错误或多个来源失败类型不一致时可省略该字段；省略不代表成功。重新发起下载会清理旧下载错误码、分配新的传输 ID，迟到的旧任务回报不能覆盖新任务。
 
 `GET /api/v1/models` 不带分页参数时返回全部模型及逐节点、存储的就位明细。
 带 `page` 或 `page_size` 时返回 `{items, page, page_size, total, summary}`：
