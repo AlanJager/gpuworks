@@ -23,6 +23,13 @@ export default defineConfig({
   build: {
     outDir,
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Pages are their own chunks; the modules a few of them share would
+        // otherwise each be a chunk of a few KB, one request apiece.
+        experimentalMinChunkSize: 40_000,
+      },
+    },
   },
   server: {
     // Dev proxy: `npm run dev` talks to a locally running server on :8080.

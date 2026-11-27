@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../api";
 import { apiErrorText } from "../apiError";
@@ -6,6 +6,7 @@ import type { NetworkRole, NodeManagement, NodeNetworks } from "../networkTypes"
 import { Endpoint } from "../pages/networks/networkDisplay";
 import { message } from "../ui-kit/feedback";
 import { Badge } from "./ui/badge";
+import { useIsAdmin } from "./useIsAdmin";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { DetailList, DetailListItem, DetailListLabel, DetailListValue } from "./ui/detail-list";
 import { Switch } from "./ui/switch";
@@ -25,12 +26,8 @@ export default function NodeManagementCard({ nodeUUID, management, onChanged }: 
 }) {
   const { t } = useTranslation("networks");
   const { t: tCommon } = useTranslation("common");
-  const [isAdmin, setIsAdmin] = useState(false);
+  const isAdmin = useIsAdmin();
   const [saving, setSaving] = useState<NetworkRole | null>(null);
-
-  useEffect(() => {
-    api.me().then((user) => setIsAdmin(user.role === "admin")).catch(() => {});
-  }, []);
 
   const toggle = async (role: NetworkRole, on: boolean) => {
     const off = on ? management.roles_off.filter((r) => r !== role) : [...management.roles_off, role];

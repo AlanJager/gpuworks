@@ -5,39 +5,55 @@ import { initReactI18next } from "react-i18next";
 export const supportedLanguages = ["en", "zh"] as const;
 export type SupportedLanguage = (typeof supportedLanguages)[number];
 
-// Keep the glob call syntactically direct so Vite expands it. Node's RTL
-// runner has no import.meta.env and therefore skips the branch; tests provide
-// their own i18next resources.
-const localeModules = typeof import.meta.env !== "undefined"
-  ? import.meta.glob("./locales/*/*.json", { eager: true, import: "default" }) as Record<string, Record<string, unknown>>
+type LocaleModule = { default: Record<string, Record<string, unknown>> };
+
+// One chunk per language, so a tab downloads the language it shows and
+// English, the fallback: an extension's bundle may carry English only, and a
+// few labels are formatted in English on purpose (getFixedT("en")). Node's
+// RTL runner has no import.meta.env and loads none: tests provide their own
+// resources.
+const localeChunks: Partial<Record<SupportedLanguage, () => Promise<LocaleModule>>> = typeof import.meta.env !== "undefined"
+  ? { en: () => import("./locales-en"), zh: () => import("./locales-zh") }
   : {};
 
-function buildResources() {
-  const resources: Record<string, Record<string, Record<string, unknown>>> = {};
-  for (const [path, messages] of Object.entries(localeModules)) {
-    const match = path.match(/^\.\/locales\/([^/]+)\/([^/]+)\.json$/);
-    if (!match) continue;
-    const [, language, namespace] = match;
-    resources[language] ??= {};
-    resources[language][namespace] = messages;
+const loaded = new Map<SupportedLanguage, Promise<void>>();
+
+/**
+ * loadConsoleLanguage adds a language's own messages once; switch to a
+ * language after it. They win over a console extension's bundle for the same
+ * key, as when they were built in.
+ */
+export function loadConsoleLanguage(language: SupportedLanguage): Promise<void> {
+  const chunk = localeChunks[language];
+  if (!chunk) return Promise.resolve();
+  let pending = loaded.get(language);
+  if (!pending) {
+    pending = chunk().then(({ default: modules }) => {
+      for (const [path, messages] of Object.entries(modules)) {
+        const namespace = (path.split("/").pop() ?? "").replace(/\.json$/, "");
+        i18n.addResourceBundle(language, namespace, messages, true, true);
+      }
+    });
+    pending.catch(() => loaded.delete(language));
+    loaded.set(language, pending);
   }
-  return resources;
+  return pending;
 }
 
-const namespaces = [...new Set(Object.keys(localeModules).map((path) => {
-  const filename = path.split("/").pop() ?? "";
-  return filename.replace(/\.json$/, "");
-}).filter(Boolean))];
+function supported(language: string | undefined): SupportedLanguage {
+  const code = (language ?? "").split("-")[0];
+  return (supportedLanguages as readonly string[]).includes(code) ? code as SupportedLanguage : "en";
+}
+
 
 void i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    resources: buildResources(),
+    resources: {},
     supportedLngs: supportedLanguages,
     fallbackLng: "en",
     defaultNS: "common",
-    ns: namespaces,
     load: "languageOnly",
     nonExplicitSupportedLngs: true,
     interpolation: { escapeValue: false },
@@ -54,6 +70,18 @@ function syncDocumentLanguage(language: string) {
 }
 
 syncDocumentLanguage(i18n.resolvedLanguage ?? i18n.language);
+
+/**
+ * consoleLanguageReady settles once the detected language's messages and the
+ * English fallback are in, so the first render shows text rather than keys. A
+ * chunk that failed to load leaves the keys showing rather than holding the
+ * console back.
+ */
+export const consoleLanguageReady: Promise<void> = Object.keys(localeChunks).length === 0
+  ? Promise.resolve()
+  : Promise.allSettled([loadConsoleLanguage("en"), loadConsoleLanguage(supported(i18n.language))])
+    .then(() => i18n.changeLanguage(supported(i18n.language))).then(() => {}, () => {});
+
 i18n.on("languageChanged", syncDocumentLanguage);
 
 export default i18n;

@@ -41,7 +41,6 @@
   .deploy-feature-choices { grid-template-columns: minmax(0, 1fr); }
   .deploy-feature-card { min-width: 0; }
   .deploy-choice-card { width: 100%; }
-  .deploy-node-card-head,
   .deploy-node-item { align-items: flex-start; flex-direction: column; }
   .deploy-node-item > i { display: none; }
   .deploy-resource-grid { grid-template-columns: 1fr; }
