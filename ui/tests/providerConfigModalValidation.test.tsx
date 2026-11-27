@@ -181,3 +181,14 @@ test("ZStack editing loads and submits the saved endpoint without applying the c
   assert.equal(requests[0].endpoint, endpoint);
   assert.equal(requests[0].private_key, undefined);
 });
+
+// An address is not prose: the browser does not underline it as misspelt or
+// correct it (GWKS-540).
+test("the credential fields are not spellchecked or autocorrected", async () => {
+  await i18n.changeLanguage("en");
+  render(<I18nextProvider i18n={i18n}><ProviderConfigModal open defaultKind="zstack" kindInfos={kindInfos} categories={kindCategories(kindInfos)} providerLabel="ZStack" onClose={() => {}} onSaved={() => {}} /></I18nextProvider>);
+  await waitFor(() => assert.equal(input("endpoint")?.value, endpointTemplate));
+  assert.equal(input("endpoint").getAttribute("spellcheck"), "false");
+  assert.equal(input("endpoint").getAttribute("autocapitalize"), "off");
+  assert.equal(input("endpoint").getAttribute("autocorrect"), "off");
+});

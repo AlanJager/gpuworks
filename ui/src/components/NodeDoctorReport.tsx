@@ -10,8 +10,10 @@ import { DetailList, DetailListItem, DetailListLabel, DetailListValue } from "./
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { Notice } from "../ui-kit/Notice";
 import { runtimeLabel } from "../nodeDisplay";
+import { fixedDarkSelectionStyle } from "../theme/terminalTheme";
 
 const rawStyle = {
+  ...fixedDarkSelectionStyle,
   background: "#111827",
   color: "#f9fafb",
   padding: 12,

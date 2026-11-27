@@ -43,3 +43,31 @@ test("a disabled password field cannot be revealed, and its ref is the input", (
   assert.equal(ref.current, screen.getByLabelText("Password"));
   assert.equal(ref.current?.disabled, true);
 });
+
+// GWKS-540: a revealed secret is plain text to the browser, so spellcheck
+// (enhanced spellcheck uploads it), autocapitalisation and autocorrection stay
+// off whether it is hidden or shown, unless the caller asks otherwise.
+const writingAids = (input: HTMLInputElement) => ({
+  spellcheck: input.getAttribute("spellcheck"),
+  autocapitalize: input.getAttribute("autocapitalize"),
+  autocorrect: input.getAttribute("autocorrect"),
+});
+
+test("the browser's writing aids stay off while the password is hidden and once it is shown", async () => {
+  const user = userEvent.setup();
+  mount();
+  const input = screen.getByLabelText("Password") as HTMLInputElement;
+  const off = { spellcheck: "false", autocapitalize: "off", autocorrect: "off" };
+  assert.equal(input.type, "password");
+  assert.deepEqual(writingAids(input), off);
+
+  await user.click(screen.getByRole("button", { name: "Show password" }));
+  assert.equal(input.type, "text");
+  assert.deepEqual(writingAids(input), off);
+});
+
+test("a caller can turn the writing aids back on", () => {
+  mount({ spellCheck: true, autoCapitalize: "on", autoCorrect: "on" });
+  const input = screen.getByLabelText("Password") as HTMLInputElement;
+  assert.deepEqual(writingAids(input), { spellcheck: "true", autocapitalize: "on", autocorrect: "on" });
+});

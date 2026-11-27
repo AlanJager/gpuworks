@@ -16,6 +16,7 @@ const p = new URLSearchParams(location.search);document.documentElement.dataset.
 document.documentElement.classList.toggle('dark',p.get('theme')==='dark');
 </script></head><body><main style="padding:24px;max-width:100%;font-size:16px">
 <h1 style="font-size:18px">GPUWorks</h1><p id="body" style="font-size:var(--font-size-body)"></p>
+<div id="bubble" style="background:#1f5fd6;color:#fff;padding:6px 10px">why slow? / 为什么慢？</div>
 <pre id="log"><span id="event">[system] Replica started / 副本已启动</span>\nINFO ready / 服务已就绪</pre>
 <pre class="code-block text-label">curl http://localhost:8080/v1/models</pre>
 <div class="ant-typography"><pre class="code-block">kubectl get pods</pre></div>
@@ -27,21 +28,23 @@ document.documentElement.classList.toggle('dark',p.get('theme')==='dark');
 <pre class="template-command-preview">export MODEL_PATH=/models</pre>
 <div class="template-operation-usage"><pre>curl localhost:8080/health</pre></div>
 <pre style="background:#111827;color:#f9fafb">GPU health: OK</pre>
-<div class="node-terminal" style="height:130px"><div id="terminal" class="node-terminal-surface"></div></div></main>
+<div class="node-terminal" style="height:160px"><div class="node-terminal-bar"><span>Host · gpu-node-1</span></div><div id="terminal" class="node-terminal-surface"></div></div></main>
 <script type="module">
 import '/src/app.css';import '/src/theme/layers.css';
 import '/src/pages/playground/playground.css';import '/src/pages/deploy/deployRuntimePreview.css';
 import '/src/pages/inferenceTemplateFlat.css';import '/node_modules/@xterm/xterm/css/xterm.css';
 import {Terminal} from '@xterm/xterm';
-import {terminalOptions,logSurfaceStyle,logEventStyle} from '/src/theme/terminalTheme.ts';
+import {terminalOptions,logSurfaceStyle,logEventStyle,logSelection,provideFixedDarkSelection,onBrandSelection,onBrandSelectionStyle} from '/src/theme/terminalTheme.ts';
+provideFixedDarkSelection(document.documentElement);
 const zh=new URLSearchParams(location.search).get('locale')==='zh';
 document.getElementById('body').textContent=zh?'正文 14px；命令、终端 14px':'Body 14px; commands and terminal 14px';
 document.querySelector('.node-terminal').style.background=terminalOptions.theme.background;
-Object.assign(document.querySelector('#log').style,logSurfaceStyle);
+for(const [k,v] of Object.entries(logSurfaceStyle)) document.querySelector('#log').style.setProperty(k.startsWith('--')?k:k.replace(/[A-Z]/g,c=>'-'+c.toLowerCase()),v);
 Object.assign(document.querySelector('#event').style,logEventStyle);
+for(const [k,v] of Object.entries(onBrandSelectionStyle)) document.querySelector('#bubble').style.setProperty(k,v);
 const terminal=new Terminal({...terminalOptions,rows:5,cols:60});terminal.open(document.getElementById('terminal'));
 terminal.write('\\x1b[35mMagenta / 紫色\\x1b[0m  normal\\r\\n\\x1b[31mRed\\x1b[32m Green\\x1b[33m Yellow\\x1b[34m Blue\\x1b[36m Cyan\\x1b[0m');
-window.result={expectedBackground:terminal.options.theme.background,font:terminal.options.fontSize,contrast:terminal.options.minimumContrastRatio};
+window.result={logSelection,onBrandSelection,expectedBackground:terminal.options.theme.background,font:terminal.options.fontSize,contrast:terminal.options.minimumContrastRatio};
 </script></body></html>`;
 let server, browser;
 try {
@@ -62,15 +65,34 @@ try {
       terminalBackground: getComputedStyle(document.querySelector('.node-terminal')).backgroundColor,
       xtermBackground: getComputedStyle(document.querySelector('.xterm-viewport')).backgroundColor,
       overflow: document.documentElement.scrollWidth > innerWidth,
+      // The log surface is dark in both themes, so its selection must be the
+      // dark tint there while the page around it keeps the theme's own.
+      selection: { log: getComputedStyle(document.querySelector('#log'), '::selection').backgroundColor,
+        logToken: getComputedStyle(document.querySelector('#log')).getPropertyValue('--text-selection').trim(),
+        body: getComputedStyle(document.querySelector('#body'), '::selection').backgroundColor,
+        // Stylesheet surfaces with a literal dark background (theme/layers.css).
+        surfaces: Object.fromEntries(['.code-block', '.deploy-command-preview', '.deploy-runtime-command pre', '.markdown-content pre code',
+          '.playground-preview-source', '.playground-realtime-log', '.template-command-preview', '.template-operation-usage pre', '.node-terminal-bar']
+          .map((selector) => [selector, getComputedStyle(document.querySelector(selector), '::selection').backgroundColor])),
+        bubble: getComputedStyle(document.querySelector('#bubble'), '::selection').backgroundColor },
     }));
     assert.deepEqual(errors, []); assert.equal(result.bodyFont, '14px'); assert.equal(result.eventColor, 'rgb(161, 210, 254)');
     for (const code of result.code) { assert.equal(code.font, '14px', code.class); assert.match(code.family, /monospace/); }
     const expectedBackground = `rgb(${result.expectedBackground.slice(1).match(/../g).map(v => parseInt(v,16)).join(', ')})`;
     assert.equal(result.terminalBackground, expectedBackground);
     assert.equal(result.xtermBackground, 'rgba(0, 0, 0, 0)', 'transparent viewport inherits the same terminal surface');
+    assert.equal(result.selection.logToken, result.logSelection);
+    // The assistant's question bubble (brand blue in both themes) selects with the on-brand tint.
+    assert.equal(result.selection.bubble, 'color(srgb 0 0.0156863 0.0509804 / 0.35)', `${theme}: on-brand tint ${result.onBrandSelection}`);
+    if (theme === 'light') assert.notEqual(result.selection.log, result.selection.body, 'the light page tint is not used on the dark log');
     assert.equal(result.font, 14); assert.equal(result.contrast, 4.5); assert.equal(result.overflow, false);
     await page.screenshot({ path: resolve(out, `${theme}-${locale}-${width}.png`), fullPage:true });
     results.push({theme,locale,width,...result}); await page.close();
+  }
+  const darkTint = results.find((r) => r.theme === 'dark').selection.body;
+  for (const r of results) assert.equal(r.selection.log, darkTint, `${r.theme}/${r.locale}/${r.width}: the log selects with the dark theme's tint`);
+  for (const r of results) for (const [selector, colour] of Object.entries(r.selection.surfaces)) {
+    assert.equal(colour, darkTint, `${r.theme}/${r.locale}/${r.width}: ${selector} selects with the dark theme's tint`);
   }
   await writeFile(resolve(out, 'results.json'), JSON.stringify(results,null,2));
   console.log(`Passed ${results.length} theme/locale/width combinations; ${out}`);

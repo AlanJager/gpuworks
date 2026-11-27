@@ -184,5 +184,9 @@ test("the raw agent report stays folded until opened from the keyboard", async (
   const toggle = screen.getByRole("button", { name: zh.t("doctor.rawToggle", { ns: "nodes" }) });
   toggle.focus();
   await user.keyboard("{Enter}");
-  assert.ok(await screen.findByText("partial report"));
+  const raw = await screen.findByText("partial report");
+  // GWKS-540: the raw report is dark in both themes, so it selects text with
+  // the dark theme's tint rather than the light one that vanishes on it.
+  const { logSelection } = await import("../src/theme/terminalTheme.ts");
+  assert.equal(raw.closest("pre")?.style.getPropertyValue("--text-selection"), logSelection);
 });

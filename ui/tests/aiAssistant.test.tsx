@@ -31,6 +31,7 @@ const { default: AIAssistant } = await import("../src/components/AIAssistant.tsx
 const { default: AssistantPanel } = await import("../src/assistant/AssistantPanel.tsx");
 const { AssistantProvider, useAssistantSubjects } = await import("../src/assistant/AssistantContext.tsx");
 const { stepDetail, StepList, selfCorrectable, FindingCards, FitTable } = await import("../src/components/AIAssistantParts.tsx");
+const { onBrandSelection } = await import("../src/theme/terminalTheme.ts");
 type PageSubject = import("../src/assistant/AssistantContext.tsx").PageSubject;
 const originalFetch = globalThis.fetch;
 
@@ -233,6 +234,9 @@ test("the empty panel offers the page's tasks, attention first, and a free quest
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   await waitFor(() => assert.equal(asked.length, 1));
   assert.deepEqual(asked[0].body, { task: "ask", deployment_id: 4, locale: "en", question: "why slow?" });
+  // GWKS-540: the question sits on a brand-blue bubble, where the page's
+  // brand-tinted selection would not show; it selects with a darkening tint.
+  assert.equal((await screen.findByText("why slow?")).style.getPropertyValue("--text-selection"), onBrandSelection);
 
   // A new conversation goes back to the page's tasks; unpicking leaves the question about nothing.
   await waitFor(() => assert.ok(screen.getByRole("button", { name: "New conversation" })));

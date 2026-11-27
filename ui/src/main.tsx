@@ -11,6 +11,7 @@ import App from "./App";
 import consoleI18n, { consoleLanguageReady } from "./i18n";
 import { registerExtensionLocales } from "./extensions";
 import { darkPreview, themeConfig } from "./theme/tokens";
+import { provideFixedDarkSelection } from "./theme/terminalTheme";
 import "./app.css";
 import "./theme/layers.css";
 import "./pages/models/discovery/discovery.css";
@@ -35,6 +36,9 @@ function Root() {
     </ConfigProvider>
   );
 }
+
+// The selection tint for stylesheet surfaces that stay dark in both themes.
+provideFixedDarkSelection(document.documentElement);
 
 // Console extensions bring their own translations (none in the community build).
 registerExtensionLocales(consoleI18n);
