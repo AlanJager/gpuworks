@@ -239,3 +239,21 @@ func TestTheLastEnabledLocalAdministratorCannotBeDisabled(t *testing.T) {
 		t.Fatalf("disable an ordinary admin = %v", err)
 	}
 }
+
+// The local-admin flag counts only on an administrator: a row that still
+// carries it after losing the admin role is not the floor.
+func TestIsLocalAdminNeedsTheAdminRole(t *testing.T) {
+	for _, tc := range []struct {
+		u    User
+		want bool
+	}{
+		{User{Role: "admin", LocalAdmin: true}, true},
+		{User{Role: "admin", LocalAdmin: false}, false},
+		{User{Role: "user", LocalAdmin: true}, false},
+		{User{Role: "user", LocalAdmin: false}, false},
+	} {
+		if got := tc.u.IsLocalAdmin(); got != tc.want {
+			t.Fatalf("%+v IsLocalAdmin = %t, want %t", tc.u, got, tc.want)
+		}
+	}
+}

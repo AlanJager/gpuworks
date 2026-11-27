@@ -46,7 +46,7 @@ func claimsFromRequest(st *store.Store, signer *auth.TokenSigner, r *http.Reques
 	}
 	return auth.Claims{
 		UserID: user.ID, Username: user.Username, Role: user.Role,
-		SessionID: hash, LocalAdmin: user.LocalAdmin && user.Role == "admin",
+		SessionID: hash, LocalAdmin: user.IsLocalAdmin(),
 	}, true
 }
 

@@ -138,7 +138,7 @@ func (s *Store) DisableUser(id uint) (*User, error) {
 		if out.DisabledAt != nil {
 			return nil
 		}
-		if out.Role == "admin" && out.LocalAdmin {
+		if out.IsLocalAdmin() {
 			var remaining int64
 			if err := tx.Model(&User{}).
 				Where("role = ? AND local_admin = ? AND disabled_at IS NULL AND id <> ?", "admin", true, id).

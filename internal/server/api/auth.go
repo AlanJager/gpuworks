@@ -69,7 +69,7 @@ func (a *apiHandlers) login(w http.ResponseWriter, r *http.Request) {
 	// auth.local_password: local_admin keeps the password form for the
 	// administrators the platform cannot lose (ADR 0085 decision 8); checked
 	// after the password, so it tells nothing to anyone else.
-	if a.sessionPolicy.LocalPassword == auth.LocalPasswordLocalAdmin && !u.LocalAdmin {
+	if a.sessionPolicy.LocalPassword == auth.LocalPasswordLocalAdmin && !u.IsLocalAdmin() {
 		a.usageCounters().Inc(usagereport.KindLogin, "failed")
 		writeProductError(w, http.StatusForbidden, ErrorLocalPasswordDisabled,
 			"this server signs users in through an identity source; local passwords are limited to local administrators", nil)
@@ -189,7 +189,7 @@ func (a *apiHandlers) authenticateManagement(r *http.Request) (auth.Claims, *sto
 			return auth.Claims{}, nil, auth.ErrInvalidToken
 		}
 	}
-	return auth.Claims{UserID: u.ID, Username: u.Username, Role: u.Role, SessionID: hash, LocalAdmin: u.LocalAdmin && u.Role == "admin"}, session, nil
+	return auth.Claims{UserID: u.ID, Username: u.Username, Role: u.Role, SessionID: hash, LocalAdmin: u.IsLocalAdmin()}, session, nil
 }
 
 func (a *apiHandlers) claimsFromRequest(r *http.Request) (auth.Claims, bool) {

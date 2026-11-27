@@ -44,6 +44,11 @@ type UserIdentity struct {
 
 func (UserIdentity) TableName() string { return "user_identities" }
 
+// IsLocalAdmin reports whether the account holds the break-glass floor of
+// ADR 0071 decision 11: the stored flag counts only while the role is admin,
+// so a demoted user loses it without a write.
+func (u User) IsLocalAdmin() bool { return u.LocalAdmin && u.Role == "admin" }
+
 // APIKey authenticates data-plane (/v1) and API access. The prefix is stored in
 // clear for O(1) lookup; the full key is verified against an argon2id hash.
 // A revoked key stays, so its usage keeps a name; it never authenticates
