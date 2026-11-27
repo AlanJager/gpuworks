@@ -1,6 +1,6 @@
 # ADR 0085: 外部身份：插件做身份连接器，核心建立账号与签发会话
 
-日期：2026-11-27 · 状态：已接受，第 1 步已实施，其余未实施（补充 [ADR 0071](0071-installable-extensions.md) 决策 3、11、19 与 [ADR 0081](0081-role-gated-plugin-routes.md)；扩展等级的说法见 [ADR 0084](0084-extension-levels-and-table-kind-registry.md)）
+日期：2026-11-27 · 状态：已接受，第 1、2 步已实施，其余未实施（补充 [ADR 0071](0071-installable-extensions.md) 决策 3、11、19 与 [ADR 0081](0081-role-gated-plugin-routes.md)；扩展等级的说法见 [ADR 0084](0084-extension-levels-and-table-kind-registry.md)）
 
 ## 背景
 
@@ -60,7 +60,7 @@
 
 9. **编译模块的 `public` 路由。** `api.RouteAccess` 增加 `AccessPublic`：不认证，按客户端地址限流（规则同插件路由的 `public`），不能是会话写入；路由仍须指明功能或标为社区路由。
 
-10. **码。** `IDENTITY_TICKET_INVALID`（票据不存在、过期、已使用、来源不符，或与浏览器绑定不对应）、`IDENTITY_PROTECTED_USER`（连接器试图停用、恢复、改名或踢下线管理员）、`IDENTITY_NOT_PROVISIONED`、`IDENTITY_USERNAME_TAKEN{username}`、`IDENTITY_SOURCE_CONFLICT{source}`（来源名已被别的包或模块拥有）、`IDENTITY_SOURCE_UNAVAILABLE{source}`（密码式校验时身份源不可达）、`USER_DISABLED`、`LOCAL_PASSWORD_DISABLED`。
+10. **码。** `IDENTITY_TICKET_INVALID`（票据不存在、过期、已使用、来源不符，或与浏览器绑定不对应）、`IDENTITY_PROTECTED_USER`（连接器试图停用、恢复、改名或踢下线管理员）、`IDENTITY_NOT_PROVISIONED`、`IDENTITY_USERNAME_TAKEN{username}`、`IDENTITY_SOURCE_CONFLICT{source}`（来源名已被别的包或模块拥有）、`IDENTITY_SOURCE_UNAVAILABLE{source}`（这个来源现在不能登录：没有扩展经它提供登录、所属功能被锁定或隐藏，或密码式校验时身份源不可达）、`USER_DISABLED`、`LOCAL_PASSWORD_DISABLED`。
 
 ## 扩展等级
 
@@ -85,9 +85,9 @@
 
 ## 实施状态
 
-第 1 步已实施（2026-11-27）；第 2–4 步未实施。顺序，每一步都带契约测试（编译模块走 `internal/testenv/extmodule`，插件包走假插件进程，ADR 0071 决策 21）：
+第 1、2 步已实施（2026-11-27），只覆盖编译模块；第 3、4 步未实施。顺序，每一步都带契约测试（编译模块走 `internal/testenv/extmodule`，插件包走假插件进程，ADR 0071 决策 21）：
 
 1. **已实施。** `user_identities`（迁移 252）与 `users.disabled_at`；停用的执行（会话、登录、平台令牌、API key）；管理员的停用、恢复、查看链接、链接与删除链接接口（`/api/v1/users…`，见 [API 参考](../reference/api.md#accounts账号与外部身份)）；`auth.local_password`。
-2. 浏览器绑定与 `GET /api/v1/auth/sign-in/start`、票据与 `GET /api/v1/auth/complete`，管理员不受连接器管辖的检查，`app.Host.Accounts()`，`api.AccessPublic`，`GET /api/v1/auth/sign-in-options` 与登录页入口。到这一步，编译模块就能实现跳转式连接器。
+2. **已实施。** 浏览器绑定与 `GET /api/v1/auth/sign-in/start`；票据（迁移 253 的 `sign_in_tickets`，存在库里，集群任一成员都能兑换）与 `GET /api/v1/auth/complete`，兑换失败时 302 到 `/login?code=<码>`；管理员不受连接器管辖的检查；`app.Host` 的 `DeclareIdentitySources`、`OfferSignIn` 与 `Accounts()`；`api.AccessPublic`；`GET /api/v1/auth/sign-in-options` 与登录页入口；`auth.external.provision`（见[扩展点](../dev/extensions.md#身份连接器)与 [API 参考](../reference/api.md#通过身份连接器登录)）。编译模块现在可以实现跳转式连接器。
 3. 插件包的 `write:accounts` 权限、`host.accounts` 宿主接口与清单的 `sign_in` 声明。
 4. 密码式连接器的同步校验接口。

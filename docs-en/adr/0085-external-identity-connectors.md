@@ -1,6 +1,6 @@
 # ADR 0085: External Identity: Plugins Are Identity Connectors, the Core Creates Accounts and Issues Sessions
 
-Date: 2026-11-27 · Status: Proposed (adds to [ADR 0071](0071-installable-extensions.md) decisions 3, 11 and 19 and to [ADR 0081](0081-role-gated-plugin-routes.md); the extension level terms are in [ADR 0084](0084-extension-levels-and-table-kind-registry.md))
+Date: 2026-11-27 · Status: Accepted, steps 1 and 2 implemented, the rest not (adds to [ADR 0071](0071-installable-extensions.md) decisions 3, 11 and 19 and to [ADR 0081](0081-role-gated-plugin-routes.md); the extension level terms are in [ADR 0084](0084-extension-levels-and-table-kind-registry.md))
 
 ## Background
 
@@ -60,7 +60,7 @@ These identity sources all differ, and the variation is on the side of sites and
 
 9. **`public` routes for compiled modules.** `api.RouteAccess` gains `AccessPublic`: unauthenticated, rate-limited per client address (the same rules as `public` plugin routes), never a session write; the route must still name a feature or be marked a community route.
 
-10. **Codes.** `IDENTITY_TICKET_INVALID` (the ticket does not exist, expired, was used, the source does not match, or it does not match the browser binding), `IDENTITY_PROTECTED_USER` (a connector tried to disable, restore, rename or sign out an administrator), `IDENTITY_NOT_PROVISIONED`, `IDENTITY_USERNAME_TAKEN{username}`, `IDENTITY_SOURCE_CONFLICT{source}` (the source name is owned by another package or module), `IDENTITY_SOURCE_UNAVAILABLE{source}` (the identity source is unreachable during a password check), `USER_DISABLED`, `LOCAL_PASSWORD_DISABLED`.
+10. **Codes.** `IDENTITY_TICKET_INVALID` (the ticket does not exist, expired, was used, the source does not match, or it does not match the browser binding), `IDENTITY_PROTECTED_USER` (a connector tried to disable, restore, rename or sign out an administrator), `IDENTITY_NOT_PROVISIONED`, `IDENTITY_USERNAME_TAKEN{username}`, `IDENTITY_SOURCE_CONFLICT{source}` (the source name is owned by another package or module), `IDENTITY_SOURCE_UNAVAILABLE{source}` (signing in through this source is not possible now: no extension offers a sign-in through it, its feature is locked or hidden, or the identity source is unreachable during a password check), `USER_DISABLED`, `LOCAL_PASSWORD_DISABLED`.
 
 ## Extension level
 
@@ -85,16 +85,16 @@ These identity sources all differ, and the variation is on the side of sites and
 
 ## Implementation status
 
-Not implemented. Order, each step with contract tests (compiled modules through `internal/testenv/extmodule`, plugin packages against a fake plugin process, ADR 0071 decision 21):
+Steps 1 and 2 are implemented (2026-11-27), for compiled modules only; steps 3 and 4 are not. Order, each step with contract tests (compiled modules through `internal/testenv/extmodule`, plugin packages against a fake plugin process, ADR 0071 decision 21):
 
-1. Migrations for `user_identities` and `users.disabled_at`; enforcing disablement (sessions, sign-in, platform tokens, API keys) and the administrator interfaces to disable, restore and link; `auth.local_password`.
-2. The browser binding and `GET /api/v1/auth/sign-in/start`, tickets and `GET /api/v1/auth/complete`, the check that keeps administrators out of connectors' reach, `app.Host.Accounts()`, `api.AccessPublic`, `GET /api/v1/auth/sign-in-options` and the sign-in page entries. After this step, a compiled module can implement a redirect connector.
+1. **Implemented.** `user_identities` (migration 252) and `users.disabled_at`; enforcing disablement (sessions, sign-in, platform tokens, API keys); the administrator interfaces to disable, restore, list links, link and unlink (`/api/v1/users…`, see the [API reference](../reference/api.md#accounts账号与外部身份)); `auth.local_password`.
+2. **Implemented.** The browser binding and `GET /api/v1/auth/sign-in/start`; tickets (`sign_in_tickets` of migration 253, kept in the database so any cluster member can redeem them) and `GET /api/v1/auth/complete`, which redirects (302) to `/login?code=<code>` on a refusal; the check that keeps administrators out of connectors' reach; `DeclareIdentitySources`, `OfferSignIn` and `Accounts()` of `app.Host`; `api.AccessPublic`; `GET /api/v1/auth/sign-in-options` and the sign-in page entries; `auth.external.provision` (see [Extension points](../dev/extensions.md#身份连接器) and the [API reference](../reference/api.md#通过身份连接器登录)). A compiled module can now implement a redirect connector.
 3. The `write:accounts` permission for plugin packages, the `host.accounts` host interface and the manifest's `sign_in` declaration.
 4. The synchronous check interface for password connectors.
 
-<!-- translation-source-sha256: 13bbe40a7699473736ab1458265564f06fa0f8e4b5436252cc48fbd0aa2f6014 # ADR 0085: External Identity: Plugins Are Identity Connectors, the Core Creates Accounts and Issues Sessions -->
+<!-- translation-source-sha256: c6890feff7b100f8f0ad4a1f1451c4aafae99ba3eb06ddccfe3290923de07a68 # ADR 0085: External Identity: Plugins Are Identity Connectors, the Core Creates Accounts and Issues Sessions -->
 <!-- translation-source-sha256: a9b89a0d37a27045da734b29e4c42fbe8c18e709426c5670c535c0a3536cf009 ## Background -->
-<!-- translation-source-sha256: 411bb728db44ae720d5974565286b34fa81612a9814edfa4727a5638ecfc3e8a ## Decision -->
+<!-- translation-source-sha256: 5cad600f075d6254ce47781072021e186a6cf6680aba7539277d53499bea0f84 ## Decision -->
 <!-- translation-source-sha256: faf40b805c5bc1b22d8a18f0d7b80320fcc208a69eef6823e055d6e845901ffc ## Extension level -->
 <!-- translation-source-sha256: eaeee62586f9665447d7722bc0da9c3226e048659e0d3d461eaedb9575fdadbb ## Trade-offs -->
-<!-- translation-source-sha256: beb8b9c4519a933d70d7b44a64a368a6fededada856225311490e5a22634b33a ## Implementation status -->
+<!-- translation-source-sha256: e50a546687c29b6acfe798ed481ef8836604140db4ca8892a2d135a2059ab17c ## Implementation status -->
