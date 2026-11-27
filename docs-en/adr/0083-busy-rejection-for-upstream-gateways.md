@@ -36,7 +36,7 @@ The gateway in front also needs to know which priority classes the API key it us
 ## Consequences
 
 - The gateway in front can divert at once when there is no local room, and new requests come back as soon as there is, without polling.
-- To take part in busy rejection, a deployment's launch arguments must state the concurrent-sequence limit. The setup steps are in [Request Priority](../explanation/request-priority.md#connecting-an-upstream-gateway) and the interface in [OpenAI-Compatible Gateway](../reference/openai-gateway.md#busy-rejection).
+- To take part in busy rejection, a deployment's launch arguments must state the concurrent-sequence limit. The setup steps are in [Request Priority](../explanation/request-priority.md#上游网关接入) and the interface in [OpenAI-Compatible Gateway](../reference/openai-gateway.md#繁忙婉拒).
 - Replica choice is unchanged: priority is used only to judge whether there is room, not to choose a replica, and a request without the declaration takes the same path as before.
 - Changes to the rule (summing across servers, covering deployments whose run slots are unknown) do not change the interface, only the values of `models[].busy_reject` and when rejections happen.
 
