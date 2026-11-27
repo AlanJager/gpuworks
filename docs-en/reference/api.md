@@ -228,6 +228,7 @@ The only account is the administrator created at installation by default. Admini
 - While the whole server is limited (read-only or locked), disabling an account and removing a link still work: they only take access away. Enabling an account and adding a link give access and are refused as changes (`403 PLATFORM_READ_ONLY` / `PLATFORM_LOCKED`).
 - The last enabled local administrator (an administrator whose `local_admin` is true) cannot be disabled; that returns `403 LAST_LOCAL_ADMIN`. The platform keeps one account that can sign in while the identity source is unreachable, and this also keeps an administrator from locking themselves out. Disabling an ordinary administrator or a member is unrestricted.
 - Disabling takes effect at once in this process; other cluster members follow at the latest when the inference API key cache (5 minutes) and the platform token cache (1 minute) expire. Sessions are read from the database per request, so they end at once everywhere.
+- Disabling does not interrupt work already running: a [batch](#batches批处理任务) submitted with the account's key before it was disabled still sends its requests, while new requests and new batches are refused.
 - A link is looked up only by `(source, subject)`, never matched automatically by username or email; linking an existing account to an external identity is done explicitly by an administrator here.
 
 ## Nodes (Node Connection)
@@ -2502,7 +2503,7 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: 0c5e5b2fbfc149bc9864e31a84b6c0bcf78d7b74a8bfeb0e3924ff0b27a78a43 ### Change Password -->
 <!-- translation-source-sha256: 0567ae0b4b828c1e3b362f672b58365c8847feb841dd46ff763a72b9cd395ffe ### When Sessions Expire -->
 <!-- translation-source-sha256: 60f52e5578eaeb214401ce94f2639e999f5f048d60dfef2ae192cdc06720c4af ### Login Endpoint Errors and Origin Checks -->
-<!-- translation-source-sha256: 6b9aa18b888f35055c92c923eac127bfe89657cb64a5a86fcc36bebde0918dda ## Accounts (Accounts and External Identities) -->
+<!-- translation-source-sha256: 9d82cb1593ceb3f1d28993edc8749294c8ec9623b512c0cda75f4397b94a919a ## Accounts (Accounts and External Identities) -->
 <!-- translation-source-sha256: bac8251098baf9c5fbf9da0d5af2bb98ef14b3a55f5a9a4627a60d685522163f ## Nodes (Node Connection) -->
 <!-- translation-source-sha256: 1ae3a0719a72437f95ec918d60876a342fac4c10ec80a3e8626d12b9fb9bd5cf ### Bulk Agent Upgrades -->
 <!-- translation-source-sha256: 98c4940bec9d9b4daed0cf57ea7d5af70d4156588fdda2c82782b5fcf39f43ce ### Node List Filters and Response Fields -->
