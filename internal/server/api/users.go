@@ -16,7 +16,7 @@ import (
 
 func userDTO(u store.User) dto.User {
 	return dto.User{
-		ID: u.ID, Username: u.Username, Role: u.Role, LocalAdmin: u.LocalAdmin,
+		ID: u.ID, Username: u.Username, Role: u.Role, LocalAdmin: u.IsLocalAdmin(),
 		Disabled: u.DisabledAt != nil, DisabledAt: u.DisabledAt,
 		CreatedAt: u.CreatedAt, UpdatedAt: u.UpdatedAt,
 	}
@@ -33,7 +33,7 @@ func externalIdentityDTO(i store.UserIdentity) dto.ExternalIdentity {
 // manages accounts, and a console has to show what it has disabled.
 func (a *apiHandlers) listUsers(w http.ResponseWriter, r *http.Request) {
 	if a.d.Store == nil {
-		writeProductError(w, http.StatusServiceUnavailable, ErrorStoreUnavailable, "the account store is not available", nil)
+		writeProductError(w, http.StatusServiceUnavailable, ErrorAuthNotConfigured, "management auth is not configured", nil)
 		return
 	}
 	rows, err := a.d.Store.ListUsers()
@@ -155,7 +155,7 @@ func (a *apiHandlers) unlinkUserIdentity(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	identityID, ok := a.uintPathParam(w, r, "identityID")
+	identityID, ok := pathID(w, r, "identityID", ErrorExternalIdentityNotFound)
 	if !ok {
 		return
 	}
@@ -174,15 +174,17 @@ func (a *apiHandlers) unlinkUserIdentity(w http.ResponseWriter, r *http.Request)
 
 func (a *apiHandlers) userIDFromPath(w http.ResponseWriter, r *http.Request) (uint, bool) {
 	if a.d.Store == nil {
-		writeProductError(w, http.StatusServiceUnavailable, ErrorStoreUnavailable, "the account store is not available", nil)
+		writeProductError(w, http.StatusServiceUnavailable, ErrorAuthNotConfigured, "management auth is not configured", nil)
 		return 0, false
 	}
-	return a.uintPathParam(w, r, "id")
+	return pathID(w, r, "id", ErrorUserNotFound)
 }
 
-// uintPathParam parses a numeric path parameter; a value that is not a
-// positive integer names no resource, so it answers 404 like a missing one.
-func (a *apiHandlers) uintPathParam(w http.ResponseWriter, r *http.Request, name string) (uint, bool) {
+// pathID parses a numeric path parameter. A value that is not a positive
+// integer names no resource, so it answers 404 with notFound, the code a
+// missing resource of that kind gets, without parameters: an id parameter is
+// a number wherever it appears.
+func pathID(w http.ResponseWriter, r *http.Request, name, notFound string) (uint, bool) {
 	raw := chi.URLParam(r, name)
 	var n uint64
 	for i := 0; i < len(raw); i++ {
@@ -197,7 +199,7 @@ func (a *apiHandlers) uintPathParam(w http.ResponseWriter, r *http.Request, name
 		}
 	}
 	if n == 0 {
-		writeProductError(w, http.StatusNotFound, ErrorUserNotFound, "no resource has this id", map[string]any{"id": raw})
+		writeProductError(w, http.StatusNotFound, notFound, "no resource has this id", nil)
 		return 0, false
 	}
 	return uint(n), true

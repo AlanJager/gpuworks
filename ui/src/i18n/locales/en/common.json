@@ -1129,7 +1129,6 @@
     "PROVIDER_KIND_UNKNOWN": "Unknown external platform type.",
     "PROVIDER_AUTH_FAILED": "The platform rejected the credentials.",
     "PROVIDER_TEST_UNAVAILABLE": "The connection test could not be completed. Try again later.",
-    "STORE_UNAVAILABLE": "The account store is not available on this server.",
     "USER_NOT_FOUND": "No account has this id.",
     "USER_DISABLED": "This account is disabled. An administrator can enable it again.",
     "LOCAL_PASSWORD_DISABLED": "This server signs users in through an identity source. Only local administrators can sign in with a password.",

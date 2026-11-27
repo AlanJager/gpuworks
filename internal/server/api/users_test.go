@@ -193,10 +193,24 @@ func TestAccountRoutesAnswer404And405(t *testing.T) {
 		// same 404 for a missing account and a link of another one.
 		{http.MethodDelete, "/api/v1/users/999999/identities/1", ErrorExternalIdentityNotFound},
 		{http.MethodPost, "/api/v1/users/not-a-number/disable", ErrorUserNotFound},
+		// A link id that is not a number names no link of a real account.
+		{http.MethodDelete, "/api/v1/users/1/identities/not-a-number", ErrorExternalIdentityNotFound},
 	} {
 		rec := rig.do(rig.session, tc.method, tc.path, `{"source":"acme_oidc","subject":"u-1"}`)
 		if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), tc.code) {
 			t.Fatalf("%s %s = %d %s, want 404 %s", tc.method, tc.path, rec.Code, rec.Body, tc.code)
+		}
+		// An id parameter, where a 404 carries one, is always a number.
+		var body struct {
+			Params map[string]any `json:"params"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+		if id, ok := body.Params["id"]; ok {
+			if _, isNumber := id.(float64); !isNumber {
+				t.Fatalf("%s %s: params.id = %#v, want a number or no id", tc.method, tc.path, id)
+			}
 		}
 	}
 	for _, method := range []string{http.MethodPut, http.MethodPatch} {

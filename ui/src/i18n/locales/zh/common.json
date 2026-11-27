@@ -1129,7 +1129,6 @@
     "PROVIDER_KIND_UNKNOWN": "未知的外部平台类型。",
     "PROVIDER_AUTH_FAILED": "平台拒绝了这组凭据。",
     "PROVIDER_TEST_UNAVAILABLE": "连接测试未能完成，请稍后重试。",
-    "STORE_UNAVAILABLE": "此服务器上没有账号存储。",
     "USER_NOT_FOUND": "没有这个 id 的账号。",
     "USER_DISABLED": "该账号已停用。管理员可以重新启用它。",
     "LOCAL_PASSWORD_DISABLED": "此服务器通过身份源登录。只有本地管理员能用密码登录。",

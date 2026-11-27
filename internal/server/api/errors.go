@@ -45,7 +45,6 @@ const (
 	ErrorAuthenticationRequired                 = "AUTHENTICATION_REQUIRED"
 	ErrorManagementOriginRejected               = "MANAGEMENT_ORIGIN_REJECTED"
 	ErrorAdministratorRequired                  = "ADMINISTRATOR_REQUIRED"
-	ErrorStoreUnavailable                       = "STORE_UNAVAILABLE"
 	ErrorUserNotFound                           = "USER_NOT_FOUND"
 	ErrorUserDisabled                           = "USER_DISABLED"
 	ErrorLocalPasswordDisabled                  = "LOCAL_PASSWORD_DISABLED"
