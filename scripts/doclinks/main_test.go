@@ -88,3 +88,33 @@ func TestSlug(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckEnglishLinksFallBackToChineseOnlyPages(t *testing.T) {
+	root := t.TempDir()
+	write(t, root, "docs/dev/notes.md", "# 开发说明\n\n## 测试\n")
+	write(t, root, "docs/adr/0001-x.md", "# ADR 1\n")
+	write(t, root, "docs/zh-page.md", "# 中文页\n\n[from docs](dev/missing.md)\n")
+	write(t, root, "docs-en/zh-only-target.md", "# Linker\n\n"+
+		"[dev](dev/notes.md#测试) [adr](adr/0001-x.md) [bad anchor](dev/notes.md#testing) "+
+		"[neither](dev/absent.md) [outside](../dev/notes.md)\n")
+
+	got, err := check(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(got, "\n")
+	want := []string{
+		"docs-en/zh-only-target.md: missing anchor dev/notes.md#testing",
+		"docs-en/zh-only-target.md: broken link dev/absent.md",
+		"docs-en/zh-only-target.md: broken link ../dev/notes.md",
+		"docs/zh-page.md: broken link dev/missing.md",
+	}
+	for _, w := range want {
+		if !strings.Contains(joined, w) {
+			t.Errorf("missing problem %q in:\n%s", w, joined)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("got %d problems, want %d:\n%s", len(got), len(want), joined)
+	}
+}
