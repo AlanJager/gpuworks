@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"gpuworks.ai/gpuworks/internal/server/aihelper"
+	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/auth"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
 	"gpuworks.ai/gpuworks/internal/server/messages"
@@ -77,8 +78,8 @@ func TestDisablingAnAccountEndsItsAccessAndEnablingRestoresIt(t *testing.T) {
 	user, memberSession := disabledAccountUser(t, rig, "member")
 
 	var list struct {
-		Items []dtoUser `json:"items"`
-		Total int       `json:"total"`
+		Items []dto.User `json:"items"`
+		Total int        `json:"total"`
 	}
 	rec := rig.do(rig.session, http.MethodGet, "/api/v1/users", "")
 	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &list) != nil || list.Total != 2 {
@@ -220,14 +221,6 @@ func TestAccountRoutesAnswer404And405(t *testing.T) {
 	}
 }
 
-// dtoUser mirrors dto.User for decoding lists here without importing the DTO
-// package into the assertion path.
-type dtoUser struct {
-	ID       uint   `json:"id"`
-	Username string `json:"username"`
-	Disabled bool   `json:"disabled"`
-}
-
 // While the platform is locked, an administrator can still take access away:
 // disable an account and remove one of its external identities. Enabling an
 // account and adding a link give access, so they are refused like any change.
@@ -283,5 +276,110 @@ func TestTheAssistantNeverReadsAccountsOrIdentities(t *testing.T) {
 		if aihelper.DeniedRoutes()[pattern] == "" {
 			t.Fatalf("%s is denied without a reason", pattern)
 		}
+	}
+}
+
+// fixAccountTimes pins every account's and link's times, so wire JSON can be
+// compared byte for byte. It writes the columns straight, around the store's
+// own clock.
+func fixAccountTimes(t *testing.T, rig *tokenRig) {
+	t.Helper()
+	db := rig.st.DB()
+	if err := db.Exec(`UPDATE users SET created_at = ?, updated_at = ?`, "2026-11-01 08:00:00", "2026-11-02 09:00:00").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`UPDATE users SET disabled_at = ? WHERE disabled_at IS NOT NULL`, "2026-11-03 10:00:00").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`UPDATE user_identities SET created_at = ?`, "2026-11-04 11:00:00").Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
+// assertNoSecret fails when an account body carries the password hash under
+// any spelling.
+func assertNoSecret(t *testing.T, body string) {
+	t.Helper()
+	for _, key := range []string{"password_hash", "PasswordHash", "password", "argon2"} {
+		if strings.Contains(body, key) {
+			t.Fatalf("an account body carries %q: %s", key, body)
+		}
+	}
+}
+
+// The accounts' wire format, compared byte for byte: every DTO field, with
+// null for an account that is not disabled and a link not yet signed in
+// through, and never the password hash.
+func TestAccountsWireJSON(t *testing.T) {
+	rig := newTokenRig(t)
+	t.Cleanup(func() { _ = rig.st.Close() })
+	user, _ := disabledAccountUser(t, rig, "member")
+	fixAccountTimes(t, rig)
+
+	rec := rig.do(rig.session, http.MethodGet, "/api/v1/users", "")
+	want := `{"items":[` +
+		`{"id":1,"username":"admin","role":"admin","local_admin":true,"disabled":false,"disabled_at":null,"created_at":"2026-11-01T08:00:00Z","updated_at":"2026-11-02T09:00:00Z"},` +
+		`{"id":2,"username":"member","role":"user","local_admin":false,"disabled":false,"disabled_at":null,"created_at":"2026-11-01T08:00:00Z","updated_at":"2026-11-02T09:00:00Z"}` +
+		`],"total":2}`
+	if got := strings.TrimSpace(rec.Body.String()); rec.Code != http.StatusOK || got != want {
+		t.Fatalf("GET /users = %d\n got: %s\nwant: %s", rec.Code, got, want)
+	}
+	assertNoSecret(t, rec.Body.String())
+
+	// Disable answers the account as stored; its disabled_at is the store's
+	// clock, so it is pinned and read back through the list.
+	rec = rig.do(rig.session, http.MethodPost, fmt.Sprintf("/api/v1/users/%d/disable", user.ID), "")
+	var disabled map[string]any
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &disabled) != nil {
+		t.Fatalf("disable = %d %s", rec.Code, rec.Body)
+	}
+	if len(disabled) != 8 || disabled["disabled"] != true || disabled["disabled_at"] == nil || disabled["local_admin"] != false {
+		t.Fatalf("disable body = %s", rec.Body)
+	}
+	assertNoSecret(t, rec.Body.String())
+	fixAccountTimes(t, rig)
+	rec = rig.do(rig.session, http.MethodGet, "/api/v1/users", "")
+	wantDisabled := `{"id":2,"username":"member","role":"user","local_admin":false,"disabled":true,"disabled_at":"2026-11-03T10:00:00Z","created_at":"2026-11-01T08:00:00Z","updated_at":"2026-11-02T09:00:00Z"}`
+	if !strings.Contains(rec.Body.String(), wantDisabled) {
+		t.Fatalf("listed disabled account:\n got: %s\nwant item: %s", rec.Body, wantDisabled)
+	}
+
+	rec = rig.do(rig.session, http.MethodPost, fmt.Sprintf("/api/v1/users/%d/enable", user.ID), "")
+	fixAccountTimes(t, rig)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("enable = %d %s", rec.Code, rec.Body)
+	}
+	var enabled map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &enabled); err != nil || len(enabled) != 8 ||
+		enabled["disabled"] != false || enabled["disabled_at"] != nil {
+		t.Fatalf("enable body = %s", rec.Body)
+	}
+	assertNoSecret(t, rec.Body.String())
+
+	// Link answers 201 with the link; created_at is the store's clock, so
+	// the listing after pinning carries the literal form.
+	rec = rig.do(rig.session, http.MethodPost, fmt.Sprintf("/api/v1/users/%d/identities", user.ID), `{"source":"acme_oidc","subject":"u-1"}`)
+	var created map[string]any
+	if rec.Code != http.StatusCreated || json.Unmarshal(rec.Body.Bytes(), &created) != nil ||
+		len(created) != 5 || created["source"] != "acme_oidc" || created["subject"] != "u-1" || created["last_sign_in_at"] != nil {
+		t.Fatalf("link = %d %s", rec.Code, rec.Body)
+	}
+	fixAccountTimes(t, rig)
+	rec = rig.do(rig.session, http.MethodGet, fmt.Sprintf("/api/v1/users/%d/identities", user.ID), "")
+	wantLinks := fmt.Sprintf(`{"items":[{"id":%v,"source":"acme_oidc","subject":"u-1","created_at":"2026-11-04T11:00:00Z","last_sign_in_at":null}],"total":1}`, created["id"])
+	if got := strings.TrimSpace(rec.Body.String()); rec.Code != http.StatusOK || got != wantLinks {
+		t.Fatalf("GET identities = %d\n got: %s\nwant: %s", rec.Code, got, wantLinks)
+	}
+
+	// Round trip: what the list says decodes into the DTO and encodes back
+	// to the same bytes.
+	var round dto.List[dto.User]
+	rec = rig.do(rig.session, http.MethodGet, "/api/v1/users", "")
+	if err := json.Unmarshal(rec.Body.Bytes(), &round); err != nil {
+		t.Fatal(err)
+	}
+	again, err := json.Marshal(round)
+	if err != nil || string(again) != strings.TrimSpace(rec.Body.String()) {
+		t.Fatalf("round trip:\n got: %s\nwant: %s", again, rec.Body)
 	}
 }
