@@ -91,7 +91,7 @@ test("the UI and architecture gates enforce copy budgets", (t) => {
 // The --base glue reads each changed locale file at the base with git show,
 // lists the languages from the locale directories and keeps the source files
 // the change does not touch: drive it through a real repository.
-test("ui-check --base skips the walk only for locale changes that add texts no page renders", (t) => {
+test("ui-check --base skips the walk only for locale changes that add product error texts", (t) => {
   const root = mkdtempSync(join(tmpdir(), "gpuworks-locale-base-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const git = (...args: string[]) => {
@@ -130,7 +130,7 @@ test("ui-check --base skips the walk only for locale changes that add texts no p
   write("zh", { ...base, apiError: { OLD: "old", NEW: "新" } });
   let got = affected();
   assert.deepEqual(got.pages, []);
-  assert.match(got.log, /only adds texts no existing page renders: common:apiError\.NEW/);
+  assert.match(got.log, /only adds error texts, not walked \(ADR 0086\): common:apiError\.NEW/);
 
   // Every other change walks every page, with the reason in the log.
   for (const [en, zh, reason] of [

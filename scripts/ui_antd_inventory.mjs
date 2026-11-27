@@ -8,7 +8,7 @@
 //   node scripts/ui_antd_inventory.mjs --check [path]  fail when a file's antd usage grew against the snapshot
 //   node scripts/ui_antd_inventory.mjs --affected <file...>   menu pages to re-check, JSON array
 //   node scripts/ui_antd_inventory.mjs --base <ref>           same, for `git diff --name-only <ref>` + untracked;
-//                                                             locale JSON that only adds unrendered texts walks nothing
+//                                                             locale JSON that only adds error texts walks nothing (ADR 0086)
 //
 // Scope, counting rules and the attribution model: scripts/arch-constraints.md
 // (ui_antd_inventory).
@@ -439,8 +439,10 @@ function gitChanged(base) {
 
 // Locale JSON is not in the import graph, so affectedPages walks every page
 // for it. With a base to compare against, drop the locale files when the
-// change only adds texts no existing page can render (ui_locale_changes.mjs);
-// otherwise keep them, and every page is walked as before.
+// change only adds product error texts (ui_locale_changes.mjs). This narrows
+// coverage on purpose, ADR 0086: such a text can still render on an existing
+// page through the generic error rendering. Otherwise keep them, and every
+// page is walked as before.
 const localeFile = /^ui\/src\/i18n\/locales\/([^/]+)\/([^/]+)\.json$/;
 async function withoutInertLocaleChanges(base, changed, allFiles) {
   const locales = changed.filter((path) => localeFile.test(path));
@@ -468,7 +470,7 @@ async function withoutInertLocaleChanges(base, changed, allFiles) {
     console.error(`ui-check: locale change walks every page: ${impact.reason}`);
     return changed;
   }
-  console.error(`ui-check: locale change only adds texts no existing page renders: ${impact.added.join(", ")}`);
+  console.error(`ui-check: locale change only adds error texts, not walked (ADR 0086): ${impact.added.join(", ")}`);
   return changed.filter((path) => !localeFile.test(path));
 }
 

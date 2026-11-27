@@ -3,9 +3,10 @@ import { test } from "node:test";
 import { localeChangeImpact } from "../../scripts/ui_locale_changes.mjs";
 
 // The browser check walks every page for a locale change unless the change
-// only adds texts no existing page can render. Each case below is one way an
-// added or changed text does reach an existing page, so it must still walk
-// every page; the first case is the one that may skip.
+// only adds product error texts (ADR 0086, a deliberate narrowing). Each case
+// below is one way an added or changed text reaches an existing page by a
+// lookup the module can see, so it must still walk every page; the first case
+// is the one that may skip.
 
 const before = { apiError: { IMAGE_IN_USE: "In use", LOGIN_THROTTLED: "Slow down" }, actions: { save: "Save" } };
 const withCode = (code, text = "New") => ({ ...before, apiError: { ...before.apiError, [code]: text } });

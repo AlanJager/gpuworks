@@ -1,25 +1,25 @@
-// ui_locale_changes: whether a change to the console's locale JSON can alter
-// what an existing page renders. The browser check picks the pages to walk
-// from the import graph, and locale files are not in it, so a locale change
-// walks every page. That is only wasted when the change adds texts no page can
-// render yet; this module proves that case and nothing wider. Node built-ins
-// only.
+// ui_locale_changes: whether a change to the console's locale JSON is left
+// out of the pages the browser check walks. The check picks pages from the
+// import graph, and locale files are not in it, so a locale change walks
+// every page. This module lets one kind of change skip the walk: new texts
+// for product error codes. That narrows ui-check coverage on purpose
+// (ADR 0086): the console renders error codes generically
+// (t(`apiError.${code}`), productMessageText), so a new code that an existing
+// endpoint returns can show its text on an existing page, and that page is
+// not walked. Node built-ins only.
 //
-// A change is inert when, across every language of the namespace:
+// A change skips the walk when, across every language of the namespace:
 //   - it only adds keys (no value changed, no key or file removed);
 //   - each added key is added in every language, so no language starts
 //     showing text it used to take from the fallback language;
-//   - each added key sits under a prefix whose lookups a two-way check guards:
-//     i18n-check fails when a product API error code has no apiError text and
-//     when an apiError text has no code, so a new apiError.X belongs to a code
-//     no existing console code path receives. Other prefixes are not
-//     provable: 346 lookups take their key from a variable;
+//   - each added key is a product error text (common, apiError.); every other
+//     prefix walks, since 346 lookups take their key from a variable;
 //   - no added key is a plural or context variant (FOO_one, FOO_zero) of a key
 //     that already exists, or the base of existing variants (FOO beside
 //     FOO_one), which would change how an existing lookup resolves;
 //   - no source file outside the change names an added key literally, which
 //     would make that file's pages render the new text.
-// Anything else is "not inert", and the caller walks every page as before.
+// Anything else walks every page, as before.
 
 export const guardedPrefixes = [{ namespace: "common", prefix: "apiError." }];
 
@@ -93,5 +93,5 @@ export function localeChangeImpact({ languages, changes, sources }) {
       addedKeys.push(`${namespace}:${key}`);
     }
   }
-  return { inert: true, reason: "only adds texts no existing page can render", added: addedKeys.sort() };
+  return { inert: true, reason: "only adds product error texts (ADR 0086)", added: addedKeys.sort() };
 }
