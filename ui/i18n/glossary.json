@@ -1464,12 +1464,6 @@
       }
     },
     {
-      "term_en": "Disabled User",
-      "translations": {
-        "zh": "停用用户"
-      }
-    },
-    {
       "term_en": "Authority",
       "translations": {
         "zh": "权威"
