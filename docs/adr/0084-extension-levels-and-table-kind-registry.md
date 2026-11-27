@@ -47,7 +47,7 @@ ADR 0071 定下了「判断点在核心、插件推带类型的表」，ADR 0069
    - 编译成快照的函数，与执行这个快照的钩子；
    - 有时间线时的下一步时刻，掉线降级（授权类）的规则。
 
-   现有五种表（`availability`、`fleet_capacity`、`node_holds`、`banners`、`attestations`）先迁到注册表，线上格式、持久化与行为逐字节不变，以现有黄金文件与契约测试为准。之后每加一种表是加一份描述和它的执行钩子，`pushstate` 里描述文件以外的代码不再点名任何种类。新预算 `pushstate_kind_refs_outside_descriptors` 的计数口径是：`internal/server/pushstate` 中除种类描述文件与测试以外，对 `extapi.Kind*` 常量的引用数，基线为 0。它不只数 `switch`，也数 `sortedParts(extapi.KindNodeHolds, …)` 这类写法。
+   现有五种表（`availability`、`fleet_capacity`、`node_holds`、`banners`、`attestations`）先迁到注册表，线上格式、持久化与行为逐字节不变，以现有黄金文件与契约测试为准。之后每加一种表是加一份描述和它的执行钩子，`pushstate` 里描述文件以外的代码不再点名任何种类。将新增的预算 `pushstate_kind_refs_outside_descriptors`（随实施步骤 1 登记进 `scripts/arch-constraints.txt`）的计数口径是：`internal/server/pushstate` 中除种类描述文件与测试以外，对 `extapi.Kind*` 常量的引用数，基线为 0。它不只数 `switch`，也数 `sortedParts(extapi.KindNodeHolds, …)` 这类写法。
 
 6. **编译模块推同一种表，判定函数类的方法冻结。** `app.Host` 增加一个进程内的推送入口，编译模块按与插件包相同的表种类、同样的合并与校验推表，只是身份来自模块名，而不是 fd。之后新增的扩展概念只设计成表种类，不再为 T1 另加专用的 `Host` 方法。现有方法分两类处理：
    - **能表达成数据的**（声明功能、横幅的静态内容这类注册一次、答案就是一组值的）：改为推表的薄封装，行为不变，以各自的契约测试为准。

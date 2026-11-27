@@ -40,7 +40,7 @@ These identity sources all differ, and the variation is on the side of sites and
 
    `profile` has only three fields, `username`, `display_name` and `email`, decoded strictly; it cannot carry a role.
 
-   **Administrators are out of connectors' reach.** For a user whose `users.local_admin` is true or whose `users.role` is `admin`, `disable`, `enable`, `revoke_sessions`, and an `upsert` that would change the username are all refused with `IDENTITY_PROTECTED_USER`; disabling, restoring, renaming or signing out an administrator account can only be done by an administrator through core interfaces. `sign_in` is not affected: an administrator who explicitly linked an external identity can sign in with it. So a connector (including a compromised plugin package) cannot disable the local administrator or delete their sessions, and the floor of ADR 0071 decision 11 cannot be broken by a connector on purpose, not just hold while connectors are down. Contract tests prove that neither a compiled module nor a fake plugin process can disable, restore, rename or sign out a local administrator or a platform administrator.
+   **Administrators are out of connectors' reach.** For a user whose `users.local_admin` is true or whose `users.role` is `admin`, `disable`, `enable`, `revoke_sessions`, and an `upsert` that would change the username are all refused with `IDENTITY_PROTECTED_USER`; disabling, restoring, renaming or signing out an administrator account can only be done by an administrator through core interfaces. `sign_in` is not affected: an administrator who explicitly linked an external identity can sign in with it. So a connector (including a compromised plugin package) cannot disable the local administrator or delete their sessions, and the floor of ADR 0071 decision 11 cannot be broken by a connector on purpose, not just hold while connectors are down. At implementation, contract tests will prove that neither a compiled module nor a fake plugin process can disable, restore, rename or sign out a local administrator or a platform administrator.
 
 5. **The core decides whether to find or create a user.**
    - An existing `(source, subject)` link: that is the user; when `username` changed, it is updated or kept by site policy.
@@ -94,7 +94,7 @@ Not implemented. Order, each step with contract tests (compiled modules through 
 
 <!-- translation-source-sha256: 72e12cab399c88335db818a80b630c43bb6b15bce19dc08dc867d0a69deaa055 # ADR 0085: External Identity: Plugins Are Identity Connectors, the Core Creates Accounts and Issues Sessions -->
 <!-- translation-source-sha256: a9b89a0d37a27045da734b29e4c42fbe8c18e709426c5670c535c0a3536cf009 ## Background -->
-<!-- translation-source-sha256: 762be93d5fac43179f0812410245a31c41befe0e04d97dc96d92d83f8e2d2b9f ## Decision -->
+<!-- translation-source-sha256: 411bb728db44ae720d5974565286b34fa81612a9814edfa4727a5638ecfc3e8a ## Decision -->
 <!-- translation-source-sha256: faf40b805c5bc1b22d8a18f0d7b80320fcc208a69eef6823e055d6e845901ffc ## Extension level -->
 <!-- translation-source-sha256: eaeee62586f9665447d7722bc0da9c3226e048659e0d3d461eaedb9575fdadbb ## Trade-offs -->
 <!-- translation-source-sha256: f3c47854cc0cc8927b65098264429e1d7a1a9265ca5da8fe688e894b2f215818 ## Implementation status -->

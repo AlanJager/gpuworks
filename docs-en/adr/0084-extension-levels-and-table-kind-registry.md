@@ -47,7 +47,7 @@ Compiled modules (T1) and plugin packages (T2) also express the same thing in tw
    - the function that compiles the snapshot, and the hook that executes it;
    - the next step time when there is a timeline, and the degradation rule on disconnect (grant class).
 
-   The five existing kinds (`availability`, `fleet_capacity`, `node_holds`, `banners`, `attestations`) move to the registry first, with wire format, persistence and behaviour byte-for-byte unchanged, as the existing golden files and contract tests show. After that, a new kind is one descriptor and its executing hook, and no code in `pushstate` outside the descriptor files names a kind. The new budget `pushstate_kind_refs_outside_descriptors` counts references to `extapi.Kind*` constants in `internal/server/pushstate`, excluding the kind descriptor files and tests, with a baseline of 0. It counts more than `switch`: forms such as `sortedParts(extapi.KindNodeHolds, …)` count too.
+   The five existing kinds (`availability`, `fleet_capacity`, `node_holds`, `banners`, `attestations`) move to the registry first, with wire format, persistence and behaviour byte-for-byte unchanged, as the existing golden files and contract tests show. After that, a new kind is one descriptor and its executing hook, and no code in `pushstate` outside the descriptor files names a kind. The budget to be added, `pushstate_kind_refs_outside_descriptors` (registered in `scripts/arch-constraints.txt` with implementation step 1), counts references to `extapi.Kind*` constants in `internal/server/pushstate`, excluding the kind descriptor files and tests, with a baseline of 0. It counts more than `switch`: forms such as `sortedParts(extapi.KindNodeHolds, …)` count too.
 
 6. **Compiled modules push the same tables; decision-function methods are frozen.** `app.Host` gains an in-process push entry: a compiled module pushes the same table kinds as a plugin package, with the same merging and validation; only its identity comes from the module name instead of an fd. From then on, new extension concepts are designed only as table kinds, and no new dedicated `Host` method is added for T1. Existing methods fall into two groups:
    - **Those expressible as data** (registered once, answered by a set of values, such as declaring features or the static content of banners): they become thin wrappers that push tables, with unchanged behaviour, as their contract tests show.
@@ -78,7 +78,7 @@ Not implemented. Order:
 
 <!-- translation-source-sha256: ecf6e0f641304146454339b4cac02c402df051e3a3b2a1f3e33e6b9e2ced10d1 # ADR 0084: Extension Levels and Criteria; Pushed Table Kinds Described by a Registry, and Compiled Modules Push the Same Tables as Plugin Packages -->
 <!-- translation-source-sha256: 7ed5284792c5426a692a11983dc57b9f5565fce3ee0e7f26b95e030e1b75cfbe ## Background -->
-<!-- translation-source-sha256: 0c0ccbecb7e147281e059abe6589b1c76f40db3dce17657b6d74e74db4b22aa9 ## Decision -->
+<!-- translation-source-sha256: 15ea9c439ba805251621605eb4f64b9d943aa52ec64bbe314b5ce9e5795390d7 ## Decision -->
 <!-- translation-source-sha256: 281313ddafa375dc6ee90cce339fa01b05733cdb2acc19e165a6b3a9c99f0928 ## Extension level of this ADR -->
 <!-- translation-source-sha256: d656f3ce2a2d900dfd722247fbd08840e4066a0c1d85993a49e1fdc3dbde3d48 ## Trade-offs -->
 <!-- translation-source-sha256: fbf3dbb0eea7a2c85c058a9974a32b00384a174afd546453ee4ffe46914d7c38 ## Implementation status -->
