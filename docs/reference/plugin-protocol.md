@@ -683,6 +683,8 @@ server 的确认要么表示已应用（`applied_at` 与 `digest`），要么表
 
 `id` 由所有者自定，不重复；`audience` 为 `admin` 或 `all`；每一步要么 `hidden: true`（此时不带其他字段），要么带 `severity`（`info`、`warning`、`danger`）与 `notice`，可选 `link`。
 
+插件推送的横幅暂不支持确认键（控制台清单的 `banners[].ack_key`，见[扩展点](../dev/extensions.md#纯函数规则)），在控制台里都不能确认；需要时以 `table.banners@2` 加入。
+
 ### `table.attestations@1`
 
 server 存储并转交给同一发布者其他包的不透明声明，server 从不解释。
