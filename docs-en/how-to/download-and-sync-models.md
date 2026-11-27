@@ -41,7 +41,7 @@ When downloading individual files, failures are handled by type:
 - **Repeated stalls**: If no response headers or new data arrive for 5 consecutive minutes, the request is cut off and the download attempts to resume. If this happens twice consecutively at the same address and more candidates remain, the address enters cooldown and the download switches. At the final address, no further switch occurs, and the limit of 16 total attempts still applies.
 - **Resume after switching addresses**: If the revision is pinned to a commit, downloads can resume after switching addresses; branch-based revisions restart from the beginning when the address changes. If the source does not support Range, resumed downloads also restart from the beginning.
 
-Progress shows the current download site and includes the reason when switching addresses.
+Progress shows the current download site and includes the reason when switching addresses. While a download waits to retry the same address, progress shows, in place of the rate, which attempt comes next of how many, how many seconds until it, and the last failure (or that the source is rate limiting); it shows the rate again once new data arrives. Until all files are in place and verified, progress shows at most 99.9%.
 
 For the full rules, see [How Nodes Try Candidates in Order](configure-pull-settings.md#节点怎样依次尝试).
 
@@ -102,7 +102,7 @@ Failed peer sync operations can be retried, and ongoing sync operations can be c
 `DELETE /api/v1/models/{id}/nodes/{uuid}`; a model used by an active deployment returns 409.
 
 <!-- translation-source-sha256: be802f17d54419589d946b41d34d6f6efa28dbd46629ab0618951e517f53ab15 # Download, Cache, and Sync Models Between Nodes -->
-<!-- translation-source-sha256: 873a02a8dbdaf15ad936a84b78289f100a1512b0d7234502f5706e1349680e1d ## Register and Download a Model -->
+<!-- translation-source-sha256: c8c7637e1c75c6a817fadd91442b69e0593572329369f3ab0c59fbe6c64f6ba5 ## Register and Download a Model -->
 <!-- translation-source-sha256: 397b32440860c469f5888dcb6011a0b1c69b027939806a0c4b774ca8ade916ab ## Register an Existing Directory on a Node -->
 <!-- translation-source-sha256: 28b1888ec62c94266959f5c23d9e648b5668be41b23905e7a30f134f55ad20af ## How Deployments Obtain Models and Images -->
 <!-- translation-source-sha256: 660859b5dcc2384df47e115e52fb5c8d9dafd666fd7506738302da05c7603fe3 ## Peer Sync -->

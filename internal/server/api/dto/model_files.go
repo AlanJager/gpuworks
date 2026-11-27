@@ -57,6 +57,8 @@ type ModelNodePresence struct {
 	TransferErrorCode string  `json:"transfer_error_code,omitempty"`
 	SourceNodeUUID    string  `json:"source_node_uuid,omitempty"`
 	Message           string  `json:"message,omitempty"`
+	// Retry is set while the download waits to ask its address again.
+	Retry *ModelFetchRetry `json:"retry,omitempty"`
 	// StorageID and StorageName name the storage the files are in; Cache marks
 	// an nfs_cache storage's copy on this node.
 	StorageID   uint       `json:"storage_id,omitempty"`
@@ -94,6 +96,20 @@ type ModelStoragePresence struct {
 	Writable bool `json:"writable"`
 
 	TransferErrorCode string `json:"transfer_error_code,omitempty"`
+	// Retry is set while the download waits to ask its address again.
+	Retry *ModelFetchRetry `json:"retry,omitempty"`
+}
+
+// ModelFetchRetry is a download's next attempt at the address it is at
+// (proto.ModelFetchRetry): Attempt of Attempts, WaitSeconds after it was
+// reported; Throttled when the address asked for the wait, otherwise Cause
+// is the failure's own words, evidence the console shows verbatim.
+type ModelFetchRetry struct {
+	Attempt     int    `json:"attempt"`
+	Attempts    int    `json:"attempts"`
+	WaitSeconds int64  `json:"wait_seconds"`
+	Throttled   bool   `json:"throttled,omitempty"`
+	Cause       string `json:"cause,omitempty"`
 }
 
 // ModelPreparation is the API projection of a transient preparation view.

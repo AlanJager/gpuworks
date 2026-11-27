@@ -1,4 +1,4 @@
-import type { ModelStoragePresence } from "../storageTypes";
+import type { ModelFetchRetry, ModelStoragePresence } from "../storageTypes";
 import type { ProductMessage } from "../apiError";
 import type { InferenceAPIOperation } from "../inferenceApi";
 import type { ListPage } from "./http";
@@ -29,6 +29,8 @@ export interface ModelNodePresence {
   transfer_error_code?: string;
   source_node_uuid?: string;
   message?: string;
+  /** Set while the download waits to ask its address again (dto.ModelFetchRetry). */
+  retry?: ModelFetchRetry;
   /** The storage the files are in; cache marks an nfs_cache storage's copy on this node. */
   storage_id?: number;
   storage_name?: string;

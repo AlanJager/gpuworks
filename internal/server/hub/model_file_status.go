@@ -16,6 +16,7 @@ func (h *Hub) applyModelFileStatus(session *Session, status proto.ModelFileStatu
 		// Recorded before the store publishes the progress event, so a reader
 		// woken by that event sees this frame.
 		h.copies.Record(nodeID, status, h.now())
+		h.retries.Record(nodeID, status, h.now())
 		return h.store.UpdateModelFileStatus(nodeID, status)
 	})
 	return err
@@ -25,4 +26,10 @@ func (h *Hub) applyModelFileStatus(session *Session, status proto.ModelFileStatu
 // intends, if its node is connected and reported one recently.
 func (h *Hub) ModelCopyObservation(file *store.ModelFile) (proto.ModelFileStatus, bool) {
 	return h.copies.Observe(store.ModelFileKey(file.ID), file.State, file.TransferID, h.now())
+}
+
+// ModelFetchRetry is the retry the row's download is waiting on, if its node
+// reported one and has not moved past it.
+func (h *Hub) ModelFetchRetry(file *store.ModelFile) (proto.ModelFetchRetry, bool) {
+	return h.retries.Observe(store.ModelFileKey(file.ID), file.State, file.TransferID, h.now())
 }

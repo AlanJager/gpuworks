@@ -106,6 +106,10 @@ func (p *placementPreparation) place(depID uint, nodes ...uint) {
 	p.gen++
 }
 
+func (p *placementPreparation) ModelFetchRetry(*store.ModelFile) (proto.ModelFetchRetry, bool) {
+	return proto.ModelFetchRetry{}, false
+}
+
 func (p *placementPreparation) ModelCopyObservation(*store.ModelFile) (proto.ModelFileStatus, bool) {
 	return proto.ModelFileStatus{}, false
 }

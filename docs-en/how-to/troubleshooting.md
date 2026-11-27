@@ -941,7 +941,7 @@ When a model is `failed` or `download_required` on a node, the deployment wait r
 
 ### Long Downloads: Check Source Switching and Resume Progress
 
-Candidates consist of the alternative addresses in site rules and the site itself. The host in progress and failure messages identifies the source currently being tried and the reason for switching. See [How Nodes Try Sources in Sequence](configure-pull-settings.md#节点怎样依次尝试).
+Candidates consist of the alternative addresses in site rules and the site itself. The host in progress and failure messages identifies the source currently being tried and the reason for switching; while a download waits to retry the same address, progress shows the next attempt's number, the seconds until it, and the last failure, and it shows at most 99.9% until all files are in place. See [How Nodes Try Sources in Sequence](configure-pull-settings.md#节点怎样依次尝试).
 
 | Failure type | Automatic handling |
 |---|---|
@@ -1596,7 +1596,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 42fed8d49a7803ff38e5219e59e18fbd01e2d979874ce46b0f29cd76d6b78913 ## Model Downloads Stall, Fail, or Leave Incomplete Directories -->
 <!-- translation-source-sha256: 178536686b1efd8668c7e8d46049e9e86b9e70f96c29fb441228f7b2442ca5ff ### Check Completeness First -->
 <!-- translation-source-sha256: 013d23a93b7ad4aa7bca003a2fcbbfb97c6e17c6571ac8fa8df03ea0144fda27 ### Choose a Resolution Based on the Error -->
-<!-- translation-source-sha256: b97e97ab10808d30ba4bc280f167cd9bb320a6be2a37f6b73e16e14d34e70152 ### Long Downloads: Check Source Switching and Resume Progress -->
+<!-- translation-source-sha256: 8e25dca6995b4cfd169c59211ebf4e2d4a67301a84dea0eb1f5326d1881370a5 ### Long Downloads: Check Source Switching and Resume Progress -->
 <!-- translation-source-sha256: 15199cdc0f07486d121b220a634cb7cbd7198b8935c85f1396a0eca8440eb136 ### Retry After the Fix and Confirm the Result -->
 <!-- translation-source-sha256: e0dfe8a8bfbb8a0f359c56d406e3618b4b7ea94111dbc7526470cc3e9f9a6848 ## Image Pull Failures -->
 <!-- translation-source-sha256: 99d6b5bf92e4ecb66476e5edc57763af51fdd33cdc42dca43de41335436208ad ### Identify the Failed Source First -->

@@ -14,20 +14,26 @@ import (
 // through the real prepobs.Copies, so a test sees the same intent binding and
 // expiry the server applies.
 type testPreparation struct {
-	copies *prepobs.Copies
-	phases map[store.FileRef]string
-	nodes  map[uint][]uint
-	retry  func(context.Context, store.FileRef) error
+	copies  *prepobs.Copies
+	retries *prepobs.Retries
+	phases  map[store.FileRef]string
+	nodes   map[uint][]uint
+	retry   func(context.Context, store.FileRef) error
 	// generation counts place's changes of nodes.
 	generation uint64
 }
 
 func newTestPreparation() *testPreparation {
-	return &testPreparation{copies: prepobs.NewCopies(), phases: map[store.FileRef]string{}, nodes: map[uint][]uint{}}
+	return &testPreparation{copies: prepobs.NewCopies(), retries: prepobs.NewRetries(), phases: map[store.FileRef]string{}, nodes: map[uint][]uint{}}
 }
 
 func (p *testPreparation) record(node uint, status proto.ModelFileStatus) {
 	p.copies.Record(node, status, time.Now())
+	p.retries.Record(node, status, time.Now())
+}
+
+func (p *testPreparation) ModelFetchRetry(file *store.ModelFile) (proto.ModelFetchRetry, bool) {
+	return p.retries.Observe(store.ModelFileKey(file.ID), file.State, file.TransferID, time.Now())
 }
 
 func (p *testPreparation) ModelCopyObservation(file *store.ModelFile) (proto.ModelFileStatus, bool) {

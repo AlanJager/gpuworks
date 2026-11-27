@@ -20,6 +20,10 @@ func (p modelPreparation) ModelCopyObservation(file *store.ModelFile) (proto.Mod
 	return p.hub.ModelCopyObservation(file)
 }
 
+func (p modelPreparation) ModelFetchRetry(file *store.ModelFile) (proto.ModelFetchRetry, bool) {
+	return p.hub.ModelFetchRetry(file)
+}
+
 func (p modelPreparation) CachePhase(ref store.FileRef) string { return p.ctrl.CachePhase(ref) }
 func (p modelPreparation) PreparationNodes(dep *store.Deployment) []uint {
 	return p.ctrl.Placements().Nodes(dep)

@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next";
 import type { ModelNodePresence } from "../../api";
+import type { ModelFetchRetry } from "../../storageTypes";
 import { formatBytes } from "../../format";
 
 /** Tag colour and models-namespace label of a model file's state. */
@@ -29,23 +30,42 @@ export const acquisitionLabel: Record<string, string> = {
 /**
  * Where a transfer's bytes come from: the node a copy is made from, or the
  * host a download is made from. The agent says the host in its progress
- * message ("downloading from <host>"), so a mirror shows as the mirror. It
- * appends what it is doing about a source that failed: why it left the last
- * one ("(switched: <reason>)"), or when it tries the same one again ("(retrying
- * in <wait>, attempt <n> of <m> after: <reason>)", or "(rate limited by the
- * source; retrying in ...)").
+ * message ("downloading from <host>"), so a mirror shows as the mirror; after
+ * it leaves an address that failed, the message adds why
+ * ("downloading from <host> (switched: <reason>)").
  */
 export function transferOrigin(
   row: { acquisition?: string; message?: string; source_node_name?: string; source_node_uuid?: string },
-): { node: string } | { host: string; switched?: string; retrying?: string } | null {
+): { node: string } | { host: string; switched?: string } | null {
   if (row.acquisition === "peer" && (row.source_node_name || row.source_node_uuid))
     return { node: row.source_node_name || (row.source_node_uuid ?? "").slice(0, 8) };
-  const match = /^downloading from (\S+?)(?: \((.*)\))?$/.exec((row.message ?? "").trim());
+  const match = /^downloading from (\S+)(?: \(switched: (.*)\))?$/.exec((row.message ?? "").trim());
   if (!match) return null;
-  const [, host, note] = match;
-  if (!note) return { host };
-  if (note.startsWith("switched: ")) return { host, switched: note.slice("switched: ".length) };
-  return { host, retrying: note };
+  return match[2] ? { host: match[1], switched: match[2] } : { host: match[1] };
+}
+
+/**
+ * The percentage a transfer's bar shows: whole until the server says the
+ * files are there, then 100. The last bytes before that are a check (and,
+ * when they fail, retries), and 100% while they run reads as a hang
+ * (GWKS-526). One decimal, so a large model's last percent still moves.
+ */
+export function transferPercent(fraction: number, ready: boolean): number {
+  if (ready) return 100;
+  return Math.min(99.9, Math.max(0, Math.floor((fraction || 0) * 1000) / 10));
+}
+
+/**
+ * What a download waiting to try its address again says: which attempt comes
+ * next of how many and when, then the failure in its own words, or that the
+ * source asked for the wait.
+ */
+export function retryText(t: TFunction, retry: ModelFetchRetry): string {
+  const values = { attempt: retry.attempt, attempts: retry.attempts, seconds: retry.wait_seconds };
+  if (retry.throttled) return t("retry.throttled", { ns: "models", ...values });
+  return retry.cause
+    ? t("retry.afterFailure", { ns: "models", ...values, cause: retry.cause })
+    : t("retry.next", { ns: "models", ...values });
 }
 
 export function rateLabel(bytes: number): string {

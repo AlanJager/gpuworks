@@ -75,7 +75,7 @@ func (l presenceLookup) fill(d *dto.Model, modelID uint) {
 				StorageID: st.ID, StorageName: st.Name, StorageType: st.Type, Path: mf.Path, State: mf.State,
 				Acquisition: mf.Acquisition, Message: mf.Message, Revision: mf.Revision, SizeBytes: mf.SizeBytes, TransferErrorCode: mf.TransferErrorCode,
 				Downloaded: mf.Downloaded, Progress: deployment.TransferProgress(mf.Downloaded, mf.SizeBytes), RateBps: mf.RateBPS,
-				CachedNodes: cached[st.ID], ReadyNodes: count.Ready,
+				CachedNodes: cached[st.ID], ReadyNodes: count.Ready, Retry: l.FetchRetry(&mf),
 				Writable: store.StorageAcceptsWritesWith(st, count.Writable) == nil,
 			}
 			if writer := l.nodes[mf.WriterNodeID]; mf.WriterNodeID != 0 && writer != nil {
@@ -93,6 +93,7 @@ func (l presenceLookup) fill(d *dto.Model, modelID uint) {
 			Progress: deployment.TransferProgress(mf.Downloaded, mf.SizeBytes), SizeBytes: mf.SizeBytes, Downloaded: mf.Downloaded,
 			TransferredBytes: mf.TransferredBytes, RateBps: mf.RateBPS, RateLimitKiB: mf.RateLimit, LastRateLimitKiB: mf.LastRateLimit,
 			Acquisition: mf.Acquisition, TransferID: mf.TransferID, TransferErrorCode: mf.TransferErrorCode, Message: mf.Message, LastUsedAt: utcTimePtr(mf.LastUsedAt),
+			Retry: l.FetchRetry(&mf),
 		}
 		if st != nil {
 			presence.StorageID, presence.StorageName, presence.StorageType = st.ID, st.Name, st.Type

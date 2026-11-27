@@ -379,7 +379,7 @@ test("only a finished transfer shows Completed, including shared downloads and n
     assert.ok(file(name).getByText(models.files.completed));
     assert.equal(file(name).getByRole("progressbar").getAttribute("aria-valuenow"), "100");
   }
-  // The bytes are all there but the file is not: the last step is a check,
+  // The bytes are all there but the files are not: the last step is a check,
   // and 100% would read as a download that has stopped (GWKS-526).
   assert.ok(file("verifying").getByText("99.9%"));
   assert.equal(file("verifying").queryByText(models.files.completed), null);
@@ -463,22 +463,22 @@ test("a transfer names where its bytes come from: the mirror a download uses, th
   assert.ok(expandFile("node-02").getByText(models.acquisition.download), "nothing known beyond how it was acquired");
 });
 
-test("a download retrying near its end reads as retrying, not as done (GWKS-526)", () => {
+test("a download retrying near its end says which attempt comes next in place of its rate (GWKS-526)", async () => {
   stubMe("viewer");
-  const note = "retrying in 15s, attempt 9 of 16 after: read: connection reset by peer";
-  renderSection(modelWith({ storages: [shared({
-    acquisition: "download", state: "downloading", size_bytes: 14_606_988_015, downloaded: 14_598_320_397, progress: 0.9994, rate_bps: 0,
-    message: `downloading from modelscope.cn (${note})`,
-  })] }));
+  const retrying = { acquisition: "download", state: "downloading", size_bytes: 14_606_988_015, downloaded: 14_598_320_397, progress: 0.9994, rate_bps: 48 * 1024 ** 2, message: "downloading from modelscope.cn" };
+  renderSection(modelWith({ storages: [shared({ ...retrying, retry: { attempt: 9, attempts: 16, wait_seconds: 15, cause: "read: connection reset by peer" } })] }));
   const file = within(screen.getByText("archive", { exact: true }).closest("tr")!);
-  assert.ok(file.getByText("99.9%"), "never rounded up to 100% before the file is there");
-  assert.notEqual(file.getByRole("progressbar").getAttribute("aria-valuenow"), "100");
-  // Nothing moves while it retries: the note takes the rate's place.
-  const retrying = fill(models.files.retrying, { note });
-  assert.ok(file.getByText((_, element) => element?.children.length === 0 && (element.textContent ?? "").endsWith(` · ${retrying}`)));
-  // The source still names the host; the retry note stays behind it.
-  const source = `${models.acquisition.download} · ${fill(models.files.fromHost, { host: "modelscope.cn" })}`;
-  assert.ok(expandFile("archive").getByText((_, element) => element?.tagName === "DD" && element.textContent === source));
+  assert.ok(file.getByText("99.9%"), "never rounded up to 100% before the files are there");
+  const note = fill(models.retry.afterFailure, { seconds: 15, attempt: 9, attempts: 16, cause: "read: connection reset by peer" });
+  assert.ok(file.getByText((_, element) => element?.children.length === 0 && (element.textContent ?? "").endsWith(` · ${note}`)));
+  assert.equal(file.queryByText(/MiB\/s/), null, "the retry takes the rate's place");
+  cleanup();
+  renderSection(modelWith({ storages: [shared({ ...retrying, retry: { attempt: 2, attempts: 16, wait_seconds: 110, throttled: true } })] }));
+  assert.ok(screen.getByText((_, element) => element?.children.length === 0 && (element.textContent ?? "").endsWith(fill(models.retry.throttled, { seconds: 110, attempt: 2, attempts: 16 }))));
+  cleanup();
+  const zh = await createI18n(["models", "storage"], "zh");
+  render(<I18nextProvider i18n={zh.i18n}><ModelFilesSection model={modelWith({ storages: [shared({ ...retrying, retry: { attempt: 9, attempts: 16, wait_seconds: 15, cause: "read: connection reset by peer" } })] })} onChanged={() => {}} /></I18nextProvider>);
+  assert.ok(screen.getByText(/15 秒后重试（第 9\/16 次），上次失败：read: connection reset by peer$/), "localized, with the failure as evidence");
 });
 
 test("download cancellation names local and shared locations and refreshes after confirmation", async () => {

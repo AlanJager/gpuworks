@@ -54,7 +54,7 @@ func TestTheStatusSaysWhenTheSourceAskedTheDownloadToWait(t *testing.T) {
 	m.progress(proto.ModelFileStatus{Key: "k", State: proto.MFDownloading, BytesDone: 40 << 30, BytesTotal: 60 << 30, RateBytesPerS: 1 << 20, Revision: "abc"})
 	m.retrying(throttle(110*time.Second), 1, 16, 110*time.Second)
 
-	want := "downloading from huggingface.co (rate limited by the source; retrying in 1m50s, attempt 2 of 16)"
+	want := "downloading from huggingface.co (rate limited by the source; retrying in 1m50s)"
 	got := sent.last()
 	if got.Message != want {
 		t.Fatalf("message %q, want %q", got.Message, want)
@@ -74,61 +74,74 @@ func TestTheStatusSaysWhenTheSourceAskedTheDownloadToWait(t *testing.T) {
 	}
 }
 
-// Other retries (a reset, a server error) are not waits the source asked for,
-// but they are announced too: a download that keeps failing near its start
-// would otherwise look like one that has finished the bytes it reached
-// (GWKS-526).
-func TestOtherRetriesSayWhichAttemptComesNextAndWhy(t *testing.T) {
+// Other retries (a reset, a server error) are not waits the source asked
+// for, so the message does not say rate limited; the retry itself is still
+// reported, as a field: a download that keeps failing near its end must not
+// read as one that stopped (GWKS-526).
+func TestOtherRetriesAreReportedAsARetryNotAsRateLimited(t *testing.T) {
 	m, sent := newTestFetchMessage()
 	m.set(downloadingFrom("hf-mirror.com"))
 	m.at(14_598_320_397, 14_606_988_015, "abc")
 	m.retrying(fmt.Errorf("download tokenizer.json: %w", errors.New("read tcp 10.0.0.2:60286->39.99.133.195:443: read: connection reset by peer")), 3, 16, 8*time.Second)
 	got := sent.last()
-	want := "downloading from hf-mirror.com (retrying in 8s, attempt 4 of 16 after: read tcp 10.0.0.2:60286->39.99.133.195:443: read: connection reset by peer)"
-	if got.Message != want {
-		t.Fatalf("message %q, want %q", got.Message, want)
+	if got.Message != downloadingFrom("hf-mirror.com") {
+		t.Fatalf("message %q: a reset is not the source asking to wait", got.Message)
 	}
-	if strings.Contains(got.Message, "rate limited") {
-		t.Fatalf("a reset read as the source asking to wait: %q", got.Message)
+	want := proto.ModelFetchRetry{Attempt: 4, Attempts: 16, WaitSeconds: 8, Cause: "read tcp 10.0.0.2:60286->39.99.133.195:443: read: connection reset by peer"}
+	if got.Retry == nil || *got.Retry != want {
+		t.Fatalf("retry %+v, want %+v", got.Retry, want)
 	}
 	if got.BytesDone != 14_598_320_397 || got.BytesTotal != 14_606_988_015 || got.RateBytesPerS != 0 {
 		t.Fatalf("the retry was announced as %+v: the bytes reached must stay, with no rate", got)
 	}
 	m.retrying(&download.StatusError{Code: http.StatusInternalServerError, Detail: "500"}, 4, 16, 15*time.Second)
-	if got := sent.last().Message; !strings.Contains(got, "retrying in 15s, attempt 5 of 16 after: 500") {
-		t.Fatalf("a server error's retry read %q", got)
+	if r := sent.last().Retry; r == nil || r.Attempt != 5 || r.Throttled || r.Cause == "" {
+		t.Fatalf("a server error's retry is %+v", r)
 	}
 }
 
-// The note ends when the retried file moves: the bytes a retry is announced
-// at are not new ones.
-func TestNewBytesEndTheRetryNote(t *testing.T) {
+// A throttled answer is a retry too, marked as the source's wait and without
+// a cause: the message already says it is rate limited.
+func TestAThrottledRetryIsMarkedAsTheSourcesWait(t *testing.T) {
+	m, sent := newTestFetchMessage()
+	m.set(downloadingFrom("huggingface.co"))
+	m.retrying(throttle(110*time.Second), 1, 16, 110*time.Second)
+	want := proto.ModelFetchRetry{Attempt: 2, Attempts: 16, WaitSeconds: 110, Throttled: true}
+	if r := sent.last().Retry; r == nil || *r != want {
+		t.Fatalf("retry %+v, want %+v", r, want)
+	}
+}
+
+// The retry ends when the retried file moves: the bytes it was announced at
+// are not new ones. Moving to another address ends it too.
+func TestNewBytesOrASwitchEndTheRetry(t *testing.T) {
 	m, sent := newTestFetchMessage()
 	m.set(downloadingFrom("modelscope.cn"))
 	m.at(100, 200, "abc")
 	m.retrying(errors.New("connection reset by peer"), 1, 16, time.Second)
-	if !strings.Contains(sent.last().Message, "retrying in 1s, attempt 2 of 16") {
-		t.Fatalf("message %q", sent.last().Message)
-	}
 	m.progress(proto.ModelFileStatus{BytesDone: 100, BytesTotal: 200})
-	if !strings.Contains(sent.last().Message, "retrying in 1s, attempt 2 of 16") {
-		t.Fatalf("restating the bytes already there ended the note: %q", sent.last().Message)
+	if sent.last().Retry == nil {
+		t.Fatal("restating the bytes already there ended the retry")
 	}
 	m.progress(proto.ModelFileStatus{BytesDone: 120, BytesTotal: 200, RateBytesPerS: 4096})
-	if got := sent.last().Message; got != downloadingFrom("modelscope.cn") {
-		t.Fatalf("new bytes left %q", got)
+	if sent.last().Retry != nil {
+		t.Fatalf("new bytes left the retry %+v", sent.last().Retry)
+	}
+	m.retrying(errors.New("connection reset by peer"), 1, 6, time.Second)
+	m.set(downloadingFrom("hf-mirror.com") + " (switched: modelscope.cn failed 6 times)")
+	if sent.last().Retry != nil {
+		t.Fatal("the retry of the address before outlived the switch")
 	}
 }
 
-// A long failure is quoted up to a bound, cut on a character boundary: the
-// message a server stores for a model file is finite.
-func TestARetryNoteBoundsTheFailureItQuotes(t *testing.T) {
-	m, sent := newTestFetchMessage()
-	m.set(downloadingFrom("modelscope.cn"))
-	m.retrying(errors.New(strings.Repeat("失", 200)), 1, 16, time.Second)
-	got := sent.last().Message
-	if !utf8.ValidString(got) || len(got) > 300 {
-		t.Fatalf("message is %d bytes and valid=%v", len(got), utf8.ValidString(got))
+// The cause is the innermost failure, cut on a character boundary.
+func TestARetryCauseIsTheInnermostFailureBounded(t *testing.T) {
+	if got := retryCause(fmt.Errorf("download a: %w", fmt.Errorf("get b: %w", errors.New("read: connection reset by peer")))); got != "read: connection reset by peer" {
+		t.Fatalf("cause %q", got)
+	}
+	cause := retryCause(errors.New(strings.Repeat("失", 200)))
+	if !utf8.ValidString(cause) || len(cause) > retryCauseLimit+len("…") {
+		t.Fatalf("cause is %d bytes, valid=%v", len(cause), utf8.ValidString(cause))
 	}
 }
 
@@ -137,7 +150,7 @@ func TestAThrottledListingSaysRateLimited(t *testing.T) {
 	m, sent := newTestFetchMessage()
 	m.set(downloadingFrom("huggingface.co"))
 	m.retrying(&modelrepo.StatusError{Code: http.StatusTooManyRequests, RetryAfter: 30 * time.Second}, 2, 16, 30*time.Second)
-	if !strings.Contains(sent.last().Message, "rate limited by the source; retrying in 30s, attempt 3 of 16") {
+	if !strings.Contains(sent.last().Message, "rate limited by the source; retrying in 30s") {
 		t.Fatalf("message %q", sent.last().Message)
 	}
 }

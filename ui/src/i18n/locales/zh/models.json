@@ -155,6 +155,7 @@
   "unrecognized": "未识别",
   "presenceMessage": {
     "downloadCanceled": "下载已取消",
+
     "downloadStarted": "已开始公网下载",
     "syncStarted": "已开始计算节点同步",
     "syncCanceled": "已取消计算节点同步"
@@ -162,6 +163,7 @@
   "presenceAction": {
     "cancelDownload": "取消下载",
     "cancelDownloadConfirm": "取消本次下载？已下载的数据会保留，供重试时使用。",
+
     "cancelConfirm": "取消当前计算节点同步？",
     "cancelSync": "取消同步",
     "continueSync": "继续同步",
@@ -321,6 +323,7 @@
   },
   "presence": {
     "canceled": "已取消",
+
     "deleting": "删除待确认",
     "pending": "等待处理",
     "downloading": "公网下载",
@@ -372,9 +375,7 @@
     "deleteOnNodeConfirm": "删除 {{node}} 上的模型文件？",
     "deleteOnNodeDescription": "使用这些文件的部署需要先停止。",
     "deleteCacheDescription": "只清掉这台节点上的缓存，存储里的文件不动。",
-    "nodeDeleted": "模型文件已删除",
-    "retryingSource": "正在重试该地址：{{note}}",
-    "retrying": "重试中：{{note}}"
+    "nodeDeleted": "模型文件已删除"
   },
   "storageDelete": {
     "readOnly": "{{storage}} 是只读的：这里不会删除它上面的文件。",
@@ -409,5 +410,10 @@
     "wayServerPicks": "由 server 选传法：在挂载了该存储的节点上本机拷贝，或经由挂载了它的节点中转。",
     "started": "已开始复制",
     "failed": "复制失败：{{detail}}"
+  },
+  "retry": {
+    "next": "{{seconds}} 秒后重试（第 {{attempt}}/{{attempts}} 次）",
+    "afterFailure": "{{seconds}} 秒后重试（第 {{attempt}}/{{attempts}} 次），上次失败：{{cause}}",
+    "throttled": "来源限流，{{seconds}} 秒后重试（第 {{attempt}}/{{attempts}} 次）"
   }
 }
