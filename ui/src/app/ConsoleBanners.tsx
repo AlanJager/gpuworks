@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Notice } from "../ui-kit/Notice";
@@ -30,6 +31,19 @@ export default function ConsoleBanners() {
   const banners = useConsoleBanners().filter((banner) => !opensPage(banner.link, pathname) &&
     !(banner.ack_key && (!ack.ready || ack.acknowledged(banner.ack_key))));
   const { platform } = useConsolePlatform();
+  // Acknowledging removes the control that had focus; focus moves on to what
+  // follows it in reading order (the next banner's control, else the page),
+  // never back to the document body.
+  const focusNext = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!focusNext.current) return;
+    focusNext.current.focus();
+    focusNext.current = null;
+  });
+  const acknowledge = (ackKey: string, control: HTMLElement) => {
+    focusNext.current = neighbourOutside(control.closest<HTMLElement>("[data-slot=alert]") ?? control);
+    ack.acknowledge(ackKey);
+  };
   if (banners.length === 0 && !platformNoticeShown(platform, pathname)) return null;
   return (
     <section aria-label={t("consoleBanners.region")} className="mb-4 grid gap-2">
@@ -42,12 +56,23 @@ export default function ConsoleBanners() {
           title={productMessageText(t, banner.message)}
           action={banner.link || banner.ack_key ? <>
             {banner.link && <BannerLink to={banner.link} label={t("consoleBanners.details")} />}
-            {banner.ack_key && <Button variant="ghost" size="sm" onClick={() => ack.acknowledge(banner.ack_key!)}>{t("consoleBanners:acknowledge")}</Button>}
+            {banner.ack_key && <Button variant="ghost" size="sm" onClick={(event) => acknowledge(banner.ack_key!, event.currentTarget)}>{t("consoleBanners:acknowledge")}</Button>}
           </> : undefined}
         />
       ))}
     </section>
   );
+}
+
+const focusable = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+// neighbourOutside is the first focusable element after box in document
+// order that is not inside it, else the last one before it.
+function neighbourOutside(box: HTMLElement): HTMLElement | null {
+  const all = [...box.ownerDocument.querySelectorAll<HTMLElement>(focusable)].filter((el) => !box.contains(el));
+  const after = all.find((el) => box.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+  const before = all.filter((el) => box.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING);
+  return after ?? before[before.length - 1] ?? null;
 }
 
 // BannerLink opens a console path in place and any other address in a new tab.

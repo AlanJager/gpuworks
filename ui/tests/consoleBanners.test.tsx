@@ -341,3 +341,47 @@ test("with storage refusing reads and writes a banner still shows and an acknowl
     restore();
   }
 });
+
+test("after an acknowledgement focus moves to the next banner's control, or past the banners, never to the body", async () => {
+  stub(manifest([
+    { id: "soon", severity: "info", message: reminder, ack_key: "soon:30" },
+    { id: "other", severity: "warning", message: { code: "NO_SUCH_CODE", message: "Other matter" }, link: "/x/other" },
+  ]));
+  const user = userEvent.setup();
+  render(
+    <I18nextProvider i18n={i18n}>
+      <SessionUserContext.Provider value={{ id: 7, username: "ops", role: "admin" }}>
+        <MemoryRouter initialEntries={["/dashboard"]}>
+          <ConsoleBanners />
+          <button type="button">page control</button>
+        </MemoryRouter>
+      </SessionUserContext.Provider>
+    </I18nextProvider>,
+  );
+  const button = await screen.findByRole("button", { name: ack });
+  await user.tab();
+  assert.equal(document.activeElement, button);
+  await user.keyboard("{Enter}");
+  await waitFor(() => assert.equal(screen.queryByText("Renew soon"), null));
+  assert.equal(document.activeElement, screen.getByRole("link", { name: c.consoleBanners.details }), "the next banner's control");
+  cleanup();
+  window.localStorage.clear();
+  // The last banner gone, focus moves past the banners to the page.
+  stub(manifest([{ id: "soon", severity: "info", message: reminder, ack_key: "soon:30" }]));
+  resetConsoleManifestForTest();
+  render(
+    <I18nextProvider i18n={i18n}>
+      <SessionUserContext.Provider value={{ id: 7, username: "ops", role: "admin" }}>
+        <MemoryRouter initialEntries={["/dashboard"]}>
+          <ConsoleBanners />
+          <button type="button">page control</button>
+        </MemoryRouter>
+      </SessionUserContext.Provider>
+    </I18nextProvider>,
+  );
+  (await screen.findByRole("button", { name: ack })).focus();
+  await user.keyboard("{Enter}");
+  await waitFor(() => assert.equal(region(), null));
+  assert.equal(document.activeElement, screen.getByRole("button", { name: "page control" }));
+  assert.notEqual(document.activeElement, document.body);
+});
