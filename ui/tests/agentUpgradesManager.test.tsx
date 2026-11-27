@@ -327,6 +327,17 @@ test("finished result rows keep one line each: times as a range, the UUID behind
   assert.equal(within(skippedRow).queryByText("node is offline"), null, "a known skip reason is not repeated as server prose");
 });
 
+// chooseFilter picks a result filter the way a user does: Zeron's select holds
+// its popup open a moment to acknowledge the last choice, so it waits for the
+// popup to close before opening it again, and for the option to be offered.
+async function chooseFilter(user: ReturnType<typeof userEvent.setup>, drawer: HTMLElement, label: string) {
+  const select = within(drawer).getByRole("combobox", { name: k.filter });
+  await waitFor(() => assert.equal(select.getAttribute("aria-expanded"), "false", "the previous choice's popup closed"));
+  await user.click(select);
+  await user.click(await screen.findByRole("option", { name: label }));
+  await waitFor(() => assert.equal(select.getAttribute("aria-expanded"), "false"));
+}
+
 test("the record pages through the server ten rows at a time, filters by phase, and says it is loading while a new page is on its way", async () => {
   const state = backend([run({ state: "finished", counts: counts({ total: 12, processed: 12, succeeded: 11, failed: 1, queued: 0, active: 0 }) })]);
   state.items = Array.from({ length: 12 }, (_, i) => item({ node_uuid: `n${i}`, name: `record-${i}`, phase: i === 11 ? "failed" : "succeeded" }));
@@ -357,15 +368,13 @@ test("the record pages through the server ten rows at a time, filters by phase, 
   assert.equal(within(tbody).getAllByRole("row").length, 2);
 
   // A phase filter asks the server for that state and starts again at page 1.
-  await user.click(within(drawer).getByRole("combobox", { name: k.filter }));
-  await user.click(await screen.findByRole("option", { name: k.phase.failed }));
+  await chooseFilter(user, drawer, k.phase.failed);
   await waitFor(() => assert.deepEqual(asked.at(-1), { page: 1, pageSize: 10, phase: "failed" }));
   await within(drawer).findByText("record-11");
   assert.equal(within(drawer).queryByRole("button", { name: locale.common.resourceTable.nextPage }), null, "one page of results needs no pager");
 
   // Back to every result: the request drops the state again.
-  await user.click(within(drawer).getByRole("combobox", { name: k.filter }));
-  await user.click(await screen.findByRole("option", { name: k.allResults }));
+  await chooseFilter(user, drawer, k.allResults);
   await waitFor(() => assert.deepEqual(asked.at(-1), { page: 1, pageSize: 10, phase: "" }));
 
   // A poll of the same page does not cover the table.
