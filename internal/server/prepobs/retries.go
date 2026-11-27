@@ -14,6 +14,10 @@ const (
 	RetryGrace = 30 * time.Second
 	// RetryLimit bounds the retries observed at once.
 	RetryLimit = 8192
+	// RetryDropReportEvery bounds how often Record reports that the limit
+	// dropped retries, so a full map costs one log line a minute, not one per
+	// status frame.
+	RetryDropReportEvery = time.Minute
 )
 
 type retryEntry struct {
@@ -31,6 +35,10 @@ type Retries struct {
 	entries   map[string]retryEntry
 	byNode    map[uint]map[string]struct{}
 	lastSweep time.Time
+	// dropped counts the retries the limit kept out since start, and
+	// lastReport when Record last asked the caller to report them.
+	dropped    uint64
+	lastReport time.Time
 }
 
 func NewRetries() *Retries {
@@ -38,8 +46,11 @@ func NewRetries() *Retries {
 }
 
 // Record keeps a reporting node's retry, or ends the key's retry when the
-// frame carries none or is not a download in progress.
-func (r *Retries) Record(node uint, status proto.ModelFileStatus, now time.Time) {
+// frame carries none or is not a download in progress. A retry the full map
+// keeps out is counted; report is then the running count, nonzero at most once
+// per RetryDropReportEvery, for the caller to log (the download still shows,
+// without its retry).
+func (r *Retries) Record(node uint, status proto.ModelFileStatus, now time.Time) (report uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if old, ok := r.entries[status.Key]; ok {
@@ -47,7 +58,7 @@ func (r *Retries) Record(node uint, status proto.ModelFileStatus, now time.Time)
 		r.unindex(old.node, status.Key)
 	}
 	if status.Retry == nil || status.State != proto.MFDownloading {
-		return
+		return 0
 	}
 	if _, exists := r.entries[status.Key]; !exists && len(r.entries) >= RetryLimit {
 		// A full map sweeps expired entries at most once per RetryGrace, like
@@ -58,7 +69,12 @@ func (r *Retries) Record(node uint, status proto.ModelFileStatus, now time.Time)
 			r.sweepLocked(now)
 		}
 		if len(r.entries) >= RetryLimit {
-			return
+			r.dropped++
+			if r.lastReport.IsZero() || now.Sub(r.lastReport) >= RetryDropReportEvery {
+				r.lastReport = now
+				return r.dropped
+			}
+			return 0
 		}
 	}
 	wait := time.Duration(max(status.Retry.WaitSeconds, 0)) * time.Second
@@ -67,6 +83,14 @@ func (r *Retries) Record(node uint, status proto.ModelFileStatus, now time.Time)
 		r.byNode[node] = map[string]struct{}{}
 	}
 	r.byNode[node][status.Key] = struct{}{}
+	return 0
+}
+
+// Dropped is how many retries the limit kept out since start.
+func (r *Retries) Dropped() uint64 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.dropped
 }
 
 // Observe is the retry of the intent a row now holds: the row must still be

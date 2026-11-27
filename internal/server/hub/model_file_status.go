@@ -2,6 +2,7 @@ package hub
 
 import (
 	"gpuworks.ai/gpuworks/internal/proto"
+	"gpuworks.ai/gpuworks/internal/server/prepobs"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -16,7 +17,10 @@ func (h *Hub) applyModelFileStatus(session *Session, status proto.ModelFileStatu
 		// Recorded before the store publishes the progress event, so a reader
 		// woken by that event sees this frame.
 		h.copies.Record(nodeID, status, h.now())
-		h.retries.Record(nodeID, status, h.now())
+		if dropped := h.retries.Record(nodeID, status, h.now()); dropped > 0 {
+			h.log.Warn("model download retries over the observation limit are not shown; those downloads show progress without their retry",
+				"dropped_total", dropped, "limit", prepobs.RetryLimit)
+		}
 		return h.store.UpdateModelFileStatus(nodeID, status)
 	})
 	return err

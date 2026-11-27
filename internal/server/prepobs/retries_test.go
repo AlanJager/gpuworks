@@ -81,3 +81,33 @@ func TestRetriesAreBoundedAndReclaimExpiredOnes(t *testing.T) {
 		t.Fatalf("entries=%d", len(r.entries))
 	}
 }
+
+func TestRetriesCountWhatTheLimitKeepsOutAndReportItOncePerInterval(t *testing.T) {
+	r := NewRetries()
+	now := time.Unix(1000, 0)
+	for i := 0; i < RetryLimit; i++ {
+		if got := r.Record(1, retryFrame("k"+fmt.Sprint(i), "t", 1, 600), now); got != 0 {
+			t.Fatalf("an admitted retry reported %d drops", got)
+		}
+	}
+	if got := r.Record(1, retryFrame("over1", "t", 1, 600), now); got != 1 {
+		t.Fatalf("first drop reported %d, want 1", got)
+	}
+	if got := r.Record(1, retryFrame("over2", "t", 1, 600), now.Add(time.Second)); got != 0 {
+		t.Fatalf("a second drop within the interval reported %d, want 0", got)
+	}
+	if got := r.Dropped(); got != 2 {
+		t.Fatalf("Dropped=%d, want 2", got)
+	}
+	// The entries announced a 600s wait, so nothing expires within a minute:
+	// the next drop after the interval reports the running count.
+	if got := r.Record(1, retryFrame("over3", "t", 1, 600), now.Add(RetryDropReportEvery)); got != 3 {
+		t.Fatalf("drop after the interval reported %d, want 3", got)
+	}
+	// A frame that ends a retry is not a drop.
+	ended := retryFrame("k0", "t", 1, 600)
+	ended.Retry = nil
+	if got := r.Record(1, ended, now.Add(2*RetryDropReportEvery)); got != 0 || r.Dropped() != 3 {
+		t.Fatalf("ending a retry reported %d, Dropped=%d", got, r.Dropped())
+	}
+}
