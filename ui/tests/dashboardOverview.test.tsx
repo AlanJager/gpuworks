@@ -304,7 +304,7 @@ test("attention stays below the page header and keeps direct links when more iss
   ok(strip.querySelector('[role="status"][data-status="warning"]'));
   // The shared page header's root is .page-header (page-header-wrap went with the old header).
   ok(document.querySelector(".page-header")!.compareDocumentPosition(strip) & dom.window.Node.DOCUMENT_POSITION_FOLLOWING);
-  assert.deepEqual([...strip.querySelectorAll<HTMLAnchorElement>("a")].map((link) => link.getAttribute("href")), ["/nodes", "/gpus?gpu=gpu-1"]);
+  assert.deepEqual([...strip.querySelectorAll<HTMLAnchorElement>("a")].map((link) => link.getAttribute("href")), ["/nodes?state=offline", "/gpus?gpu=gpu-1"]);
   assert.equal(document.querySelectorAll(".dashboard-overview-issues").length, 0);
   fireEvent.click(screen.getByRole("button", { name: "1 more" }));
   fireEvent.click(await screen.findByRole("menuitem", { name: /service7/ }));
@@ -419,7 +419,7 @@ test("hundreds of issues across every category remain a seven-category strip wit
   await waitFor(() => ok(screen.getByRole("button", { name: "5 more categories" })));
   const strip = document.querySelector(".dashboard-overview-attention")!;
   ok(strip.textContent?.includes("Needs attention 7 categories"));
-  assert.deepEqual([...strip.querySelectorAll("a")].map((link) => [link.textContent, link.getAttribute("href")]), [["Offline nodes 400", "/nodes"], ["Unavailable GPUs 80", "/gpus"]]);
+  assert.deepEqual([...strip.querySelectorAll("a")].map((link) => [link.textContent, link.getAttribute("href")]), [["Offline nodes 400", "/nodes?state=offline"], ["Unavailable GPUs 80", "/gpus"]]);
   ok(!strip.textContent?.includes("offline-0") && !strip.textContent?.includes("690"));
   fireEvent.click(screen.getByRole("button", { name: "5 more categories" }));
   const labels = ["Inference service issues 60", "Model file issues 70", "Storage issues 40", "Public cloud issues 20", "Private cloud issues 20"];

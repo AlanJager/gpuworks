@@ -87,7 +87,7 @@ for (const language of ["en", "zh"] as const) {
     await screen.findByText("Pods");
 
     assert.ok(screen.getByRole("heading", { name: copy.title }));
-    assert.ok(screen.getByText(copy.count));
+    assert.equal(screen.queryAllByText(copy.count).length, 0, "the header does not repeat the table's count (GWKS-538)");
     // The page's two blocks, each a section under its own second-level heading.
     assert.deepEqual(screen.getAllByRole("heading", { level: 2 }).filter((heading) => heading.closest("section")).map((heading) => heading.textContent), [copy.quick, copy.connected]);
     assert.equal(document.querySelectorAll("section").length, 2);
@@ -116,7 +116,6 @@ test("a loading list does not claim to be empty; an empty one says so and points
 
   answer({ items: [], total: 0 });
   assert.ok(await screen.findByText(emptyText));
-  assert.ok(screen.getByText("External platforms: 0"));
   assert.equal((screen.getByRole("button", { name: "Sync All" }) as HTMLButtonElement).disabled, true);
   assert.equal(screen.queryAllByText(/Compute nodes: /).length, 0, "nothing to sum up");
 });
