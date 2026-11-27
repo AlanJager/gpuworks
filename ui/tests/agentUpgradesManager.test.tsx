@@ -318,9 +318,10 @@ test("finished result rows keep one line each: times as a range, the UUID behind
   // The declared scroll width is the columns' own sum: a wide drawer shows no
   // scroll bar and a narrow one scrolls instead of squeezing a column.
   const table = drawer.querySelector("table")!;
-  const widths = [...table.querySelectorAll("col")].map((col) => parseFloat(col.style.width));
+  const widths = [...table.querySelectorAll("thead th")].map((cell) => parseFloat((cell as HTMLElement).style.width));
   assert.equal(widths.reduce((sum, width) => sum + width, 0), 1190);
-  if (table.style.width) assert.equal(parseFloat(table.style.width), 1190);
+  assert.equal(parseFloat(table.style.width), 1190);
+  assert.ok(table.classList.contains("table-fixed"));
   const skippedRow = screen.getByText("not started node").closest("tr")!;
   assert.ok(within(skippedRow).getByText(k.reason.offline), "the record says why the node was skipped");
   assert.equal(within(skippedRow).queryByText("node is offline"), null, "a known skip reason is not repeated as server prose");

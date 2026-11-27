@@ -46,8 +46,8 @@ test("columns keep their widths from page to page", () => {
   const many = Array.from({ length: 12 }, (_, i) => ({ node_uuid: `n${i}`, name: `node-${i}`, from_version: i < 10 ? "v0.5.0" : "a-much-longer-build-identifier-0123456789", os: "linux", arch: "amd64", transport: "", eligibility: "offline" }));
   mount(preview({ nodes: many, node_uuids: many.map((n) => n.node_uuid), counts: { offline: 12 } }));
   const table = screen.getByRole("dialog").querySelector("table")!;
-  assert.equal(table.style.tableLayout, "fixed");
-  const widths = [...table.querySelectorAll("col")].map((col) => col.style.width);
+  assert.ok(table.classList.contains("table-fixed"));
+  const widths = [...table.querySelectorAll("thead th")].map((cell) => (cell as HTMLElement).style.width);
   assert.deepEqual(widths.slice(1), ["320px", "200px"]);
 });
 
@@ -96,7 +96,7 @@ test("a fleet blocked by another upgrade keeps the start button but disabled, wi
 
 test("loading and error states render without a preview", () => {
   const view = mount(null, () => {}, { loading: true });
-  assert.ok(screen.getByLabelText(k.loadingPreview));
+  assert.ok(within(screen.getByRole("status")).getByText(k.loadingPreview));
   view.unmount();
   mount(null, () => {}, { error: "artifact unreadable" });
   assert.ok(screen.getByText("artifact unreadable"));
