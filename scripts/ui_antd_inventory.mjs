@@ -347,8 +347,11 @@ function affectedPages(changed, attribution) {
     const owners = attribution.files[r];
     if (!owners) {
       // Not in the graph: a deleted file (its importers changed too), or a
-      // file type the graph does not follow (an asset): be conservative.
+      // file type the graph does not follow (an asset): be conservative. A
+      // deleted locale file has no importer that changes with it (the
+      // locales are loaded by directory), so it walks every page too.
       if (existsSync(join(repoRoot, r)) && !/\.(md|txt)$/.test(r)) return ["*"];
+      if (localeFile.test(r)) return ["*"];
       continue;
     }
     if (owners.includes("shared")) return ["*"];

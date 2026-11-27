@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -86,4 +86,80 @@ test("the UI and architecture gates enforce copy budgets", (t) => {
   const slack = run(JSON.stringify({ title: "短标题" }));
   assert.equal(slack.status, 0, slack.stderr);
   assert.match(slack.stderr, /WARNING: ui_copy_long_strings is below its budget \(0 < 1\)/);
+});
+
+// The --base glue reads each changed locale file at the base with git show,
+// lists the languages from the locale directories and keeps the source files
+// the change does not touch: drive it through a real repository.
+test("ui-check --base skips the walk only for locale changes that add texts no page renders", (t) => {
+  const root = mkdtempSync(join(tmpdir(), "gpuworks-locale-base-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const git = (...args: string[]) => {
+    const r = spawnSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", ...args], { cwd: root, encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    return r.stdout;
+  };
+  mkdirSync(join(root, "scripts"));
+  for (const file of ["ui_antd_inventory.mjs", "ui_locale_changes.mjs"]) {
+    copyFileSync(new URL("../../scripts/" + file, import.meta.url), join(root, "scripts", file));
+  }
+  const locales = join(root, "ui/src/i18n/locales");
+  const write = (language: string, value: object) => {
+    mkdirSync(join(locales, language), { recursive: true });
+    writeFileSync(join(locales, language, "common.json"), JSON.stringify(value));
+  };
+  const base = { title: "T", apiError: { OLD: "old" } };
+  write("en", base);
+  write("zh", base);
+  writeFileSync(join(root, "ui/src/main.tsx"), "");
+  writeFileSync(join(root, "ui/src/App.tsx"), "");
+  writeFileSync(join(root, "ui/src/navigation.tsx"), "");
+  writeFileSync(join(root, "ui/src/Page.tsx"), 'export const x = t("apiError.OLD");\n');
+  git("init", "-q");
+  git("add", "-A");
+  git("commit", "-q", "-m", "base");
+  const affected = () => {
+    const r = spawnSync("node", ["scripts/ui_antd_inventory.mjs", "--base", "HEAD"], { cwd: root, encoding: "utf8" });
+    assert.equal(r.status, 0, r.stderr);
+    return { pages: JSON.parse(r.stdout), log: r.stderr };
+  };
+  const reset = () => { write("en", base); write("zh", base); };
+
+  // A new apiError text in every language: nothing to walk, and the log names it.
+  write("en", { ...base, apiError: { OLD: "old", NEW: "new" } });
+  write("zh", { ...base, apiError: { OLD: "old", NEW: "新" } });
+  let got = affected();
+  assert.deepEqual(got.pages, []);
+  assert.match(got.log, /only adds texts no existing page renders: common:apiError\.NEW/);
+
+  // Every other change walks every page, with the reason in the log.
+  for (const [en, zh, reason] of [
+    [{ ...base, title: "changed" }, base, /common:title changes/],
+    [{ ...base, hint: "h" }, { ...base, hint: "h" }, /common:hint is not under a prefix/],
+    [{ ...base, apiError: { OLD: "old", NEW: "new" } }, base, /common:apiError\.NEW is not added in zh/],
+  ] as const) {
+    write("en", en);
+    write("zh", zh);
+    got = affected();
+    assert.deepEqual(got.pages, ["*"]);
+    assert.match(got.log, reason);
+    reset();
+  }
+
+  // A removed locale file reads as absent after the change.
+  unlinkSync(join(locales, "zh", "common.json"));
+  got = affected();
+  assert.deepEqual(got.pages, ["*"]);
+  assert.match(got.log, /zh\/common\.json is removed/);
+  reset();
+
+  // A source file the change does not touch that names the new key literally
+  // would render it.
+  writeFileSync(join(root, "ui/src/Page.tsx"), 'export const x = t("apiError.NEW");\n');
+  git("commit", "-q", "-am", "page names NEW");
+  write("en", { ...base, apiError: { OLD: "old", NEW: "new" } });
+  write("zh", { ...base, apiError: { OLD: "old", NEW: "新" } });
+  got = affected();
+  assert.deepEqual(got.pages, ["*"]);
+  assert.match(got.log, /ui\/src\/Page\.tsx already names common:apiError\.NEW/);
 });

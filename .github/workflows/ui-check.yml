@@ -12,6 +12,7 @@ on:
       - ui/**
       - scripts/ui_check_ci.sh
       - scripts/ui_antd_inventory.mjs
+      - scripts/ui_locale_changes.mjs
       - .github/workflows/ui-check.yml
   workflow_dispatch:
   schedule:
