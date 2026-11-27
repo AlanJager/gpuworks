@@ -4,7 +4,7 @@
   "breadcrumb": {
     "resources": "Resources"
   },
-  "fallbackNote": "Each kind of traffic (serving, storage sync, compute traffic) uses the network configured for it; only where none is configured does the management network carry it: serving through the agent tunnel, storage sync and compute traffic over the address the node reaches the server from. Turn this fallback off per node on the node's Networks tab.",
+  "fallbackNote": "Each kind of traffic first uses a dedicated network the nodes involved share: serving looks at the node's own serving network, storage sync at both ends, compute traffic at every node in the group. Where there is none to share, the management network carries it: serving through the agent tunnel, storage sync and compute traffic over the address the node reaches the server from. Turn this fallback off per node on the node's Networks tab.",
   "empty": "No networks yet",
   "role": {
     "storage_sync": "Storage sync",
@@ -459,7 +459,7 @@
       "storage_sync": "Storage sync (node to node)",
       "compute": "Compute traffic (multi-node inference)"
     },
-    "roleHint": "These switches only cover traffic this node has no dedicated network for, which the management network would carry. When off: serving — no new instances on this node; storage sync — download from the image or model source only; compute traffic — multi-node deployments are refused. Applies to new instances only.",
+    "roleHint": "The management network carries serving where this node has no serving network of its own, and storage sync or compute traffic where it shares no dedicated network with the other end or the rest of its group. These switches decide whether this node's management network may carry them. When off: serving — no new instances on this node; storage sync — download from the image or model source only; compute traffic — multi-node deployments are refused. Applies to new instances only.",
     "dedicated": "Carried by a dedicated network",
     "dedicatedShort": "Dedicated",
     "labels": "Labels",
