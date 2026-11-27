@@ -23,22 +23,24 @@
 
 3. **两种连接器形状。**
    - **跳转式**（OIDC、SAML、OAuth2 办公平台）：
-     1. 登录页列出入口（决策 6），用户点击后到连接器的 `public` 路由，连接器把浏览器带去身份源；
-     2. 身份源带回结果到连接器的 `public` 回调路由，连接器自己校验（state、nonce、签名、换取令牌）；
-     3. 连接器调用宿主的 `accounts.sign_in`（决策 4），交出 `{source, subject, profile}`；核心按链接找到或建立用户（决策 5），返回一个一次性的登录票据；
-     4. 连接器把浏览器重定向到核心的 `GET /api/v1/auth/complete?ticket=…`，由核心建立会话、设置 Cookie，再跳到控制台。
+     1. 登录页列出入口（决策 6），用户点击后先到核心的 `GET /api/v1/auth/sign-in/start?source=…`。核心生成一个随机的**浏览器绑定**：设置一个一次性的 `HttpOnly`、`Secure`、`SameSite=Lax`、10 分钟有效的 Cookie 存放它，再把浏览器重定向到连接器声明的 `start` 路由，查询参数里带一个由绑定派生、不能反推出绑定的句柄（以 master key 派生的密钥做 HMAC）；
+     2. 连接器把浏览器带去身份源，句柄随自己的 state 往返；身份源带回结果到连接器的 `public` 回调路由，连接器自己校验（state、nonce、签名、换取令牌）；
+     3. 连接器调用宿主的 `accounts.sign_in`（决策 4），交出 `{source, subject, profile, handle}`；核心按链接找到或建立用户（决策 5），返回一个绑定到这个句柄的一次性登录票据；
+     4. 连接器把浏览器重定向到核心的 `GET /api/v1/auth/complete?ticket=…`。核心核对票据与浏览器带来的绑定 Cookie 是否对应，一致才建立会话、设置会话 Cookie，再删掉绑定 Cookie、跳到控制台。
 
-     票据 60 秒内有效、只能用一次、只存哈希；绑定签发时的来源，并要求兑换请求来自同一管理入口（`managementOriginAllowed`）。连接器的路由因此不需要设置核心 Cookie（自己的 state Cookie 照常经 `Cookies`）。
+     票据 60 秒内有效、只能用一次、只存哈希，绑定签发时的来源与句柄。兑换**只认浏览器绑定**，不看 `Sec-Fetch-Site` 与 `Origin`：经身份源跳回的这次顶层 GET 本来就是跨站的，`managementOriginAllowed` 会拒绝它；而顶层 GET 不带 `Origin`，那个检查也绑定不了任何东西。绑定挡住登录 CSRF：攻击者用自己的身份换到的票据绑定在攻击者的浏览器上，诱导受害者打开兑换链接时，受害者的浏览器没有对应的 Cookie，兑换以 `IDENTITY_TICKET_INVALID` 拒绝。连接器的路由不需要设置核心 Cookie，自己的 state Cookie 照常经 `Cookies` 设置。
    - **密码式**（LDAP）：登录时核心查到用户名链接到某个密码式来源，就在登录请求里同步调用该连接器的校验接口（`POST /gwx/v1/accounts/verify`，超时 5 秒），只得到「通过、不通过、身份源不可达」三种结果。这正是 ADR 0071 决策 3 允许的那一处同步调用。没有链接的用户照常校验本地密码；身份源不可达时，本地用户与已有会话不受影响，不做离线校验缓存（ADR 0071 决策 19）。
 
 4. **宿主能力 `host.accounts`。** 插件包在清单里请求权限 `write:accounts`（风险 `high`），只有发布者证书授予了它的包才能用；编译模块经 `app.Host.Accounts()` 得到同一组操作。操作都以连接器自己的来源名为范围：
-   - `sign_in(source, subject, profile)` 返回票据，或带码拒绝；
+   - `sign_in(source, subject, profile, handle)` 返回绑定到 `handle` 的票据，或带码拒绝；
    - `upsert(source, subject, profile)`：目录同步，建立或更新用户；
    - `disable(source, subject)` / `enable(source, subject)`：停用、恢复；
    - `revoke_sessions(source, subject)`：身份源发来登出时，结束这个人的全部会话；
    - `list(source, cursor, limit)`：分页读本来源链接过的用户，用于全量同步时对账。
 
    `profile` 只有 `username`、`display_name`、`email` 三个字段，严格解码；不能带角色。
+
+   **管理员不受连接器管辖。** 对 `users.local_admin` 为真或 `users.role` 为 `admin` 的用户，`disable`、`enable`、`revoke_sessions`，以及会改变用户名的 `upsert`，一律以 `IDENTITY_PROTECTED_USER` 拒绝；管理员账号的停用、恢复、改名与踢下线只能由管理员在核心接口里操作。`sign_in` 不受这一条影响：管理员显式链接过外部身份后可以用它登录。这样，连接器（包括被攻破的插件包）不能停用本地管理员或删掉其会话，ADR 0071 决策 11 的兜底不会被连接器主动破坏，而不只是在连接器掉线时成立。契约测试证明：编译模块和假插件进程都不能停用、恢复、改名或踢下线本地管理员与平台管理员。
 
 5. **找到还是建立用户，规则由核心定。**
    - 已有 `(source, subject)` 链接：就是这个用户；`username` 变了时按站点策略更新或保留。
@@ -47,17 +49,18 @@
    - 新用户的 `username` 与已有用户冲突时拒绝（`IDENTITY_USERNAME_TAKEN{username}`），由连接器换一个（例如加来源前缀）后重试，核心不自动改名。
    - 外部身份永远不能让一个用户成为平台管理员或本地管理员：`profile` 不带角色，核心角色只能由管理员修改；额外的角色经 ADR 0081 的 `roles.bindings` 推送，同样不能产生 `admin`。
 
-6. **登录页入口由连接器声明，核心下发。** 插件包在清单的 `sign_in` 里声明 `{source, label, icon, start}`（`start` 必须是本包一条 `public` 的 `GET` 路由），编译模块经 `app.Host` 声明同样的内容。核心在不认证的 `GET /api/v1/auth/sign-in-options` 里返回当前可用的入口：连接器所在插件掉线或功能被锁定、隐藏时不列出；还返回本地密码登录是否可用（决策 8）。登录页只按这个列表渲染，不自己判断。
+6. **登录页入口由连接器声明，核心下发。** 插件包在清单的 `sign_in` 里声明 `{source, label, icon, start}`（`start` 必须是本包一条 `public` 的 `GET` 路由），编译模块经 `app.Host` 声明同样的内容。核心在不认证的 `GET /api/v1/auth/sign-in-options` 里返回当前可用的入口，入口的链接是核心的 `/api/v1/auth/sign-in/start?source=…`（决策 3），不是连接器的路由；连接器所在插件掉线或功能被锁定、隐藏时不列出。它还返回本地密码登录是否可用（决策 8）。登录页只按这个列表渲染，不自己判断。
 
 7. **停用立即生效，掉线不停用。**
    - 停用的用户：所有会话立即删除；登录、票据兑换、平台令牌与推理 API key 都以 `USER_DISABLED` 拒绝。数据与 key 保留，恢复后照常可用（ADR 0071 决策 13：不中断正在运行的负载，停用只影响新的请求）。
+   - 生效时限：会话按请求读库，删除后在所有 server 上立即失效。推理 API key 与平台令牌各有一个进程内缓存（`store/apikey_cache.go` 的 `apiKeyCacheTTL` 为 5 分钟，`store/platform_tokens.go` 的 `platformTokenCacheTTL` 为 1 分钟）：执行停用的那个 server 进程同时推进两个缓存的 generation、按用户 id 清掉缓存条目，所以在本进程立即失效；集群里的其他 server 进程最晚在各自缓存的 TTL 到期时失效。这个上限写进文档，不另造跨进程的失效通道。将来某个缓存的 TTL 变长时，必须同时给出跨进程失效。
    - 连接器掉线、卸载或崩溃时：它的入口从登录页消失，回调路由回 503；已建立的会话不受影响；已同步的用户不会因为掉线被停用，也不会因为过了多久没同步而被停用。停用只来自连接器明确的 `disable`，或管理员的操作。
 
 8. **本地登录与兜底。** 站点策略 `auth.local_password` 取 `all`（默认）或 `local_admin`。为 `local_admin` 时，只有 `users.local_admin` 为真的用户能用本地密码登录，其余人只能走外部身份；本地管理员的密码登录永远可用，与 ADR 0071 决策 11 一致，所以所有连接器都掉线时管理员仍能登录。
 
 9. **编译模块的 `public` 路由。** `api.RouteAccess` 增加 `AccessPublic`：不认证，按客户端地址限流（规则同插件路由的 `public`），不能是会话写入；路由仍须指明功能或标为社区路由。
 
-10. **码。** `IDENTITY_TICKET_INVALID`（票据不存在、过期、已使用或来源不符）、`IDENTITY_NOT_PROVISIONED`、`IDENTITY_USERNAME_TAKEN{username}`、`IDENTITY_SOURCE_CONFLICT{source}`（来源名已被别的包或模块拥有）、`IDENTITY_SOURCE_UNAVAILABLE{source}`（密码式校验时身份源不可达）、`USER_DISABLED`、`LOCAL_PASSWORD_DISABLED`。
+10. **码。** `IDENTITY_TICKET_INVALID`（票据不存在、过期、已使用、来源不符，或与浏览器绑定不对应）、`IDENTITY_PROTECTED_USER`（连接器试图停用、恢复、改名或踢下线管理员）、`IDENTITY_NOT_PROVISIONED`、`IDENTITY_USERNAME_TAKEN{username}`、`IDENTITY_SOURCE_CONFLICT{source}`（来源名已被别的包或模块拥有）、`IDENTITY_SOURCE_UNAVAILABLE{source}`（密码式校验时身份源不可达）、`USER_DISABLED`、`LOCAL_PASSWORD_DISABLED`。
 
 ## 扩展等级
 
@@ -74,7 +77,8 @@
 
 ## 取舍
 
-- **核心签发票据、自己设置 Cookie vs 让插件路由设置会话 Cookie**：后者省一次跳转，但会话 Cookie 的属性（`HttpOnly`、`SameSite`、`Secure`、有效期）与吊销会散到每个插件里，插件还会拿到能直接用的会话凭据。票据只能兑换一次、只有 60 秒，泄露的代价小。
+- **核心签发票据、自己设置 Cookie vs 让插件路由设置会话 Cookie**：后者省一次跳转，但会话 Cookie 的属性（`HttpOnly`、`SameSite`、`Secure`、有效期）与吊销会散到每个插件里，插件还会拿到能直接用的会话凭据。票据只能兑换一次、只有 60 秒、只能在发起登录的浏览器上兑换，泄露的代价小。
+- **浏览器绑定 vs 校验请求来源**：校验 `Sec-Fetch-Site`/`Origin` 不需要多一次跳转，但跳转式登录的回程本来就是跨站的顶层 GET，来源检查要么拒绝正常流程，要么什么也绑定不了。浏览器绑定多一次经核心的跳转，换来对登录 CSRF 的确定防护。
 - **按用户名自动链接 vs 只按 `(source, subject)`**：自动链接对迁移友好，但任何能控制身份源用户名的人都能接管同名本地账号。迁移改为管理员显式链接。
 - **掉线即停用 vs 只在明确停用时停用**：掉线即停用会让连接器成为整个站点的单点，一次身份源故障就把所有人锁在门外；离职停用的及时性由连接器的事件或定时同步负责。
 - **一个通用连接器协议 vs 核心内置 OIDC**：内置 OIDC 覆盖面广，但钉钉、飞书、企业微信都不是标准 OIDC，SAML 与 LDAP 也不是；核心只管账号与会话，各种协议都在连接器里，核心保持一种机制。
@@ -84,6 +88,6 @@
 未实施。顺序，每一步都带契约测试（编译模块走 `internal/testenv/extmodule`，插件包走假插件进程，ADR 0071 决策 21）：
 
 1. `user_identities` 与 `users.disabled_at` 的迁移；停用的执行（会话、登录、平台令牌、API key）与管理员的停用、恢复、链接接口；`auth.local_password`。
-2. 票据与 `GET /api/v1/auth/complete`，`app.Host.Accounts()`，`api.AccessPublic`，`GET /api/v1/auth/sign-in-options` 与登录页入口。到这一步，编译模块就能实现跳转式连接器。
+2. 浏览器绑定与 `GET /api/v1/auth/sign-in/start`、票据与 `GET /api/v1/auth/complete`，管理员不受连接器管辖的检查，`app.Host.Accounts()`，`api.AccessPublic`，`GET /api/v1/auth/sign-in-options` 与登录页入口。到这一步，编译模块就能实现跳转式连接器。
 3. 插件包的 `write:accounts` 权限、`host.accounts` 宿主接口与清单的 `sign_in` 声明。
 4. 密码式连接器的同步校验接口。

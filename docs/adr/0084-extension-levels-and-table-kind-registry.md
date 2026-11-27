@@ -47,15 +47,19 @@ ADR 0071 定下了「判断点在核心、插件推带类型的表」，ADR 0069
    - 编译成快照的函数，与执行这个快照的钩子；
    - 有时间线时的下一步时刻，掉线降级（授权类）的规则。
 
-   现有五种表（`availability`、`fleet_capacity`、`node_holds`、`banners`、`attestations`）先迁到注册表，线上格式、持久化与行为逐字节不变，以现有黄金文件与契约测试为准。之后每加一种表是加一份描述和它的执行钩子，`intake`、`rows`、`combine` 里不再出现种类名（新预算 `pushstate_kind_switches 0`）。
+   现有五种表（`availability`、`fleet_capacity`、`node_holds`、`banners`、`attestations`）先迁到注册表，线上格式、持久化与行为逐字节不变，以现有黄金文件与契约测试为准。之后每加一种表是加一份描述和它的执行钩子，`pushstate` 里描述文件以外的代码不再点名任何种类。新预算 `pushstate_kind_refs_outside_descriptors` 的计数口径是：`internal/server/pushstate` 中除种类描述文件与测试以外，对 `extapi.Kind*` 常量的引用数，基线为 0。它不只数 `switch`，也数 `sortedParts(extapi.KindNodeHolds, …)` 这类写法。
 
-6. **编译模块推同一种表。** `app.Host` 增加一个进程内的推送入口，编译模块按与插件包相同的表种类、同样的合并与校验推表，只是身份来自模块名，而不是 fd。之后新增的扩展概念只设计成表种类，不再为 T1 另加专用的 `Host` 方法；现有方法保留，按各自的契约测试逐个改为推表的薄封装，行为不变。一个概念从编译模块换成插件包时，表的内容不用改。
+6. **编译模块推同一种表，判定函数类的方法冻结。** `app.Host` 增加一个进程内的推送入口，编译模块按与插件包相同的表种类、同样的合并与校验推表，只是身份来自模块名，而不是 fd。之后新增的扩展概念只设计成表种类，不再为 T1 另加专用的 `Host` 方法。现有方法分两类处理：
+   - **能表达成数据的**（声明功能、横幅的静态内容这类注册一次、答案就是一组值的）：改为推表的薄封装，行为不变，以各自的契约测试为准。
+   - **判定函数类的**（`SchedulingHolder.Hold`、`CardSchedulingHolder.HoldCard`、`NodeEnrollmentGuard`、`featuregate.Source.Availability`、按查看者计算的 `BannerSource.Banners`）：它们是逐次调用的任意 Go 函数，不能无损地写成一张表，所以**不承诺改写**。这些方法冻结：保留现有行为和契约测试，不再新增同类方法，文档标明新概念走表；某个判定函数的用途已能由表表达时，再单独决定弃用。这与 ADR 0081 取舍一节拒绝 T1 判定函数的理由一致。
+
+   一个概念从编译模块换成插件包时，表的内容不用改。
 
 7. **本 ADR 不开放任何新东西。** 它只给出说法、准则与注册表；资源范围、核心路由的动作授权、计数上限、外部身份、KV 卸载后端描述等表种类各由自己的 ADR 按准则 3 决定。
 
 ## 扩展等级（本 ADR 自身）
 
-不适用：本 ADR 是机制，不新增可扩展的东西。注册表本身是 L1，接缝由 `pushstate_kind_switches` 预算守住。
+不适用：本 ADR 是机制，不新增可扩展的东西。注册表本身是 L1，接缝由 `pushstate_kind_refs_outside_descriptors` 预算守住。
 
 ## 取舍
 
@@ -67,7 +71,7 @@ ADR 0071 定下了「判断点在核心、插件推带类型的表」，ADR 0069
 
 未实施。顺序：
 
-1. 注册表与五种现有表的迁移，加 `pushstate_kind_switches` 预算；只重构，黄金文件不变。
+1. 注册表与五种现有表的迁移，加 `pushstate_kind_refs_outside_descriptors` 预算；只重构，黄金文件不变。
 2. `app.Host` 的进程内推送入口与契约测试（`internal/testenv/extmodule`）。
-3. 现有专用方法逐个改为薄封装，各自一个提交。
+3. 能表达成数据的现有方法逐个改为薄封装，各自一个提交；判定函数类的方法在文档中标为冻结。
 4. `CLAUDE.md` 的「文档与计划」加一条：新增可扩展能力的 ADR 必须有「扩展等级」一节。
