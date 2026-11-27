@@ -50,7 +50,7 @@ func (r PreparationReads) FetchRetry(file *store.ModelFile) *dto.ModelFetchRetry
 	if !ok {
 		return nil
 	}
-	return &dto.ModelFetchRetry{Attempt: retry.Attempt, Attempts: retry.Attempts, WaitSeconds: retry.WaitSeconds, Throttled: retry.Throttled, Cause: retry.Cause}
+	return &dto.ModelFetchRetry{Attempt: retry.Attempt, Attempts: retry.Attempts, WaitSeconds: retry.WaitSeconds, Throttled: retry.Throttled, Cause: retry.Cause, File: retry.File, Listing: retry.Listing}
 }
 
 func (r PreparationReads) CachePhase(ref store.FileRef) string {

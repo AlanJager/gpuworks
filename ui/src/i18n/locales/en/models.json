@@ -414,7 +414,9 @@
   "retry": {
     "next": "retrying in {{seconds}}s (attempt {{attempt}} of {{attempts}})",
     "afterFailure": "retrying in {{seconds}}s (attempt {{attempt}} of {{attempts}}) after: {{cause}}",
-    "throttled": "rate limited by the source; retrying in {{seconds}}s (attempt {{attempt}} of {{attempts}})"
+    "throttled": "rate limited by the source; retrying in {{seconds}}s (attempt {{attempt}} of {{attempts}})",
+    "onFile": "{{file}}: {{note}}",
+    "fileList": "file list"
   },
   "inUse": {
     "title": "“{{name}}” is used by deployments",

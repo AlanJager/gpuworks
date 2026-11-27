@@ -297,7 +297,7 @@ func (n *NodeRuntime) downloadRepo(ctx context.Context, mf proto.ModelFileTask, 
 		OnRetry: func(file string, attempt, attempts int, delay time.Duration, err error) {
 			n.log.Warn("model file download interrupted; retrying",
 				"file", file, "attempt", attempt, "attempts", attempts, "retry_in", delay.String(), "err", err)
-			from.retrying(err, attempt, attempts, delay)
+			from.retrying(file, err, attempt, attempts, delay)
 		},
 	})
 	if err != nil {

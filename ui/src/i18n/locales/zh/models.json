@@ -414,7 +414,9 @@
   "retry": {
     "next": "{{seconds}} 秒后重试（第 {{attempt}}/{{attempts}} 次）",
     "afterFailure": "{{seconds}} 秒后重试（第 {{attempt}}/{{attempts}} 次），上次失败：{{cause}}",
-    "throttled": "来源限流，{{seconds}} 秒后重试（第 {{attempt}}/{{attempts}} 次）"
+    "throttled": "来源限流，{{seconds}} 秒后重试（第 {{attempt}}/{{attempts}} 次）",
+    "onFile": "{{file}}：{{note}}",
+    "fileList": "文件列表"
   },
   "inUse": {
     "title": "“{{name}}”正被部署使用",
