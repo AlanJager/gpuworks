@@ -108,7 +108,7 @@ The response header `X-GPUWorks-Priority-Scheduling` says whether the engine sch
 
 | Field | Meaning |
 |---|---|
-| `features` | Gateway capabilities this server has; a listed one is never removed. `priority_scheduling_header`: answers carry `X-GPUWorks-Priority-Scheduling`; `busy_reject`: `X-GPUWorks-If-Busy` is honoured, see [Busy Rejection](#busy-rejection) |
+| `features` | Gateway capabilities this server has; a listed one is never removed. `priority_scheduling_header`: answers carry `X-GPUWorks-Priority-Scheduling`; `busy_reject`: `X-GPUWorks-If-Busy` is honoured, see [Busy Rejection](#繁忙婉拒) |
 | `priority` | The key's priority binding; `null` for anonymous access without a key |
 | `priority.own` | The class a request runs at without `X-GPUWorks-Priority-Class` |
 | `priority.reachable` | Every class the header can run at (`own` included), highest value first |
@@ -139,7 +139,7 @@ These are never refused, and are forwarded or handled by the existing rules:
 - the resend to another replica after a connection failure, and the replay after preemption;
 - auxiliary routes such as `/v1/tokenize`, and playground requests (the declaration is dropped).
 
-A refusal counts toward the deployment's gateway requests in the 429 class, leaves no request record and does not update the deployment's last request time. The steps that make a deployment take part are in [Connecting an Upstream Gateway](../explanation/request-priority.md#connecting-an-upstream-gateway), and the design trade-offs in [ADR 0083](../adr/0083-busy-rejection-for-upstream-gateways.md). With several servers each counts only the in-flight requests it forwarded, so a request may go unrefused when it should have been refused, but is never refused wrongly. [Key Information](#key-information) lists `busy_reject` in `features` when the server honours the declaration, and `models[].busy_reject` says which models refuse.
+A refusal counts toward the deployment's gateway requests in the 429 class, leaves no request record and does not update the deployment's last request time. The steps that make a deployment take part are in [Connecting an Upstream Gateway](../explanation/request-priority.md#上游网关接入), and the design trade-offs in [ADR 0083](../adr/0083-busy-rejection-for-upstream-gateways.md). With several servers each counts only the in-flight requests it forwarded, so a request may go unrefused when it should have been refused, but is never refused wrongly. [Key Information](#令牌信息) lists `busy_reject` in `features` when the server honours the declaration, and `models[].busy_reject` says which models refuse.
 
 ## Trace Context
 
@@ -276,7 +276,7 @@ Every `/v1` response, including a request refused before forwarding, carries `X-
 | `ROUTE_NOT_FOUND` | 404 | `not_found_error` | — | This listening address does not serve `/v1` (only the console or agent function) |
 | `INSTANCE_NOT_FOUND` | 404 | `not_found_error` | — | The pinned instance does not exist |
 | `INSTANCE_MODEL_MISMATCH` | 404 | `not_found_error` | `model` | The pinned instance does not serve the model |
-| `MODEL_BUSY` | 429 | `invalid_request_error` | — | The request carried `X-GPUWorks-If-Busy: reject` and model `params.model` cannot take it now; carries `Retry-After: 1`. Send it elsewhere or again later, see [Busy Rejection](#busy-rejection) |
+| `MODEL_BUSY` | 429 | `invalid_request_error` | — | The request carried `X-GPUWorks-If-Busy: reject` and model `params.model` cannot take it now; carries `Retry-After: 1`. Send it elsewhere or again later, see [Busy Rejection](#繁忙婉拒) |
 | `MODEL_ASLEEP` | 503 | `server_error` | — | The deployment sleeps; wake deployment `params.deployment_id`, or wait for its schedule or a waiting wake; may carry `Retry-After` |
 | `INSTANCE_ASLEEP` | 503 | `server_error` | — | The pinned instance's deployment sleeps |
 | `INSTANCE_NOT_RUNNING` | 503 | `server_error` | — | The pinned instance is not running |
