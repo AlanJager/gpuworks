@@ -117,6 +117,12 @@ func (s *Store) DeleteModel(id uint, withIdleDeployments bool) ([]ModelReference
 			gone, deleted = make(map[uint]deletedDeployment, len(refs)), refs
 			for _, ref := range refs {
 				if gone[ref.ID], err = deleteDeploymentTx(tx, ref.ID); err != nil {
+					if errors.Is(err, ErrNotFound) {
+						// Somebody deleted it since it was listed: the model
+						// is still there, so this is a changed state, not a
+						// missing model.
+						return ErrStateChanged
+					}
 					return err
 				}
 			}

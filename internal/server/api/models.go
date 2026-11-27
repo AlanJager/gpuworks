@@ -166,7 +166,7 @@ func (a *apiHandlers) deleteModel(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, store.ErrNotFound):
 			writeErr(w, http.StatusNotFound, err)
-		case errors.Is(err, store.ErrCacheDeletionPending):
+		case errors.Is(err, store.ErrCacheDeletionPending), errors.Is(err, store.ErrStateChanged):
 			writeErr(w, http.StatusConflict, err)
 		case errors.As(err, &refused):
 			writeProductError(w, http.StatusConflict, ErrorModelInUse, "The model is referenced by a deployment. Delete the related deployments first.", modelInUseParams(refused))

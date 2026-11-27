@@ -38,6 +38,27 @@ func TestDeletingAModelListsTheDeploymentsThatKeepIt(t *testing.T) {
 	if got := rig.do("", http.MethodDelete, path+"?delete_stopped_deployments=true", ""); got.Code != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated = %d", got.Code)
 	}
+	// A deployment still running something keeps the model, and nothing goes.
+	live, err := rig.st.CreateDeployment(&store.Deployment{Name: "live", ServedName: "live", ModelID: model.ID, State: store.DeployActive})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rig.st.DB().Create(&store.Instance{UUID: "live-1", DeploymentID: live.ID, State: "running"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	refusal := fmt.Sprintf(`{"code":"MODEL_IN_USE","error":"The model is referenced by a deployment. Delete the related deployments first.","params":{"count":2,"deletable_with_deployments":false,"deployments":[{"id":%d,"instances":0,"name":"shell","state":"stopped"},{"id":%d,"instances":1,"name":"live","state":"active"}]}}`, dep.ID, live.ID)
+	if got := rig.do(rig.session, http.MethodDelete, path+"?delete_stopped_deployments=true", ""); got.Code != http.StatusConflict || strings.TrimSpace(got.Body.String()) != refusal {
+		t.Fatalf("with a live deployment = %d %s\nwant %s", got.Code, got.Body, refusal)
+	}
+	if _, err := rig.st.GetDeployment(dep.ID); err != nil {
+		t.Fatalf("a refused deletion removed the stopped deployment: %v", err)
+	}
+	if err := rig.st.DB().Where("uuid = ?", "live-1").Delete(&store.Instance{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := rig.st.DB().Delete(&store.Deployment{}, live.ID).Error; err != nil {
+		t.Fatal(err)
+	}
 	if got := rig.do(rig.session, http.MethodDelete, path+"?delete_stopped_deployments=true", ""); got.Code != http.StatusNoContent {
 		t.Fatalf("delete with deployments = %d %s", got.Code, got.Body)
 	}
