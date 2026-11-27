@@ -82,14 +82,20 @@ const (
 )
 
 // recordWaitingOnNode records that a placed replica cannot start because of
-// what node (nil when none was chosen) is doing, under the same throttle as
-// every other refusal: the record is what the deployment's status shows and
-// what makes a long wait read as a stall, and recording it also schedules the
-// re-check that a silent pass never did.
-func (c *Controller) recordWaitingOnNode(dep *store.Deployment, stage string, node *store.Node) {
+// what its node is doing, under the same throttle as every other refusal: the
+// record is what the deployment's status shows and what makes a long wait read
+// as a stall, and recording it also schedules the re-check that a silent pass
+// never did. node names the one responsible, empty when the wait is not about
+// one node (or the caller cannot tell which).
+func (c *Controller) recordWaitingOnNode(dep *store.Deployment, stage, node string) {
 	params := map[string]any{"stage": stage}
-	if node != nil {
-		params["node"] = node.DisplayName()
+	if node != "" {
+		params["node"] = node
+	}
+	if stage == waitingStageNodeOffline {
+		// A node that has not reported since the server started is an agent
+		// reconnecting, not a refusal: recordRefusal's guard keys on this.
+		params["offline"] = 1
 	}
 	c.recordUnschedulableRank(dep, scheduler.Reason{Code: scheduler.ReasonWaitingOnNode, Params: params}, nil)
 }
@@ -152,11 +158,12 @@ func (c *Controller) agentsReconnecting(reason scheduler.Reason) bool {
 const refusalChangeFloor = 10 * time.Second
 
 // refusalIdentity are the params that make a refusal a different one: the
-// best candidate's own refusal, and the counts of where the deployment may
-// run - nodes, those its requirements exclude, those cordoned, those
-// offline. An edit to the requirements or a node going away is news. How
-// busy the candidates are is not: it moves with every other deployment.
-var refusalIdentity = []string{"first", "nodes", "unmet", "cordoned", "offline"}
+// best candidate's own refusal, the counts of where the deployment may run -
+// nodes, those its requirements exclude, those cordoned, those offline - and
+// the stage a placed replica waits at. An edit to the requirements or a node
+// going away is news. How busy the candidates are is not: it moves with every
+// other deployment.
+var refusalIdentity = []string{"first", "nodes", "unmet", "cordoned", "offline", "stage"}
 
 // sameRefusal reports whether a recorded schedule event is the refusal about
 // to be recorded: the same code and refusalIdentity params, for the same rank

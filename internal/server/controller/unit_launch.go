@@ -102,9 +102,9 @@ func (c *Controller) launchGeneration(ctx context.Context, deployment *unitDeplo
 		// does not). The wait is recorded, and the re-check stays the short
 		// poll: the refusal record's own requeue is a whole timeout window,
 		// and an eviction of another model never wakes this deployment.
-		var at *store.Node
+		at := ""
 		if len(nodes) == 1 {
-			at = nodes[0]
+			at = nodes[0].DisplayName()
 		}
 		c.recordWaitingOnNode(deployment.dep, waitingStageCacheEviction, at)
 		c.q.addAfter(depKey(deployment.dep.ID), groupPollInterval)

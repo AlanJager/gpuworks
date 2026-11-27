@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -132,5 +133,100 @@ func TestHeldCardsDoNotHoldBackReplicasThatFitOnTheFreeOnes(t *testing.T) {
 		if err != nil || len(list) != 1 {
 			t.Fatalf("deployment %d: %d instances, err=%v", dep.ID, len(list), err)
 		}
+	}
+}
+
+// scheduleCodes lists the latest scheduling reason of each pass, with the
+// clock stepped between passes so the throttle's windows elapse.
+func scheduleCodes(t *testing.T, c *Controller, st *store.Store, dep *store.Deployment, steps ...time.Duration) []string {
+	t.Helper()
+	var codes []string
+	for _, step := range steps {
+		c.now = func() time.Time { return base.Add(step) }
+		if err := c.reconcileDeployment(context.Background(), dep.ID); err != nil {
+			t.Fatal(err)
+		}
+		ev, found, err := st.LatestScheduleEvent(dep.ID)
+		if err != nil || !found {
+			t.Fatalf("no event after %s: found=%v err=%v", step, found, err)
+		}
+		var data struct {
+			Scheduler scheduler.Reason `json:"scheduler"`
+		}
+		if err := json.Unmarshal([]byte(ev.Data), &data); err != nil {
+			t.Fatal(err)
+		}
+		codes = append(codes, data.Scheduler.Code+"/"+paramString(data.Scheduler, "stage"))
+	}
+	return codes
+}
+
+func paramString(r scheduler.Reason, key string) string { v, _ := r.Params[key].(string); return v }
+
+var base = time.Unix(1_800_000_000, 0)
+
+// An image still arriving keeps its own reason: it is not the model arriving,
+// and the two alternating would defeat the exemption that keeps a live image
+// pull from reading as a stall (GWKS-507 review).
+func TestAnImageWaitIsNotRecordedAsTheModelArriving(t *testing.T) {
+	c, st, dep, _, _, _, _ := imageCopyFixture(t, "wait_image_copy")
+	codes := scheduleCodes(t, c, st, dep, 0, 11*time.Second)
+	for _, code := range codes {
+		if code != "image_delivery_waiting/" {
+			t.Fatalf("an image wait was recorded as %v, want its own reason on every pass", codes)
+		}
+	}
+}
+
+// A node that goes offline is recorded, naming it; and it says the node is
+// offline so the reconnect grace still suppresses it after a server restart.
+func TestAnOfflineNodesWaitNamesIt(t *testing.T) {
+	st, hub, nodes, model := poolFixture(t, "wait_offline", 2, 1)
+	hub.online[nodes[0].UUID] = false
+	ids, _ := json.Marshal([]uint{nodes[0].ID, nodes[1].ID})
+	dep, err := createTestDeployment(t, st, &store.Deployment{ModelID: model.ID, NodeID: nodes[0].ID, NodeIDs: string(ids), ServedName: "offline", Engine: "vllm",
+		State: "active", NNodes: 2, MasterAddr: "10.0.0.1", MasterPort: 29500, Placement: `{"tp":2}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := New(st, hub, nil)
+	c.now = func() time.Time { return base }
+	if err := c.reconcileDeployment(context.Background(), dep.ID); err != nil {
+		t.Fatal(err)
+	}
+	ev, found, err := st.LatestScheduleEvent(dep.ID)
+	if err != nil || !found {
+		t.Fatalf("no event: found=%v err=%v", found, err)
+	}
+	for _, want := range []string{`"code":"waiting_on_node"`, `"stage":"node_offline"`, `"node":"` + nodes[0].DisplayName() + `"`} {
+		if !strings.Contains(ev.Data, want) {
+			t.Fatalf("event %s lacks %s", ev.Data, want)
+		}
+	}
+}
+
+// A different stage is news: once the model is there and an eviction holds
+// the node, the wait says the eviction after the change floor, not after a
+// whole pending-timeout window.
+func TestAChangedStageIsRecordedAsNews(t *testing.T) {
+	st, hub, nodes, model := poolFixture(t, "wait_stage_change", 1, 4)
+	if err := st.DB().Model(&store.ModelFile{}).Where("model_id = ?", model.ID).Update("state", proto.MFPending).Error; err != nil {
+		t.Fatal(err)
+	}
+	c := New(st, hub, nil)
+	dep := poolDeployment(t, st, model, nodes[0].ID, 1, store.PlacementSpread, nil)
+	if codes := scheduleCodes(t, c, st, dep, 0); codes[0] != "waiting_on_node/model_arriving" {
+		t.Fatalf("first pass %v", codes)
+	}
+	if err := st.DB().Model(&store.ModelFile{}).Where("model_id = ?", model.ID).Update("state", proto.MFPresent).Error; err != nil {
+		t.Fatal(err)
+	}
+	release, ok := st.TryEvictNodeCache(nodes[0].ID)
+	if !ok {
+		t.Fatal("could not reserve the node")
+	}
+	defer release()
+	if codes := scheduleCodes(t, c, st, dep, 11*time.Second); codes[0] != "waiting_on_node/cache_eviction" {
+		t.Fatalf("after the change floor: %v", codes)
 	}
 }

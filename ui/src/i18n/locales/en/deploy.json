@@ -1230,9 +1230,9 @@
   "waitingOnNode": {
     "cache_eviction": "Node {{node}} has the replica, but its model cache is being cleaned up there; it starts once the cleanup finishes.",
     "model_arriving": "Node {{node}} has the replica; it starts once the model has arrived there (see the download on the models page).",
-    "node_offline": "The replica's node is offline; it starts once the node reconnects, or pick another node under Adjust replicas.",
+    "node_offline": "Node {{node}} is offline; the replica starts once it reconnects, or pick another node under Adjust replicas.",
     "previous_generation_leaving": "Node {{node}} has the replica; it starts once the generation it replaces has left that node.",
     "pool_unreadable": "The deployment's candidate nodes could not be read; the platform tries again shortly. If this stays, check the server log.",
-    "node_missing": "The node this replica names is no longer part of the deployment's placement; pick another node under Adjust replicas."
+    "node_missing": "The node this replica names ({{node}}) is no longer part of the deployment's placement; pick another node under Adjust replicas."
   }
 }
