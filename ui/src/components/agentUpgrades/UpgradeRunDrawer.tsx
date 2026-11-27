@@ -65,7 +65,9 @@ export default function UpgradeRunDrawer({ runID, isAdmin, onClose, onContinue, 
     setShownFor(wanted);
     return answer;
   }, interval, [runID, page, filter, interval]);
-  const switching = shownFor !== wanted;
+  // A page that failed to load is not still loading: the error notice above
+  // says what happened, and the cover lifts so the two do not contradict.
+  const switching = shownFor !== wanted && !items.error;
   const refresh = () => { void status.refresh(); void items.refresh(); onChanged(); };
   useEvents("agent_upgrade", refresh);
   const [busy, setBusy] = useState(false);

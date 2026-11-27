@@ -375,6 +375,22 @@ test("the record pages through the server ten rows at a time, filters by phase, 
   assert.equal(drawer.querySelector("[aria-busy]"), null);
 });
 
+test("a page that fails to load lifts the loading cover and shows the error instead", async () => {
+  const state = backend([run({ state: "finished", counts: counts({ total: 12, processed: 12, succeeded: 12, queued: 0, active: 0 }) })]);
+  state.items = Array.from({ length: 12 }, (_, i) => item({ node_uuid: `n${i}`, name: `record-${i}`, phase: "succeeded" }));
+  const serve = api.agentUpgradeItems;
+  api.agentUpgradeItems = async (id, page = 1, pageSize = 20, phase = "") => {
+    if (page === 2) throw new Error("results page unavailable");
+    return serve(id, page, pageSize, phase);
+  };
+  const user = userEvent.setup(); mount(true, 7);
+  const drawer = await screen.findByRole("dialog", { name: i18n.t("nodes:batchUpgrade.runTitle", { id: 7 }) });
+  await within(drawer).findByText("record-0");
+  await user.click(within(drawer).getByRole("button", { name: locale.common.resourceTable.nextPage }));
+  assert.ok(await within(drawer).findByText("results page unavailable"));
+  assert.equal(drawer.querySelector("[aria-busy]"), null, "an error is not shown as still loading");
+});
+
 test("the record's progress bar turns red when any attempt failed, was interrupted or is unknown", async () => {
   backend([run({ state: "finished", counts: counts({ total: 2, processed: 2, succeeded: 1, failed: 1, queued: 0, active: 0 }) })]);
   mount(true, 7);

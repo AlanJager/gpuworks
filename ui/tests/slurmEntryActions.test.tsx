@@ -246,7 +246,7 @@ test("a refusal of the delete is shown in the dialog and the dialog stays; the w
   await noDialog();
 });
 
-test("Escape closes the delete dialog and Tab reaches its controls in order", async () => {
+test("Escape closes the delete dialog and Tab reaches its controls", async () => {
   const calls = stubApi();
   const { user } = renderActions(slurmEntry({ node_count: 3, delete_with_nodes_allowed: true, delete_with_nodes_blocker: "" }));
   await chooseRowAction(user, group().parentElement as HTMLElement, s.actions.delete);
