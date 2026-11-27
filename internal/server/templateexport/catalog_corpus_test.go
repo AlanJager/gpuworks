@@ -16,7 +16,8 @@ import (
 // defaults included), and saving it as a template must give a document that
 // imports and reproduces the engine command. This is the corpus the arg
 // export is checked against; a spec that fails here is a launch the platform
-// runs but cannot write down.
+// runs but cannot write down. Each spec is exported again with an entrypoint
+// and with a manual script, the commands a spec can state besides its args.
 func TestEveryBuiltinSpecExports(t *testing.T) {
 	catalog, err := seed.Catalog()
 	if err != nil {
@@ -55,6 +56,26 @@ func TestEveryBuiltinSpecExports(t *testing.T) {
 			if _, err := inferencecatalog.ParseYAML([]byte(out.YAML)); err != nil {
 				failures = append(failures, fmt.Sprintf("%s/%s import: %v", model.ModelID, spec.Name, err))
 				continue
+			}
+			// The same deployment on a command of its own: an entrypoint
+			// override, and a manual script that owns its preparation, which
+			// pins the spec's placement (whatever resolver it has) to the
+			// tested cards.
+			for _, command := range []Command{
+				{Entrypoint: []string{"/usr/bin/env", "python3", "-m", "engine"}},
+				{ManualCommand: "exec engine serve ${GPUWORKS_MODEL_PATH} --port ${GPUWORKS_API_PORT}", IncludesPreparation: true},
+			} {
+				in.Command = command
+				out, err := Build(in)
+				if err == nil {
+					_, err = inferencecatalog.ParseYAML([]byte(out.YAML))
+				}
+				if err == nil && command.ManualCommand != "" && (out.Model.Specs[0].Placement == nil || out.Model.Specs[0].ManualCommand != command.ManualCommand) {
+					err = fmt.Errorf("manual command %q placement %v", out.Model.Specs[0].ManualCommand, out.Model.Specs[0].Placement)
+				}
+				if err != nil {
+					failures = append(failures, fmt.Sprintf("%s/%s with %+v: %v", model.ModelID, spec.Name, command, err))
+				}
 			}
 			exported++
 		}

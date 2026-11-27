@@ -96,12 +96,12 @@ func ManualCommandRankBlind(command string, nnodes int, pd bool) []string {
 	return missing
 }
 
-// manualCommandStatesPort reports whether a manual command puts the engine on
+// ManualCommandStatesPort reports whether a manual command puts the engine on
 // the launch's API port: it states manualCommandPortFlag for
 // replaceManualCommandPort to rewrite, or references the API port variable.
 // Without either the engine listens on its own default port while the health
 // check and the gateway dial the assigned one.
-func manualCommandStatesPort(command string) bool {
+func ManualCommandStatesPort(command string) bool {
 	return manualCommandPortPattern.MatchString(command) ||
 		slices.Contains(placementeval.References(command), placementeval.VariablePrefix+placementeval.VarAPIPort)
 }
@@ -137,15 +137,15 @@ func ManualCommandPorts(overrides ContainerOverrides) []int {
 // ManualCommandPortTakenWarning says a port a manual command states is already
 // taken on node; the launch runs on the port the platform assigns instead.
 func ManualCommandPortTakenWarning(port int, node string) messages.Warning {
-	params := manualCommandPortFix()
+	params := ManualCommandPortFix()
 	params["port"], params["node"] = port, node
 	return messages.NewWarning(messages.WarningManualCommandPortTaken, params)
 }
 
-// manualCommandPortFix is what a manual command port warning tells the
+// ManualCommandPortFix is what a manual command port warning tells the
 // deployer to write: the port flag with the API port variable, which every
 // launch expands to its own assigned port.
-func manualCommandPortFix() map[string]any {
+func ManualCommandPortFix() map[string]any {
 	return map[string]any{"flag": manualCommandPortFlag, "variable": variableReference(placementeval.VarAPIPort)}
 }
 

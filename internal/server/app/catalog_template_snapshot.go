@@ -6,9 +6,11 @@ import (
 	"slices"
 	"strings"
 
+	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/deploy"
 	"gpuworks.ai/gpuworks/internal/server/inferenceapi"
 	"gpuworks.ai/gpuworks/internal/server/inferencecatalog"
+	"gpuworks.ai/gpuworks/internal/server/messages"
 	"gpuworks.ai/gpuworks/internal/server/planning"
 	"gpuworks.ai/gpuworks/internal/server/store"
 	"gpuworks.ai/gpuworks/internal/server/templateexport"
@@ -50,6 +52,14 @@ func templateSpecFromSnapshot(selection deploy.CatalogSelection, image string) (
 	return spec, nil
 }
 
+// sameExecutable reports that planned starts what actual started.
+func sameExecutable(actual, planned proto.ResolvedLaunch) bool {
+	return slices.Equal(actual.Entrypoint, planned.Entrypoint) && slices.Equal(actual.Argv, planned.Argv) &&
+		slices.Equal(actual.PreStartArgv, planned.PreStartArgv) && actual.PreStartScript == planned.PreStartScript &&
+		maps.Equal(actual.Env, planned.Env) && slices.Equal(actual.DockerArgs, planned.DockerArgs) &&
+		actual.ShmBytes == planned.ShmBytes && slices.Equal(actual.Mounts, planned.Mounts) && actual.ModelMount == planned.ModelMount
+}
+
 // A saved edit can intentionally leave old instances running (apply=none).
 // Re-resolve current inputs against the captured allocation, never reschedule,
 // and refuse a document that would describe a different executable generation.
@@ -67,12 +77,13 @@ func verifyTemplateLaunch(dep *store.Deployment, instance store.Instance, node *
 	}
 	parallel, err := deploy.LaunchParallelism(in.Engine, desired.ResolvedLaunch)
 	if err != nil {
-		if len(deploy.TPFlagsForEngine(in.Engine)) > 0 {
+		if len(deploy.TPFlagsForEngine(in.Engine)) > 0 && in.Command.ManualCommand == "" {
 			return templateexport.Unavailable(templateexport.ReasonLaunchMissing, nil)
 		}
-		// A dialect-free Serve Adapter may not expose any TP flag. Its
-		// captured resolver variables take precedence, and complete executable
-		// comparison below proves any allocation-derived expansion we use.
+		// A dialect-free Serve Adapter may not expose any TP flag, and a
+		// manual script need not state one. Captured resolver variables take
+		// precedence, and complete executable comparison below proves any
+		// allocation-derived expansion we use.
 		parallel = request.Placement.Parallelism(1).Assigned(in.GPUCount)
 	}
 	stated := request.Placement.Parallelism(1)
@@ -111,16 +122,25 @@ func verifyTemplateLaunch(dep *store.Deployment, instance store.Instance, node *
 	// executable is unchanged. With an alias the flag is always present and
 	// this is false, as it is for the controller.
 	request.ImplicitServedName = deploy.ServedModelName(desired.ResolvedLaunch) == ""
-	plan, err := planning.ResolveAllocatedLaunch(request, indexes, len(indexes), parallel, desired.APIPort, desired.PlacementVariables, planning.ReadScheduleRecord(instance.ScheduleExpl).Breakdown.WeightBytes, false)
-	if err != nil {
+	in.PlatformEnv = desired.EnvLayers.System
+	actual := desired.ResolvedLaunch
+	reproduces := func(request planning.LaunchRequest) bool {
+		plan, err := planning.ResolveAllocatedLaunch(request, indexes, len(indexes), parallel, desired.APIPort, desired.PlacementVariables, planning.ReadScheduleRecord(instance.ScheduleExpl).Breakdown.WeightBytes, false)
+		return err == nil && sameExecutable(actual, plan.Resolved)
+	}
+	if !reproduces(request) {
 		return templateexport.Unavailable(templateexport.ReasonLaunchChanged, nil)
 	}
-	actual, planned := desired.ResolvedLaunch, plan.Resolved
-	if !slices.Equal(actual.Entrypoint, planned.Entrypoint) || !slices.Equal(actual.Argv, planned.Argv) ||
-		!slices.Equal(actual.PreStartArgv, planned.PreStartArgv) || actual.PreStartScript != planned.PreStartScript ||
-		!maps.Equal(actual.Env, planned.Env) || !slices.Equal(actual.DockerArgs, planned.DockerArgs) ||
-		actual.ShmBytes != planned.ShmBytes || !slices.Equal(actual.Mounts, planned.Mounts) || actual.ModelMount != planned.ModelMount {
-		return templateexport.Unavailable(templateexport.ReasonLaunchChanged, nil)
+	// A command the spec states is proved the same way: a deployment of the
+	// spec has none of its own, and starts on the spec's entrypoint,
+	// pre-start steps and manual command instead. Refuse rather than write a
+	// spec that would start something else.
+	if in.Command.Stated() {
+		replay := request
+		replay.Source.Overrides, replay.Selection = in.Command.Replay(request.Source.Overrides, selection)
+		if !reproduces(replay) {
+			return messages.NewProductError(deploy.ErrorLaunchNotExportable, "the exported command does not reproduce the instance's launch", map[string]any{"engine": in.Engine})
+		}
 	}
 	// Keep raw snapshot variables portable. The comparison above proves their
 	// expansion for this allocation; concrete EnvLayers would bake its port or

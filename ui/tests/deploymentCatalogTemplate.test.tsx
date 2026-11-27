@@ -40,6 +40,8 @@ const exportedLocal = fixture("exported-local");
 const exportedWithEnv = fixture("exported-with-env");
 const checkFailed = fixture("check-failed");
 const notRunning = fixture("not-running");
+const manualRedacted = fixture("manual-redacted");
+const imageEntry = fixture("image-entry");
 const imported = fixture("imported");
 
 const { MemoryRouter } = await import("react-router-dom");
@@ -164,6 +166,28 @@ test("a failed check is shown and the template cannot be saved", async () => {
   // What the engine answered is shown as evidence, not as the message.
   assert.ok(within(checks).getByText("engine error"));
   assert.equal((await within(dialog).findByRole("button", { name: new RegExp(text.save) }) as HTMLButtonElement).disabled, true);
+});
+
+test("a manual command that writes out env the template leaves out is shown redacted and cannot be saved", async () => {
+  exportAnswers = [Response.json(manualRedacted)];
+  const dialog = await open();
+  const notes = await within(dialog).findByRole("region", { name: text.notes });
+  assert.ok(within(notes).getByText(text.note.command_redacted));
+  assert.ok(within(notes).getByText(text.note.command_env_withheld.replace("{{keys}}", "HF_TOKEN")));
+  assert.ok(within(notes).getByText(text.note.cards_pinned.replace("{{count}}", "1")));
+  assert.ok(within(notes).getByText(text.note.manual_command));
+  const yaml = within(dialog).getByRole("textbox", { name: text.yaml }) as HTMLTextAreaElement;
+  assert.equal(yaml.value.includes("hf_secret"), false);
+  assert.equal((within(dialog).getByRole("button", { name: new RegExp(text.save) }) as HTMLButtonElement).disabled, true);
+  // Downloading stays available: the YAML is the reviewer's to fix.
+  assert.equal((within(dialog).getByRole("button", { name: new RegExp(text.download) }) as HTMLButtonElement).disabled, false);
+});
+
+test("an image-entry command is refused with its own reason", async () => {
+  exportAnswers = [Response.json(imageEntry, { status: 409 })];
+  const dialog = await open();
+  await within(dialog).findByText(text.reason.command_image_entry);
+  assert.equal(within(dialog).queryByRole("textbox", { name: text.yaml }), null);
 });
 
 test("an operation that was not tested reads as not checked, never as passed", async () => {

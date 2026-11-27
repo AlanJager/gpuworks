@@ -34,7 +34,10 @@ var (
 	scriptSecret    = regexp.MustCompile(`(?im)(?:^|[;\s])(?:export\s+)?[A-Z0-9_]*(?:TOKEN|PASSWORD|SECRET|API_KEY|ACCESS_KEY|PRIVATE_KEY)\s*=`)
 )
 
-const redactedValue = "<redacted>"
+const redactedValue = Redacted
+
+// Redacted is what a secret is replaced with in a logged command.
+const Redacted = "<redacted>"
 
 type Execution struct {
 	command string

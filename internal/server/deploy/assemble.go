@@ -390,8 +390,8 @@ func ResolveLaunchWithWarnings(input ResolveLaunchInput) (ResolvedLaunch, []mess
 	if warning, ok := allocatorRewrite.warning(launch.Env); ok {
 		warnings = append(warnings, warning)
 	}
-	if manualScript != "" && !params.Headless && !manualCommandStatesPort(overrides.CmdDisplay) {
-		warnings = append(warnings, messages.NewWarning(messages.WarningManualCommandPortUnstated, manualCommandPortFix()))
+	if manualScript != "" && !params.Headless && !ManualCommandStatesPort(overrides.CmdDisplay) {
+		warnings = append(warnings, messages.NewWarning(messages.WarningManualCommandPortUnstated, ManualCommandPortFix()))
 	}
 	if err := resolveStartupBudget(input, &launch); err != nil {
 		return ResolvedLaunch{}, nil, fmt.Errorf("resolve launch: %w", err)

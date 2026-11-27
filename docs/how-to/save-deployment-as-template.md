@@ -18,7 +18,8 @@
 | `model_config`、`context_length`、`input_modalities` | 来自模板的部署取当前目录中的模型元数据（估算信息，可能随目录更新）；自定义部署取模型行的 config.json 与已登记信息，不声明它们是实例启动时的快照 |
 | `api` | 实例不可变启动记录中的接口声明，用该声明选择实测请求 |
 | `kv_bytes_per_token` | 只在有可靠来源时写：源模板或目录里同一模型已有的值。没有时不写，在注释里说明 |
-| `placement` | 来自模板的部署沿用创建时保存的模板快照；自定义部署不写，由估算与调度决定卡数，实测卡数与每卡显存写在注释里 |
+| `placement` | 来自模板的部署沿用创建时保存的模板快照；自定义部署不写，由估算与调度决定卡数，实测卡数与每卡显存写在注释里。部署用手写命令时钉死为实测卡数，见[自定义启动命令](#自定义启动命令) |
+| `entrypoint`、`manual_command` | 部署自己改过的启动命令，见[自定义启动命令](#自定义启动命令) |
 
 导出以一个固定实例的不可变启动记录为准，保存但尚未应用的新配置不会被当成已实测。若配置与运行实例不同、在实测期间发生变化，或网关请求由其他副本回答，会拒绝验证；请应用配置后重试。源目录后续更新不会替换已执行的权重、预启动脚本、拓扑或 API 声明。
 
@@ -92,6 +93,21 @@ curl --silent --show-error -X POST \
 
 挂载、docker 参数等容器覆盖描述的是某一台主机，不导出。
 
+## 自定义启动命令
+
+部署在「启动命令」里改过命令时，按命令方式导出：
+
+- **引擎命令只换了入口**（`entrypoint_display`）：写进 spec 的 `entrypoint`，引擎参数照常写进 `args`。
+- **手写命令**（`command_mode: manual` 的 shell 脚本）：脚本原样写进 spec 的 `manual_command`，从这个 spec 新建的部署直接运行它，`args` 不再传给引擎。脚本声明了包含预启动步骤时，spec 不再写源模板的 `pre_start_argv` / `pre_start_script`，否则保留。
+  - 脚本里写死了张量并行度等卡数相关的值，所以 `placement` 钉死为实测卡数（单节点），换卡数部署会被拒绝；源模板原有的 resolver 保留在钉死条件之后。部署运行的正是源模板自带的 `manual_command` 时，沿用源模板的 `placement`，不钉死。
+  - 部署表单的手写命令编辑器会为每个启动环境变量写一行 `export`，部署自己的环境变量也在内。没有勾选保留在模板里的部署环境变量（见[上一节](#2-决定带上哪些环境变量)），即使命令里写了（赋值或者直接出现它的值），也不会带进模板：这些值被替换为 `<redacted>`，`saveable` 为 `false`，说明 `command_env_withheld` 列出变量名。把它们勾选保留，或从命令里去掉，再重新另存。
+  - 命令里设置了密钥时同样脱敏，`saveable` 为 `false`，说明里注明 `command_redacted`。识别规则与命令日志相同：变量名含 `TOKEN`、`PASSWORD`、`SECRET`、`API_KEY`、`ACCESS_KEY`、`PRIVATE_KEY`，`--token`、`--api-key` 一类参数，`hf_`、`sk-` 形态的令牌，以及 URL 里的口令；命中这类变量赋值时整段脚本替换为 `<redacted>`，需要从部署的启动命令重新复制并去掉密钥。规则之外的私密值请放进部署的环境变量，不要写在命令里。
+  - 脚本设置了平台为每个节点自行设置的环境变量（如集合通信网卡 `NCCL_SOCKET_IFNAME`）时，说明 `command_sets_platform_env` 提示这些值是本节点的，换节点可能不对。
+  - 脚本既没写 `--port` 也没引用 `${GPUWORKS_API_PORT}` 时，说明里提示新部署分配的端口上可能没有服务。
+  - 入口（`entrypoint`）里的密钥按同样的规则脱敏。
+
+镜像自带命令（`image-entry`）、完整 argv 形式的命令、改了模型挂载路径的手写命令、用到额外挂载路径的手写命令写不成模板，见下表。导出前，平台用 spec 里的命令按新部署的方式重建一次启动命令，与实例实际运行的逐项比对；不一致就拒绝，不给出近似结果。这次比对仍带着本部署的挂载与 docker 参数等容器覆盖（它们不导出，说明 `container_overrides_omitted` 会提示），所以它证明的是命令本身能复现，不证明命令不依赖这些覆盖；命令直接引用额外挂载路径时会被拒绝。
+
 ## 3. 存进目录或提交上游
 
 - **存进本集群的目录**：管理员把 `yaml` 交给 `POST /api/v1/inference-templates/evaluate` 预检，再用 `POST /api/v1/inference-templates/import` 导入。来自模板的部署导出的是原模型下的一个新用户档位，导入不影响原有档位。实测失败（`saveable: false`）的导出只供排查，不要导入。
@@ -111,7 +127,11 @@ curl --silent --show-error -X POST \
 | `launch_changed` | 配置或运行实例已变化，请应用配置并重启后重试 |
 | `launch_snapshot_missing` | 缺少完整、可核验的实例启动快照，请用当前版本重启后重试 |
 | `heterogeneous_gpus` | 实例使用不同型号的卡，单一型号选择器不能描述此组合 |
-| `command_overridden` | 部署替换了引擎命令，启动方式无法写成模板参数 |
+| `command_image_entry` | 部署运行镜像自带的命令，模板无法表达；改用引擎命令或手写命令 |
+| `command_full_argv` | 部署用完整 argv 替换了引擎命令；改写成手写 shell 命令 |
+| `command_model_mount` | 手写命令运行时模型挂载在别的路径（`params.model_mount_path`），模板不带这个路径；改用默认模型路径 |
+| `command_mount` | 手写命令用到了额外挂载的路径（`params.mount_path`），模板不带这个挂载；从命令中去掉 |
+| `command_not_importable` | 命令写进 spec 后目录导入会拒绝，例如手写命令超过 64 KiB |
 | `no_gpu_facts`、`template_missing`、`model_missing` | 实例没有绑定到具体卡，或源模板、模型已被删除 |
 
-返回 409 `LAUNCH_NOT_EXPORTABLE` 表示导出的参数重建不出部署原来的命令行，平台拒绝给出近似结果；请把部署的启动参数与引擎版本反馈给维护者。
+返回 409 `LAUNCH_NOT_EXPORTABLE` 表示导出的参数或命令重建不出部署原来的命令行，平台拒绝给出近似结果；请把部署的启动参数与引擎版本反馈给维护者。
