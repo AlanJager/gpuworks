@@ -434,7 +434,9 @@ func TestPoolPassesOverANodeWhereTheModelIsStuck(t *testing.T) {
 }
 
 // A model still arriving is not stuck: the replica waits on the node it was
-// given rather than being moved, and no refusal is recorded for it.
+// given rather than being moved. The wait is recorded (it used to be silent,
+// so the deployment stayed pending with no reason and was never reported as
+// stalled, GWKS-507), and it does not read as a refusal of the node.
 func TestPoolKeepsANodeWhoseModelIsStillArriving(t *testing.T) {
 	st, hub, nodes, model := poolFixture(t, "pool_model_arriving", 1, 1)
 	if err := st.DB().Model(&store.ModelFile{}).Where("model_id = ? AND node_id = ?", model.ID, nodes[0].ID).
@@ -449,8 +451,17 @@ func TestPoolKeepsANodeWhoseModelIsStillArriving(t *testing.T) {
 	if got := replicaNodes(t, st, dep.ID); len(got) != 0 {
 		t.Fatalf("replicas run on %v before the model arrived", got)
 	}
-	if event, found, _ := st.LatestScheduleEvent(dep.ID); found {
-		t.Fatalf("a model still downloading recorded a refusal: %s", event.Data)
+	event, found, err := st.LatestScheduleEvent(dep.ID)
+	if err != nil || !found {
+		t.Fatalf("a model still downloading recorded nothing: found=%v err=%v", found, err)
+	}
+	for _, want := range []string{`"code":"waiting_on_node"`, `"stage":"model_arriving"`, `"node":"` + nodes[0].DisplayName() + `"`} {
+		if !strings.Contains(event.Data, want) {
+			t.Fatalf("event %s lacks %s", event.Data, want)
+		}
+	}
+	if strings.Contains(event.Data, "model_unavailable") {
+		t.Fatalf("a model still arriving read as unavailable: %s", event.Data)
 	}
 }
 
