@@ -2490,7 +2490,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | `edition` | 构建名称，仅用于展示 |
 | `features[]` | 已声明功能（编译模块声明的与当前已安装插件包声明的合在一起，安装或卸载插件后立即变化）的当前可用性，按 `key` 排序：`{key, access, presentation, link?, message?, limits}`。`access` 为 `full` / `read_only` / `locked` / `hidden`；`presentation` 为 `promote`（不可用时显示为锁定并给出 `link`）或 `hidden`（不可用时完全隐藏，此时锁定按 `hidden` 返回）；`message` 是说明当前可用性的产品消息 `{code, params?, message}`；`limits` 为 `[{dim, max}]`，`max` 为 `null` 表示不限 |
 | `nav[]` | 扩展加入控制台菜单的入口 `{id, group, label_key, icon?, route, feature?}`；所属功能为 `hidden` 的入口不返回 |
-| `banners[]` | 显示在每个页面顶部的通知 `{id, severity, message, link?}`，`severity` 为 `info` / `warning` / `danger`（其他值按 `info` 返回），`message` 为产品消息 `{code, params?, message}` |
+| `banners[]` | 显示在每个页面顶部的通知 `{id, severity, message, link?, ack_key?}`，`severity` 为 `info` / `warning` / `danger`（其他值按 `info` 返回），`message` 为产品消息 `{code, params?, message}`；带 `ack_key` 的通知可以由用户确认，控制台按用户记住确认过的键、不再显示带同一个键的通知，来源换了键就重新显示（`ack_key` 为字母、数字与 `._:-`，至多 128 个字符，不符合的不返回） |
 
 ### GPU 容量是否已知
 

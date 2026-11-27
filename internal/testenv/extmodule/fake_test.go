@@ -109,7 +109,10 @@ func (fakeRoutes) Nav() []dto.NavContribution {
 type fakeBanners struct{}
 
 func (fakeBanners) Banners(context.Context, auth.Claims) []dto.ConsoleBanner {
-	return []dto.ConsoleBanner{{ID: "fake-notice", Severity: "warning", Message: dto.ProductMessage{Code: "FAKE_NOTICE", Message: "fake notice"}}}
+	return []dto.ConsoleBanner{
+		{ID: "fake-notice", Severity: "warning", Message: dto.ProductMessage{Code: "FAKE_NOTICE", Message: "fake notice"}},
+		{ID: "fake-reminder", Severity: "info", Message: dto.ProductMessage{Code: "FAKE_REMINDER", Message: "fake reminder"}, AckKey: "fake-reminder:stage-7"},
+	}
 }
 
 // fakeConfig is the module's server.yaml section.

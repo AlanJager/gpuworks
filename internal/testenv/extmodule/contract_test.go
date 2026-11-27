@@ -104,7 +104,8 @@ func TestAModuleReachesEveryHostMethod(t *testing.T) {
 	status, body := send(t, api, http.MethodGet, "/api/v1/console/manifest", "")
 	want := `{"edition":"community","features":[{"key":"fake.reports","access":"full","presentation":"promote","limits":[]}],` +
 		`"nav":[{"id":"fake-reports","group":"admin","label_key":"fake:nav.reports","route":"/fake","feature":"fake.reports"}],` +
-		`"banners":[{"id":"fake-notice","severity":"warning","message":{"code":"FAKE_NOTICE","message":"fake notice"}}]}`
+		`"banners":[{"id":"fake-notice","severity":"warning","message":{"code":"FAKE_NOTICE","message":"fake notice"}},` +
+		`{"id":"fake-reminder","severity":"info","message":{"code":"FAKE_REMINDER","message":"fake reminder"},"ack_key":"fake-reminder:stage-7"}]}`
 	if status != http.StatusOK || strings.TrimSpace(string(body)) != want {
 		t.Fatalf("manifest = %d\n%s\nwant\n%s", status, body, want)
 	}

@@ -683,6 +683,8 @@ Banners above every console page, at most 16.
 
 `id` is the owner's own and unique; `audience` is `admin` or `all`; each step is either `hidden: true` (with no other field) or carries a `severity` (`info`, `warning`, `danger`) and a `notice`, plus an optional `link`.
 
+Banners pushed by plugins do not yet support an acknowledge key (`banners[].ack_key` of the console manifest, see [Extension points](../dev/extensions.md#控制台叠加)), so none of them can be acknowledged in the console; when one is needed it is added as `table.banners@2`.
+
 ### `table.attestations@1`
 
 Opaque statements the server stores and relays to the same publisher's other packages, never interpreting them.
@@ -758,7 +760,7 @@ From the repository root, `make test-extapi` runs the format check, vet and test
 <!-- translation-source-sha256: 1466103f63782beca86ef7918d600ba97f34253e3cd161e0ebd833cb6f390095 ### `table.availability@1` -->
 <!-- translation-source-sha256: 1cde251b8c098bcf0b6afb9fb39562182551cf96070f681bdcf78be560c3420a ### `table.fleet_capacity@1` -->
 <!-- translation-source-sha256: ae222980d1484fd48651f759138a38299f82696259eb016cb4cbfb2b35a909a6 ### `table.node_holds@1` -->
-<!-- translation-source-sha256: 2bedc50a6eee5da507dfcd4d085c4851025d3ab71384e4f0da25fe9dc2480477 ### `table.banners@1` -->
+<!-- translation-source-sha256: 2c45617cb89d7f690b18f0a7675241d6eb05741fc04706de7468fe02a4b4e226 ### `table.banners@1` -->
 <!-- translation-source-sha256: 7aa0b67f4f6a1ff8ef74fef6166b463aa8d01a8ebe206ee20813d34f96f6391a ### `table.attestations@1` -->
 <!-- translation-source-sha256: d96c495b834dadf07218106deb5d56f05c1ea07cd68bd3a807e62e4d36228b7f ## Error codes -->
 <!-- translation-source-sha256: 9a7cddd7f8fda7aa69021189a02513fed46d5acbdde7bd96eab859eee7248d4e ## Golden files -->

@@ -69,3 +69,6 @@ export type {
 } from "./types";
 export type { FeatureAccess } from "../consoleManifest";
 export { LockedFeature } from "./LockedFeature";
+// A viewer's acknowledgements of console banners (ack_key), shared with the banners above every page.
+export { useBannerAck } from "./bannerAck";
+export type { BannerAck } from "./bannerAck";

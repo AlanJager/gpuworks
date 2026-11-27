@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"regexp"
 
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
 	"gpuworks.ai/gpuworks/internal/server/featuregate"
@@ -36,6 +37,11 @@ func (a *apiHandlers) consoleManifest(w http.ResponseWriter, r *http.Request) {
 			default:
 				banner.Severity = "info"
 			}
+			// A key the console could not store safely makes the banner
+			// one that cannot be acknowledged, never one that is hidden.
+			if banner.AckKey != "" && !bannerAckKey.MatchString(banner.AckKey) {
+				banner.AckKey = ""
+			}
 			out.Banners = append(out.Banners, banner)
 		}
 	}
@@ -53,6 +59,12 @@ func (a *apiHandlers) consoleManifest(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, out)
 }
+
+// BannerAckKeyPattern is the grammar of dto.ConsoleBanner.AckKey: up to 128
+// letters, digits and "._:-", starting with a letter or digit.
+const BannerAckKeyPattern = `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`
+
+var bannerAckKey = regexp.MustCompile(BannerAckKeyPattern)
 
 func consoleFeature(s featuregate.State) dto.ConsoleFeature {
 	f := dto.ConsoleFeature{Key: string(s.Key), Access: s.Access.String(), Presentation: s.Presentation.String(), Limits: []dto.FeatureLimit{}}
