@@ -951,6 +951,7 @@
     },
     "phase": {
       "queued": "Queued",
+      "draining": "Draining requests",
       "transferring": "Transferring / downloading",
       "waiting_registration": "Waiting for reconnection",
       "observing_recovery": "Observing recovery",
@@ -999,6 +1000,7 @@
       "capabilities_changed": "The node capabilities changed after preview.",
       "transport_uncertain": "The transfer outcome is uncertain; settled automatically when the node reconnects.",
       "server_stopped": "The control plane stopped during this attempt.",
+      "drain_incomplete": "The drain ran out of time with requests still running; the agent restart cut them.",
       "agent_failed": "The Agent reported an upgrade failure.",
       "artifact_unavailable": "The fixed target artifact is unavailable.",
       "confirmation_timeout": "Did not confirm the upgrade in time; settled automatically when the node reconnects.",
@@ -1028,7 +1030,7 @@
     "summary": "{{eligible}} nodes will be upgraded; {{skipped}} skipped.",
     "summaryAll": "{{eligible}} nodes will be upgraded.",
     "warning": {
-      "interrupt": "The Agent restarts during the upgrade, so in-flight inference requests on the node are cut. Upgrade multi-node and PD nodes one at a time."
+      "interrupt": "The Agent restarts during the upgrade: deployments with a replica on another node are drained first, and in-flight requests of the others are cut. Upgrade multi-node and PD nodes one at a time."
     }
   },
   "cardScheduling": {

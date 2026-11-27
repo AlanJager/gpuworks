@@ -212,7 +212,7 @@ A node without outbound internet access still cannot download images or models f
 
 Single-node upgrades use server-reported eligibility too: a node already on the target build shows “Already at target” and cannot start a redundant upgrade; matching release names with different builds can still be aligned. Clicking rechecks the selected node before starting. Changed eligibility or a blocking item prevents batch creation. Upgrade controls are hidden from non-administrators.
 
-Upgrade the server first, then the agent; the node's target version comes from the current server. Upgrading briefly interrupts the node's connection and in-flight requests. Upgrade nodes for multi-node inference or PD disaggregation one at a time, waiting for each node to return online.
+Upgrade the server first, then the agent; the node's target version comes from the current server. Upgrading briefly interrupts the node's connection; an Agent upgrade through the console (one node or a batch) first drains the deployments that have an available replica on another node, and the in-flight requests of the other deployments on the node are still cut (see [Upgrade and Compatibility](upgrade-and-compatibility.md#通过控制台升级-1)). Upgrade nodes for multi-node inference or PD disaggregation one at a time, waiting for each node to return online.
 
 - **Upgrade from the console**: Select nodes in the node list, click **Upgrade selected Agents**, preview the selected nodes, and confirm to view progress for each node; **Upgrade Agent** in node details also remains available. Wait for successful formal reconnection, then verify that the node is online and its **Agent version** matches the server. Newer agents can receive the upgrade package over the existing connection; older agents still need access to the server's download address.
 - **Rerun the installation script or offline package**: Preserve the old binary first, then install using the original token, connection method, installation directory, and state directory. Afterward, check the online status and version. This rewrites the configuration and does not provide the automatic rollback available with self-upgrade.
@@ -277,7 +277,7 @@ On Linux, the command stops the corresponding systemd service or nohup process, 
 <!-- translation-source-sha256: ee9fe1fc6a84207b5c3ceddf8853cf71295551a3019db3f074f5753c6f970cde ## Multiple Accelerator Vendors on One Host -->
 <!-- translation-source-sha256: 32317f522ffd7f03daa22e3af19c18a6a508eba94e32184e3e863ce8449c9a9b ## Connect the Same Host Again -->
 <!-- translation-source-sha256: 893bc80691f2a99a74b4855d8271f84634da5f9fba2c71873ecd6277375dc0ad ## No Network Connectivity Between Node and Server -->
-<!-- translation-source-sha256: 4c6f842d39148174ea548b5274227515324eb4f957785da11c9627901289ea58 ## Upgrade -->
+<!-- translation-source-sha256: 7e05b36f14a539b43cc881416ab42916acaf7824b633a2e5fbab025fe9c77df1 ## Upgrade -->
 <!-- translation-source-sha256: 464c3fcebce334672d28375b1c31dde5d5c7e7c1ea825d7a3ccf108bbed8ecb4 ## Maintain Nodes: Cordon and Drain -->
 <!-- translation-source-sha256: f6b289f75bac457265c7c4182609b9c6fb220f353dd8f6d11740fdb33f6d0198 ## Uninstall -->
 <!-- translation-localized-code-block: 88ddeff56766d61d95f726b03c19bcdd484f3058933f20151101f2aa86b3e2d8 3013982f8f2cf42b34ce49ffcfebbdb4df071d024665d8b213ed9e002ba2b8dc Translate descriptive Chinese placeholders, preserving quotes, command flags, API fields, and actual paths. -->

@@ -13,11 +13,18 @@ type Config struct {
 	BinaryAvailable func(name string) bool
 	ReadBinary      func(name string) ([]byte, error)
 	Transport       Transport
+	// Gateway is the inference gateway: an upgrade takes the node's instances
+	// out of its routing while their requests finish (drain.go).
+	Gateway         Gateway
 	Logger          *slog.Logger
 	Now             func() time.Time
 	TransferTimeout time.Duration
 	ConfirmTimeout  time.Duration
 	PollInterval    time.Duration
+	// DrainTimeout bounds the wait for a node's requests to finish before its
+	// upgrade is dispatched, and DrainPoll is how often the wait looks.
+	DrainTimeout time.Duration
+	DrainPoll    time.Duration
 	// UnconfirmedHold is how long an attempt that missed its deadline keeps
 	// holding the slot; OldVersionSettle how long a node back on its old
 	// version is watched before its attempt is settled (see runner.go).

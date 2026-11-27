@@ -23,7 +23,7 @@ const PAGE_SIZE = 10;
 const COLUMN_WIDTHS = { node: 220, from: 150, current: 150, phase: 140, reason: 280, time: 250 };
 const TABLE_WIDTH = Object.values(COLUMN_WIDTHS).reduce((sum, width) => sum + width, 0);
 
-const phases = ["queued", "transferring", "waiting_registration", "observing_recovery", "succeeded", "failed", "skipped", "cancelled", "interrupted", "unconfirmed"];
+const phases = ["queued", "draining", "transferring", "waiting_registration", "observing_recovery", "succeeded", "failed", "skipped", "cancelled", "interrupted", "unconfirmed"];
 /** The filter's value for every result; the API reads no state filter as all. */
 const ALL = "all";
 

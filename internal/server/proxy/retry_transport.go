@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"time"
 )
@@ -38,6 +39,10 @@ type routeAttempt struct {
 	// X-GPUWorks-Priority-Scheduling header set for the first replica, stay
 	// true of the one that answers.
 	prioritized bool
+	// avoided is the deployment's instances an agent upgrade avoids
+	// (avoid.go) when the request was routed: a retry prefers the others
+	// too, and falls back to them only when none of the others is left.
+	avoided map[string]bool
 }
 
 type retryTransport struct {
@@ -150,6 +155,20 @@ func (a *routeAttempt) releaseRenamed() {
 func (t *retryTransport) pickNext(a *routeAttempt, rename bool) *lease {
 	adm := a.admission.waiting()
 	return leaseUntil(func(excluded map[string]bool) *lease {
+		if len(a.avoided) > 0 {
+			// The avoided instances are tried last: excluded until no other
+			// untried replica can be leased.
+			skip := maps.Clone(excluded)
+			if skip == nil {
+				skip = map[string]bool{}
+			}
+			for uuid := range a.avoided {
+				skip[uuid] = true
+			}
+			if l, _ := t.balancer.pickBy(a.policy, a.candidates, a.affinity, skip, t.hub.Online, adm); l != nil {
+				return l
+			}
+		}
 		l, _ := t.balancer.pickBy(a.policy, a.candidates, a.affinity, excluded, t.hub.Online, adm)
 		return l
 	}, a.tried, func(l *lease) bool {

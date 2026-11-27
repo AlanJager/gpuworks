@@ -243,3 +243,22 @@ func (l *lease) release(outcome attemptOutcome) {
 		l.releaseFn(outcome)
 	}
 }
+
+// anyServing reports whether one of candidates is on an online node and out
+// of a failure cool-down: one the balancer would choose on its merits rather
+// than as the last thing left.
+func (b *balancer) anyServing(candidates []candidate, online func(string) bool) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	nowFn := b.now
+	if nowFn == nil {
+		nowFn = time.Now
+	}
+	now := nowFn()
+	for _, c := range candidates {
+		if (online == nil || online(c.nodeUUID)) && !now.Before(b.state(c.instanceUUID).cooldownUntil) {
+			return true
+		}
+	}
+	return false
+}

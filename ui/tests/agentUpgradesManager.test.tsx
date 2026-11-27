@@ -144,6 +144,23 @@ test("a node whose outcome is unknown asks nothing of the administrator, and the
   assert.ok(within(drawer).getByRole("button", { name: k.stop }), "stopping the rest stays one click away");
 });
 
+test("a draining node reads as draining, and requests cut at the drain bound are a localized note, not an error", async () => {
+  const state = backend([run({ state: "running", counts: counts({ total: 2, processed: 0, active: 1, queued: 1 }) })]);
+  state.items = [
+    item({ node_uuid: "drain", name: "draining node", phase: "draining" }),
+    item({ node_uuid: "cut", name: "cut node", phase: "waiting_registration", reason: "drain_incomplete" }),
+  ];
+  mount(true, 7);
+  const draining = (await screen.findByText("draining node")).closest("tr")!;
+  assert.ok(within(draining).getByText(k.phase.draining));
+  const cut = screen.getByText("cut node").closest("tr")!;
+  assert.ok(within(cut).getByText(k.reason.drain_incomplete));
+  assert.equal(cut.querySelector(".text-fg-danger"), null, "an upgrade that went ahead is not shown as failing");
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("combobox", { name: k.filter }));
+  assert.ok(await screen.findByRole("option", { name: k.phase.draining }), "the item list can be filtered on the draining stage");
+});
+
 test("a batch paused after two unknown outcomes in a row says why and offers to continue with the unfinished nodes", async () => {
   const state = backend([run({ state: "paused", pause_reason: "repeated_unknown_outcome", counts: counts({ total: 3, processed: 2, unconfirmed: 2, active: 0, queued: 1 }) })]);
   state.items = [item({ name: "silent one", phase: "unconfirmed", reason: "confirmation_timeout" }), item({ node_uuid: "b", name: "silent two", phase: "unconfirmed", reason: "confirmation_timeout" }), item({ node_uuid: "c", name: "waiting", phase: "queued" })];

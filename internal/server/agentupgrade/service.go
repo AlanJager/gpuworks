@@ -31,11 +31,14 @@ type Service struct {
 	events        chan Observation
 	running       atomic.Bool
 	lastRetention time.Time
+	// holds is, per attempt, the gateway preferences its drain took
+	// (drain.go, drain_holds.go).
+	holds drainHolds
 }
 
 func New(st *store.Store, cfg Config) (*Service, error) {
-	if st == nil || cfg.Transport == nil || cfg.ArtifactDir == "" {
-		return nil, errors.New("agent upgrade store, transport and artifact directory are required")
+	if st == nil || cfg.Transport == nil || cfg.Gateway == nil || cfg.ArtifactDir == "" {
+		return nil, errors.New("agent upgrade store, transport, gateway and artifact directory are required")
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -57,6 +60,12 @@ func New(st *store.Store, cfg Config) (*Service, error) {
 	}
 	if cfg.OldVersionSettle <= 0 {
 		cfg.OldVersionSettle = 30 * time.Second
+	}
+	if cfg.DrainTimeout <= 0 {
+		cfg.DrainTimeout = 60 * time.Second
+	}
+	if cfg.DrainPoll <= 0 {
+		cfg.DrainPoll = 250 * time.Millisecond
 	}
 	if err := os.MkdirAll(cfg.ArtifactDir, 0o700); err != nil {
 		return nil, err
