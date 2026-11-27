@@ -12,7 +12,9 @@ export const PasswordInput = forwardRef<HTMLInputElement, PasswordInputProps>((p
   const Icon = shown ? ConsoleIcon.hide : ConsoleIcon.show;
   return (
     <InputGroup>
-      <InputGroupInput ref={ref} type={shown ? "text" : "password"} {...props} />
+      {/* A revealed secret is text to the browser: it must not be spellchecked
+          (enhanced spellcheck sends it to a cloud service) or corrected. */}
+      <InputGroupInput ref={ref} type={shown ? "text" : "password"} spellCheck={false} autoCapitalize="off" autoCorrect="off" {...props} />
       <InputGroupAddon align="inline-end">
         <InputGroupButton iconOnly aria-label={t(shown ? "actions.hidePassword" : "actions.showPassword")} aria-pressed={shown}
           onClick={() => setShown(!shown)} disabled={props.disabled}>

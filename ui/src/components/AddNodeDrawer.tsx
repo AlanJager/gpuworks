@@ -22,6 +22,7 @@ import { Field, FieldDescription, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
 import { RadioGroup, RadioItem } from "./ui/radio-group";
 import { Switch } from "./ui/switch";
+import { fixedDarkSelectionStyle } from "../theme/terminalTheme";
 
 type SSHFormValues = SSHSecretValues & { target: string };
 const SSH_BLANK: SSHFormValues = { target: "", password: undefined, private_key_pem: undefined };
@@ -416,7 +417,7 @@ export default function AddNodeDrawer({
               )}
               {!pendingCommand && <div><Button variant="primary" loading={creatingPending} onClick={() => void createPendingNode()}>{t("add.createCommand")}</Button></div>}
               {pendingCommand && <span className="text-fg-muted">{t("add.tokenSaved")}</span>}
-              <pre className="m-0 overflow-x-auto rounded-lg bg-inverse-background p-4 text-fg-on-inverse">
+              <pre className="m-0 overflow-x-auto rounded-lg bg-inverse-background p-4 text-fg-on-inverse" style={fixedDarkSelectionStyle}>
                 {cmd}
               </pre>
               <div>

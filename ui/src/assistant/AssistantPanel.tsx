@@ -6,6 +6,7 @@ import MarkdownContent from "../components/MarkdownContent";
 import { AnswerSummary, FindingCards, FitTable, ReasoningTail, StepList } from "../components/AIAssistantParts";
 import { Button as ZButton } from "@/components/ui/button";
 import { ConsoleIcon } from "../ui-kit/consoleIcons";
+import { onBrandSelectionStyle } from "../theme/terminalTheme";
 import { sameSubject, useAssistant, type AssistantSubject, type AssistantTask, type PageSubject, type Turn } from "./AssistantContext";
 import { IMAGE_TYPES, ImagePrepError, prepareImage } from "./images";
 import type { Thread } from "./threads";
@@ -283,7 +284,7 @@ function TurnView({ turn, first, last, onFollowUp }: { turn: Turn; first: boolea
           </div>
         ) : null}
         {turn.question ? (
-          <div style={{ alignSelf: "flex-end", marginLeft: "auto", maxWidth: "85%", background: "#1f5fd6", color: "#fff", padding: "6px 10px", borderRadius: "10px 10px 2px 10px", whiteSpace: "pre-wrap" }}>
+          <div style={{ ...onBrandSelectionStyle, alignSelf: "flex-end", marginLeft: "auto", maxWidth: "85%", background: "#1f5fd6", color: "#fff", padding: "6px 10px", borderRadius: "10px 10px 2px 10px", whiteSpace: "pre-wrap" }}>
             {turn.question}
           </div>
         ) : (
