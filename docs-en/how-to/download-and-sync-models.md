@@ -36,12 +36,12 @@ During file listing, transient network failures and HTTP 408, 429, 500, 502, 503
 
 When downloading individual files, failures are handled by type:
 
-- **Retry at the same address**: Retryable transport errors, such as connection refusal or reset, TLS handshake timeout, and EOF, and source rate limiting (429, 503) are retried at the original address first. When rate limited, the node waits for the reset time in the response's `Retry-After` or `RateLimit` header (a `RateLimit` reset gets one second more, so the retry does not arrive just before it; at least the backoff interval, at most 5 minutes and 1 second, one rate-limit window plus that second), and progress shows "rate limited by the source" meanwhile; these waits count toward the attempts below, so in the worst case one file can wait about 75 minutes at the last address. If more candidates remain, each file gets at most 6 attempts at that address; the final address gets at most 16 attempts. Both counts include the first attempt. Only after attempts are exhausted does the address enter cooldown and the download switch; if no next candidate exists, the download ends.
+- **Retry at the same address**: Retryable transport errors, such as connection refusal or reset, TLS handshake timeout, and EOF, and source rate limiting (429, 503) are retried at the original address first. When rate limited, the node waits for the reset time in the response's `Retry-After` or `RateLimit` header (a `RateLimit` reset gets one second more, so the retry does not arrive just before it; at least the backoff interval, at most 5 minutes and 1 second, one rate-limit window plus that second), and progress marks the wait as the source's meanwhile; these waits count toward the attempts below, so in the worst case one file can wait about 75 minutes at the last address. If more candidates remain, each file gets at most 6 attempts at that address; the final address gets at most 16 attempts. Both counts include the first attempt. Only after attempts are exhausted does the address enter cooldown and the download switch; if no next candidate exists, the download ends.
 - **Switch immediately**: Nonretryable source errors, such as other HTTP status errors (including 404 and 401/403) or TLS certificate verification failures, are not retried at the original address. That address immediately enters a 30-minute cooldown, and the download switches to the next candidate.
 - **Repeated stalls**: If no response headers or new data arrive for 5 consecutive minutes, the request is cut off and the download attempts to resume. If this happens twice consecutively at the same address and more candidates remain, the address enters cooldown and the download switches. At the final address, no further switch occurs, and the limit of 16 total attempts still applies.
 - **Resume after switching addresses**: If the revision is pinned to a commit, downloads can resume after switching addresses; branch-based revisions restart from the beginning when the address changes. If the source does not support Range, resumed downloads also restart from the beginning.
 
-Progress shows the current download site and includes the reason when switching addresses.
+Progress shows the current download site and includes the reason when switching addresses. While a download waits to retry the same address, progress shows, in place of the rate, which attempt comes next of how many, how many seconds until it, and the last failure (or that the source is rate limiting); it shows the rate again once new data arrives. Until all files are in place and verified, progress shows at most 99.9%.
 
 For the full rules, see [How Nodes Try Candidates in Order](configure-pull-settings.md#节点怎样依次尝试).
 
@@ -102,7 +102,7 @@ Failed peer sync operations can be retried, and ongoing sync operations can be c
 `DELETE /api/v1/models/{id}/nodes/{uuid}`; a model used by an active deployment returns 409.
 
 <!-- translation-source-sha256: be802f17d54419589d946b41d34d6f6efa28dbd46629ab0618951e517f53ab15 # Download, Cache, and Sync Models Between Nodes -->
-<!-- translation-source-sha256: 873a02a8dbdaf15ad936a84b78289f100a1512b0d7234502f5706e1349680e1d ## Register and Download a Model -->
+<!-- translation-source-sha256: f6500a50657d341031eabb29c44591c46418c53ecbecd2ac40409edfefff5787 ## Register and Download a Model -->
 <!-- translation-source-sha256: 397b32440860c469f5888dcb6011a0b1c69b027939806a0c4b774ca8ade916ab ## Register an Existing Directory on a Node -->
 <!-- translation-source-sha256: 28b1888ec62c94266959f5c23d9e648b5668be41b23905e7a30f134f55ad20af ## How Deployments Obtain Models and Images -->
 <!-- translation-source-sha256: 660859b5dcc2384df47e115e52fb5c8d9dafd666fd7506738302da05c7603fe3 ## Peer Sync -->

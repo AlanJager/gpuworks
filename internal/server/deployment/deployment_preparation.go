@@ -16,6 +16,8 @@ import (
 // for an update and offers no retry.
 type ModelPreparation interface {
 	ModelCopyObservation(file *store.ModelFile) (proto.ModelFileStatus, bool)
+	// ModelFetchRetry is the retry a download is waiting on (prepobs.Retries).
+	ModelFetchRetry(file *store.ModelFile) (proto.ModelFetchRetry, bool)
 	CachePhase(ref store.FileRef) string
 	PreparationNodes(dep *store.Deployment) []uint
 	// PreparationGeneration counts the changes of what PreparationNodes
@@ -37,6 +39,18 @@ func (r PreparationReads) ModelCopyObservation(file *store.ModelFile) (proto.Mod
 		return proto.ModelFileStatus{}, false
 	}
 	return r.prep.ModelCopyObservation(file)
+}
+
+// FetchRetry is the retry a download is waiting on, as the API shows it.
+func (r PreparationReads) FetchRetry(file *store.ModelFile) *dto.ModelFetchRetry {
+	if r.prep == nil {
+		return nil
+	}
+	retry, ok := r.prep.ModelFetchRetry(file)
+	if !ok {
+		return nil
+	}
+	return &dto.ModelFetchRetry{Attempt: retry.Attempt, Attempts: retry.Attempts, WaitSeconds: retry.WaitSeconds, Throttled: retry.Throttled, Cause: retry.Cause}
 }
 
 func (r PreparationReads) CachePhase(ref store.FileRef) string {
@@ -133,6 +147,9 @@ func modelPreparationPresence(rows Rows, node *store.Node, modelID uint, rules s
 		observation = &observed
 	}
 	view := planning.PrepareModelView(node, source, observation, rows.CachePhase(store.FileRef{ModelID: modelID, NodeID: node.ID, StorageID: storage.ID}))
+	if exists {
+		presence.Retry = rows.FetchRetry(file)
+	}
 	presence.Preparation = &dto.ModelPreparation{Phase: view.Phase, Reason: view.Reason, TotalKnown: view.TotalKnown, IdleSeconds: view.IdleSeconds, ETASeconds: view.ETASeconds, Retryable: view.Retryable}
 	if view.Observed {
 		presence.Downloaded, presence.SizeBytes, presence.TransferredBytes = observation.BytesDone, observation.BytesTotal, observation.TransferBytesDone

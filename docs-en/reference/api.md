@@ -542,7 +542,7 @@ Automatic downloads, copies, and deployment acquisition keep different models in
 
 ### List Filtering and Presence Summary
 
-Local-node and shared-storage rows in model details may include `transfer_error_code`. Final file-listing outcomes are `MODEL_DOWNLOAD_NETWORK_EXHAUSTED` (temporary network or upstream retries exhausted), `MODEL_DOWNLOAD_SOURCE_NOT_FOUND` (repository or revision missing), `MODEL_DOWNLOAD_SOURCE_ACCESS_DENIED` (401/403), `MODEL_DOWNLOAD_SOURCE_THROTTLED` (persistent rate limiting), and `MODEL_DOWNLOAD_SOURCE_REJECTED` (another definite source rejection). `message` retains the original platform and address error details; the page displays both category and detail. Older agents, unknown errors and mixed failure categories across sources may omit the field; omission does not mean success. Restarting a download clears its old download error code and assigns a new transfer ID. Late reports from the old task cannot overwrite the new one.
+Local-node and shared-storage rows in model details may include `transfer_error_code`. Final file-listing outcomes are `MODEL_DOWNLOAD_NETWORK_EXHAUSTED` (temporary network or upstream retries exhausted), `MODEL_DOWNLOAD_SOURCE_NOT_FOUND` (repository or revision missing), `MODEL_DOWNLOAD_SOURCE_ACCESS_DENIED` (401/403), `MODEL_DOWNLOAD_SOURCE_THROTTLED` (persistent rate limiting), and `MODEL_DOWNLOAD_SOURCE_REJECTED` (another definite source rejection). `message` retains the original platform and address error details; the page displays both category and detail. `retry` appears while a download waits to retry the same address, as `{attempt, attempts, wait_seconds, throttled, cause}`: the next attempt is number `attempt` of `attempts`, `wait_seconds` from the report; `throttled` means the source asked for the wait (429/503), otherwise `cause` is the innermost text of the last failure (at most 160 bytes, shown as evidence only). It comes from the agent's live progress and is kept in memory only: it disappears once bytes arrive or the address changes, and it is never stored. An older agent sends none, and the field is then omitted. Older agents, unknown errors and mixed failure categories across sources may omit the field; omission does not mean success. Restarting a download clears its old download error code and assigns a new transfer ID. Late reports from the old task cannot overwrite the new one.
 
 `GET /api/v1/models` without pagination parameters returns all models with presence details for each node and storage.
 With `page` or `page_size`, it returns `{items, page, page_size, total, summary}`:
@@ -903,7 +903,7 @@ The following illustrates the key fields of a regular deployment, omitting other
 | `health` | Object | Health check status and latest results; see [Health Checks](#健康检查) |
 | `instances` (optional) | Array of objects | Instances in the deployment; `uuid` identifies an instance, `state` indicates its state, and `node_uuid` and `gpu_indexes` indicate where it runs |
 | `runtime_nodes` (optional) | Array of objects | The nodes the instances are on now, one entry per node: `{node_uuid, node_name, instances}`, with the meaning and value the same field has on a list row. `node_uuid`, `node_name` and `node_names` are the placement target, which can differ from it |
-| `model_progress` (optional) | Array of objects | Preparation status of model files; `state` is the file state, `progress` is progress from 0–1, and `message` provides related information |
+| `model_progress` (optional) | Array of objects | Preparation status of model files; `state` is the file state, `progress` is progress from 0–1, and `message` provides related information; `retry` appears while a download waits to retry the same address, shaped as in [List Filtering and Presence Summary](#list-filtering-and-presence-summary) |
 | `quick_params`, `extra_args` (optional) | Object, string | Saved launch configuration and extra arguments; see [Deployment Launch Parameter Sources](deployment-launch-sources.md) |
 | `pd` (optional) | Object | PD deployment mode and replica counts and states for each role; see [PD Disaggregated Deployment](#pd-分离部署placementpd) |
 | `node_replacement` | Object | How long a lost node is waited for before its replicas move, `{after_sec}`; default 600, 0 means never |
@@ -2489,7 +2489,7 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: ef212efdc5066e17d7f34f501c04bdf5fff146663300d792622af350973fd155 ## Kubernetes (Cluster Connection) -->
 <!-- translation-source-sha256: 8ab144ebfbe02539abc2194f2d702b2abac1a76b8a0a10c4a97990a187475ac2 ## Slurm (Cluster Connection) -->
 <!-- translation-source-sha256: 2dd4e617d003c4e3845edf5709bedf120c6277dc4b81abc90fd6b89dcdd76ff7 ## Models -->
-<!-- translation-source-sha256: 2818637fc41db824cf8851d4bd0bc2cb1e90e978da76ce1c2cb5098d8aeece25 ### List Filtering and Presence Summary -->
+<!-- translation-source-sha256: ab28007bbf4439f05dfaebb1a257aacc117d93ef9772d3c38d99e5e912aaf634 ### List Filtering and Presence Summary -->
 <!-- translation-source-sha256: 536c79e56bf4d787dec94eef14773f9e978accf7d42427e195db79e5fa0ac045 ### Register an Existing Node Path -->
 <!-- translation-source-sha256: d6e0454e5b9786f76756fd05f5a8910b36c3a416df848d787506a6b893575848 ## Images / Storages (Image Catalog and Storage Policies) -->
 <!-- translation-source-sha256: 5a937a0329b1aabd619bac36afbe45ff963584a7031b8588b3c6d1c9ebabdbe0 ### Register an image already on a node -->
@@ -2501,7 +2501,7 @@ An unknown `target_vendor` on `/api/v1/engines` returns 400. If custom-command f
 <!-- translation-source-sha256: f3c254df3774c7c48ee5ebf7cc4861e55fd88aed33f8cc457ecb4190f5c41377 ## Deployments / Instances (Deployments and Instances) -->
 <!-- translation-source-sha256: 853ce95b08ddeb141bb84fdd808c7961cb81e7ed7b2e3b66ca8f26a3729eb149 ### Save as an Inference Template -->
 <!-- translation-source-sha256: 3338bc9ecd8619b8b4794888aa8b6581e080e20b0aa4ed8e06bfddf20796d893 ### Deployment List Filters and Response Fields -->
-<!-- translation-source-sha256: d98ba052a1e0fbbb930db8d81eeba6a64d25345932a8f6be879383c529b268c9 ### Query Deployment Details -->
+<!-- translation-source-sha256: 7aff9daa4e6a9b4ecaf7fa4363118286281e51121801037f43f38cc5782235b6 ### Query Deployment Details -->
 <!-- translation-source-sha256: e3ce46f0914b9b3c2d279244d804da397e2cb12f7ac1d7b06ef98ff210c47f52 ### Deployment Sleep State (`state`, `asleep_replicas`, `sleep_level`) -->
 <!-- translation-source-sha256: df36dcd2a36134ffcf559784263272ca22672ba639f387be636a64fd8aaff8bf ### Query the Candidate Pool -->
 <!-- translation-source-sha256: 1319b5d1601a10582fc3abacd3801c3c7bbb51d610511c40bbef7778e24a8d98 ### Edit a Deployment -->

@@ -410,5 +410,10 @@
     "wayServerPicks": "The server picks the route: a local copy on a node that mounts the storage, or a transfer through a node that does.",
     "started": "Copy started",
     "failed": "Copy failed: {{detail}}"
+  },
+  "retry": {
+    "next": "retrying in {{seconds}}s (attempt {{attempt}} of {{attempts}})",
+    "afterFailure": "retrying in {{seconds}}s (attempt {{attempt}} of {{attempts}}) after: {{cause}}",
+    "throttled": "rate limited by the source; retrying in {{seconds}}s (attempt {{attempt}} of {{attempts}})"
   }
 }

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"gpuworks.ai/gpuworks/internal/agent/download"
 	"gpuworks.ai/gpuworks/internal/agent/modelfetch"
@@ -163,30 +165,31 @@ func downloadingFrom(host string) string {
 }
 
 // fetchMessage keeps a repository download's progress status: the counters
-// of its last progress report, and a message saying where the files come
-// from (downloadingFrom, switchedMessage) and, while the source has asked the
-// download to wait, when it asks again. Every status it sends carries the
-// counters reached, so announcing a switch or a wait never shows the download
-// back at zero.
+// of its last progress report, a message saying where the files come from
+// (downloadingFrom, switchedMessage) and, while the download waits to try
+// the address it is at again, that retry (proto.ModelFetchRetry, GWKS-526) -
+// including a wait the source asked for, which the retry marks as such.
+// Every status it sends carries the counters reached, so announcing a switch
+// or a retry never shows the download back at zero.
 type fetchMessage struct {
 	send func(proto.ModelFileStatus)
 
-	mu       sync.Mutex
-	last     proto.ModelFileStatus
-	address  string
-	wait     string // " (rate limited ...)" while a throttled wait lasts
-	waitFrom int64  // BytesDone when the wait began
+	mu      sync.Mutex
+	last    proto.ModelFileStatus
+	address string
+	retry   *proto.ModelFetchRetry
+	retryAt int64 // BytesDone when the retry was announced
 }
 
 func newFetchMessage(base proto.ModelFileStatus, send func(proto.ModelFileStatus)) *fetchMessage {
 	return &fetchMessage{send: send, last: base}
 }
 
-// set replaces the address part and announces it; a wait belonged to the
+// set replaces the address part and announces it; a retry belonged to the
 // address before.
 func (m *fetchMessage) set(message string) {
 	m.mu.Lock()
-	m.address, m.wait = message, ""
+	m.address, m.retry = message, nil
 	st := m.quietLocked()
 	m.mu.Unlock()
 	m.send(st)
@@ -199,28 +202,36 @@ func (m *fetchMessage) at(done, total int64, revision string) {
 	m.mu.Unlock()
 }
 
-// retrying notes a retry after err: when err is the source asking the
-// download to wait (429/503), the status says so until bytes flow again.
-func (m *fetchMessage) retrying(err error, wait time.Duration) {
-	if _, throttled := modelfetch.ThrottleWait(err); !throttled {
-		return
+// retrying announces the retry the fetch is about to make of the address it
+// is at: attempt of attempts, after wait, because of err. Every retry is one,
+// not only a wait the source asked for: a file that keeps failing near its
+// end otherwise reads as a download that has stopped. A wait the source asked
+// for (429/503) is marked as such on the retry rather than written into the
+// message, which says only where the bytes come from. It ends when bytes
+// beyond those reached arrive.
+func (m *fetchMessage) retrying(err error, attempt, attempts int, wait time.Duration) {
+	_, throttled := modelfetch.ThrottleWait(err)
+	retry := &proto.ModelFetchRetry{Attempt: attempt + 1, Attempts: attempts, WaitSeconds: int64(wait.Round(time.Second) / time.Second), Throttled: throttled}
+	if !throttled {
+		retry.Cause = retryCause(err)
 	}
 	m.mu.Lock()
-	m.wait = " (rate limited by the source; retrying in " + wait.Round(time.Second).String() + ")"
-	m.waitFrom = m.last.BytesDone
+	m.retry = retry
+	m.retryAt = m.last.BytesDone
 	st := m.quietLocked()
 	m.mu.Unlock()
 	m.send(st)
 }
 
 // progress sends a progress report with the current message; bytes beyond
-// those a throttled wait began at end the wait's note.
+// those a retry began at end it.
 func (m *fetchMessage) progress(st proto.ModelFileStatus) {
 	m.mu.Lock()
-	if m.wait != "" && st.BytesDone > m.waitFrom {
-		m.wait = ""
+	if m.retry != nil && st.BytesDone > m.retryAt {
+		m.retry = nil
 	}
-	st.Message = m.address + m.wait
+	st.Message = m.address
+	st.Retry = m.retry
 	m.last = st
 	m.mu.Unlock()
 	m.send(st)
@@ -230,8 +241,33 @@ func (m *fetchMessage) progress(st proto.ModelFileStatus) {
 // announcement is made while nothing is flowing.
 func (m *fetchMessage) quietLocked() proto.ModelFileStatus {
 	st := m.last
-	st.Message, st.RateBytesPerS = m.address+m.wait, 0
+	st.Message, st.RateBytesPerS, st.Retry = m.address, 0, m.retry
 	return st
+}
+
+// retryCauseLimit bounds the failure a retry carries: it is evidence shown
+// beside the attempt, and one line of it says what went wrong.
+const retryCauseLimit = 160
+
+// retryCause is the innermost failure, bounded: the transport's own words
+// ("read: connection reset by peer"), without the address every wrapping
+// layer adds. It is evidence shown as it is, never read back.
+func retryCause(err error) string {
+	if err == nil {
+		return ""
+	}
+	for next := errors.Unwrap(err); next != nil; next = errors.Unwrap(err) {
+		err = next
+	}
+	text := err.Error()
+	if len(text) <= retryCauseLimit {
+		return text
+	}
+	text = text[:retryCauseLimit]
+	for !utf8.ValidString(text) {
+		text = text[:len(text)-1]
+	}
+	return text + "…"
 }
 
 // switchedMessage is downloadingFrom after the download left an address,

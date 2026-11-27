@@ -45,6 +45,8 @@ type Hub struct {
 	enginePorts func() proto.PortRange
 	// copies are the agents' latest copy progress frames; sessions own them.
 	copies *prepobs.Copies
+	// retries are the downloads waiting to ask their address again.
+	retries *prepobs.Retries
 
 	// Metrics/log ingest sinks (set by the app; decoupled from the
 	// tsdb/logstore packages).
@@ -151,6 +153,7 @@ func New(st *store.Store, log *slog.Logger) *Hub {
 		touchQ:        newTouchQueue(log, st),
 		pushLimiter:   make(chan struct{}, initialPushConcurrency),
 		copies:        prepobs.NewCopies(),
+		retries:       prepobs.NewRetries(),
 	}
 	h.statusQ = newStatusQueue(h)
 	h.storageQ = newStorageQueue(h)
@@ -520,6 +523,7 @@ func (h *Hub) register(s *Session) {
 		old.fenceReports()
 	}
 	h.copies.ForgetNode(s.nodeID)
+	h.retries.ForgetNode(s.nodeID)
 	_ = h.store.SetNodeState(s.NodeUUID, store.NodeStateOnline)
 	_ = h.store.ClearNodeRecovery(s.NodeUUID)
 	h.trackSessionWork(func() { h.resumeDirectImageTransfers(s.NodeUUID) })
@@ -551,6 +555,7 @@ func (h *Hub) deregister(s *Session) {
 		// before its copy observations are dropped.
 		s.fenceReports()
 		h.copies.ForgetNode(s.nodeID)
+		h.retries.ForgetNode(s.nodeID)
 		_ = h.store.SetNodeState(s.NodeUUID, store.NodeStateOffline)
 		if h.onNodeGone != nil {
 			h.onNodeGone(s.NodeUUID)

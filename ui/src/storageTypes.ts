@@ -257,6 +257,19 @@ export function isModelFileReady(state: string): boolean {
   return state === "present" || state === "registered";
 }
 
+/**
+ * A download's next attempt at the address it is at: attempt of attempts,
+ * wait_seconds after it was reported. throttled means the address asked for
+ * the wait; otherwise cause is the failure's own words, shown verbatim.
+ */
+export interface ModelFetchRetry {
+  attempt: number;
+  attempts: number;
+  wait_seconds: number;
+  throttled?: boolean;
+  cause?: string;
+}
+
 /** A model's single copy in a shared storage (dto.ModelStoragePresence). */
 export interface ModelStoragePresence {
   storage_id: number;
@@ -275,6 +288,8 @@ export interface ModelStoragePresence {
   ready_nodes: number;
   cached_nodes: number;
   writer_node?: string;
+  /** Set while the download waits to ask its address again. */
+  retry?: ModelFetchRetry;
   /** Whether this gpuworks may change the storage now: a read-only (disabled) one keeps its files. */
   writable: boolean;
 }

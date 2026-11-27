@@ -98,7 +98,7 @@ func TestListingCancellationStopsBackoff(t *testing.T) {
 		attempts++
 		return nil, context.DeadlineExceeded
 	}
-	f.cfg.OnRetry = func(_ string, _ int, _ time.Duration, _ error) { cancel() }
+	f.cfg.OnRetry = func(_ string, _, _ int, _ time.Duration, _ error) { cancel() }
 	_, err := f.List(ctx, commit)
 	if !errors.Is(err, context.Canceled) || attempts != 1 {
 		t.Fatalf("cancellation: attempts=%d error=%v", attempts, err)
@@ -165,7 +165,7 @@ func TestListingServiceUnavailablePreservesThrottleWaitAndBounds(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			f := newFetcher(t, nil, &run{}, h.URL)
-			f.cfg.OnRetry = func(_ string, _ int, _ time.Duration, _ error) {
+			f.cfg.OnRetry = func(_ string, _, _ int, _ time.Duration, _ error) {
 				if tc.cancel {
 					cancel()
 				}

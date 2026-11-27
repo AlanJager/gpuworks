@@ -15,7 +15,7 @@ import { formatBytes } from "../../format";
 import { storageTypeInfo, type ModelStoragePresence } from "../../storageTypes";
 import { ModelNodeFileDelete } from "./ModelNodeFileDelete";
 import { ModelStorageFileDelete } from "./ModelStorageFileDelete";
-import { acquisitionLabel, modelPresenceBytes, presenceVisual, rateLabel, remainingText, transferEtaSeconds, transferOrigin } from "./modelPresenceDisplay";
+import { acquisitionLabel, modelPresenceBytes, presenceVisual, rateLabel, remainingText, retryText, transferEtaSeconds, transferOrigin, transferPercent } from "./modelPresenceDisplay";
 
 type ModelFile = ModelNodePresence | ModelStoragePresence;
 
@@ -51,9 +51,12 @@ function TransferProgress({ row }: { row: ModelFile }) {
   if (!("node_uuid" in row) && !moving && !complete) return <>—</>;
   const rate = moving ? rateLabel(row.rate_bps) : "";
   const eta = transferEtaSeconds(row);
-  const details = [modelPresenceBytes(row), rate, eta > 0 ? remainingText(t, eta) : ""].filter(Boolean).join(" · ");
+  // While the download waits to try its address again nothing moves: the
+  // retry takes the place of the rate and the remaining time.
+  const retrying = moving && row.retry ? retryText(t, row.retry) : "";
+  const details = [modelPresenceBytes(row), retrying || rate, !retrying && eta > 0 ? remainingText(t, eta) : ""].filter(Boolean).join(" · ");
   return <Space direction="vertical" size={0} className="model-file-progress">
-    <Progress percent={complete ? 100 : Math.round((row.progress || 0) * 100)} size="small" status={moving ? "normal" : undefined}
+    <Progress percent={transferPercent(row.progress, complete)} size="small" status={moving ? "normal" : undefined}
       format={complete ? () => <Space size={4}><CheckCircleFilled />{t("files.completed")}</Space> : undefined} />
     <Typography.Text type="secondary" title={details}>{details}</Typography.Text>
   </Space>;

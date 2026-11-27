@@ -1,5 +1,6 @@
 import type { TFunction } from "i18next";
 import type { ModelNodePresence } from "../../api";
+import type { ModelFetchRetry } from "../../storageTypes";
 import { formatBytes } from "../../format";
 
 /** Tag colour and models-namespace label of a model file's state. */
@@ -41,6 +42,30 @@ export function transferOrigin(
   const match = /^downloading from (\S+)(?: \(switched: (.*)\))?$/.exec((row.message ?? "").trim());
   if (!match) return null;
   return match[2] ? { host: match[1], switched: match[2] } : { host: match[1] };
+}
+
+/**
+ * The percentage a transfer's bar shows: whole until the server says the
+ * files are there, then 100. The last bytes before that are a check (and,
+ * when they fail, retries), and 100% while they run reads as a hang
+ * (GWKS-526). One decimal, so a large model's last percent still moves.
+ */
+export function transferPercent(fraction: number, ready: boolean): number {
+  if (ready) return 100;
+  return Math.min(99.9, Math.max(0, Math.floor((fraction || 0) * 1000) / 10));
+}
+
+/**
+ * What a download waiting to try its address again says: which attempt comes
+ * next of how many and when, then the failure in its own words, or that the
+ * source asked for the wait.
+ */
+export function retryText(t: TFunction, retry: ModelFetchRetry): string {
+  const values = { attempt: retry.attempt, attempts: retry.attempts, seconds: retry.wait_seconds };
+  if (retry.throttled) return t("retry.throttled", { ns: "models", ...values });
+  return retry.cause
+    ? t("retry.afterFailure", { ns: "models", ...values, cause: retry.cause })
+    : t("retry.next", { ns: "models", ...values });
 }
 
 export function rateLabel(bytes: number): string {

@@ -66,3 +66,43 @@ func TestModelPreparationRequiresCurrentSession(t *testing.T) {
 		t.Fatal("old session recreated disconnected observation")
 	}
 }
+
+// A download's retry is recorded from the current session only, and a
+// session that goes away takes its retries with it (GWKS-526).
+func TestADownloadsRetryFollowsTheCurrentSession(t *testing.T) {
+	h := newTestHub(t)
+	uuid, _ := newTestNode(t, h.store)
+	node, err := h.store.NodeByUUID(uuid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	model, err := h.store.UpsertModel(&store.Model{Source: "huggingface", SourceID: "org/retry"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	file, err := h.store.UpsertModelFile(&store.ModelFile{ModelID: model.ID, NodeID: node.ID, State: proto.MFDownloading, Acquisition: proto.ModelAcquireDownload, TransferID: "dl"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	old, current := &Session{hub: h, NodeUUID: uuid, nodeID: node.ID}, &Session{hub: h, NodeUUID: uuid, nodeID: node.ID}
+	h.sessions[uuid] = current
+	report := proto.ModelFileStatus{Key: store.ModelFileKey(file.ID), TransferID: "dl", State: proto.MFDownloading, Acquisition: proto.ModelAcquireDownload, BytesTotal: 100, BytesDone: 99,
+		Retry: &proto.ModelFetchRetry{Attempt: 2, Attempts: 16, WaitSeconds: 1, Cause: "read: connection reset by peer"}}
+	if err := h.applyModelFileStatus(old, report); err != nil {
+		t.Fatal(err)
+	}
+	actual, _ := h.store.ModelFileByID(file.ID)
+	if _, ok := h.ModelFetchRetry(actual); ok {
+		t.Fatal("a replaced session recorded a retry")
+	}
+	if err := h.applyModelFileStatus(current, report); err != nil {
+		t.Fatal(err)
+	}
+	if retry, ok := h.ModelFetchRetry(actual); !ok || retry.Attempt != 2 || retry.Cause == "" {
+		t.Fatalf("retry=%+v ok=%v", retry, ok)
+	}
+	h.deregister(current)
+	if _, ok := h.ModelFetchRetry(actual); ok {
+		t.Fatal("a retry outlived its node's session")
+	}
+}

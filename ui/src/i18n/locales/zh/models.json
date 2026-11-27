@@ -410,5 +410,10 @@
     "wayServerPicks": "由 server 选传法：在挂载了该存储的节点上本机拷贝，或经由挂载了它的节点中转。",
     "started": "已开始复制",
     "failed": "复制失败：{{detail}}"
+  },
+  "retry": {
+    "next": "{{seconds}} 秒后重试（第 {{attempt}}/{{attempts}} 次）",
+    "afterFailure": "{{seconds}} 秒后重试（第 {{attempt}}/{{attempts}} 次），上次失败：{{cause}}",
+    "throttled": "来源限流，{{seconds}} 秒后重试（第 {{attempt}}/{{attempts}} 次）"
   }
 }

@@ -11,7 +11,7 @@ import { api, type Deployment, type ModelNodePresence } from "../api";
 import DeploymentImageProgress from "./DeploymentImageProgress";
 import { formatBytes } from "../format";
 import { isModelFileReady } from "../storageTypes";
-import { rateLabel, remainingText, transferEtaSeconds, transferOrigin } from "./models/modelPresenceDisplay";
+import { rateLabel, remainingText, retryText, transferEtaSeconds, transferOrigin, transferPercent } from "./models/modelPresenceDisplay";
 import { HelpTip } from "../ui-kit/HelpTip";
 
 // All classification, timing and what may be retried comes from the server's
@@ -98,7 +98,7 @@ export function DeploymentPreparation({ dep, rows, onChanged }: { dep?: Deployme
       const downloading = !ready && isDownloading(item);
       const compact = !ready && (phase === "syncing" || phase === "copying");
       const measurable = (view?.total_known ?? item.size_bytes > 0) && item.size_bytes > 0;
-      const percent = Math.min(100, Math.max(0, Math.round(item.downloaded / item.size_bytes * 100)));
+      const percent = transferPercent(item.downloaded / item.size_bytes, ready);
       const transmitted = item.transferred_bytes || item.downloaded || 0;
       const sharedDownload = downloading && ["nfs", "nfs_cache", "shared_dir"].includes(item.storage_type ?? "");
       const origin = transferOrigin(item);
@@ -121,15 +121,16 @@ export function DeploymentPreparation({ dep, rows, onChanged }: { dep?: Deployme
         {downloading && <div><Typography.Text type="secondary">
           {origin ? `${"node" in origin ? t("detail.modelFromNode", { node: origin.node }) : t("detail.modelFromHost", { host: origin.host })} · ` : ""}
           {measurable ? `${formatBytes(item.downloaded)} / ${formatBytes(item.size_bytes)}` : `${formatBytes(item.downloaded)} · ${t("preparation.unknownTotal")}`}
-          {item.rate_bps > 0 ? ` · ${rateLabel(item.rate_bps)}` : ""}
-          {measurable && eta > 0 ? ` · ${remainingText(t, eta)}` : ""}
+          {item.retry ? ` · ${retryText(t, item.retry)}` : item.rate_bps > 0 ? ` · ${rateLabel(item.rate_bps)}` : ""}
+          {!item.retry && measurable && eta > 0 ? ` · ${remainingText(t, eta)}` : ""}
         </Typography.Text></div>}
         {!ready && view?.retryable && <Space wrap>
           <Button aria-label={t("preparation.retry")} size="small" loading={busy === `${item.node_uuid}:${item.model_id}:${item.storage_id}`} disabled={busy !== null} onClick={() => void retry(item)}>{t("preparation.retry")}</Button>
           <RetryHint />
         </Space>}
         {!ready && failed && !view?.retryable && <Typography.Text type="secondary">{t("preparation.retryUnavailable")}</Typography.Text>}
-        {!ready && item.message && ((!compact && !origin) || failed || diskFull) && <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{item.message}</Typography.Paragraph>}
+        {/* A retry already says where the download is, once and in the user's language. */}
+        {!ready && item.message && !item.retry && ((!compact && !origin) || failed || diskFull) && <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>{item.message}</Typography.Paragraph>}
         {!ready && view?.reason === "MODEL_COPY_STALLED" && <Typography.Paragraph className="flex items-center gap-1">{t("preparation.idle", { seconds: view.idle_seconds })} · {t("preparation.waitForIO")}<HelpTip content={t("preparation.waitForIOHelp")} /></Typography.Paragraph>}
       </div>;
     })}

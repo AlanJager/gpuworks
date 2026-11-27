@@ -18,6 +18,7 @@ type Rows interface {
 	PreparationNodes(*store.Deployment) []uint
 	ModelSource(uint, *store.Node, store.SourceRules) store.ModelSource
 	ModelCopyObservation(*store.ModelFile) (proto.ModelFileStatus, bool)
+	FetchRetry(*store.ModelFile) *dto.ModelFetchRetry
 	Instances(deploymentID uint) []store.Instance
 	Deployment(id uint) *store.Deployment
 	Node(id uint) *store.Node

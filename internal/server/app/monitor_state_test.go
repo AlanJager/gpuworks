@@ -134,6 +134,10 @@ func TestMonitorServiceStatePreservesAnExpiredSchedulingRefusal(t *testing.T) {
 // never invoke the preparation service's mutation method.
 type monitorPreparationNodes []uint
 
+func (monitorPreparationNodes) ModelFetchRetry(*store.ModelFile) (proto.ModelFetchRetry, bool) {
+	return proto.ModelFetchRetry{}, false
+}
+
 func (monitorPreparationNodes) ModelCopyObservation(*store.ModelFile) (proto.ModelFileStatus, bool) {
 	return proto.ModelFileStatus{}, false
 }

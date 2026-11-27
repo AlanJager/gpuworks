@@ -241,7 +241,7 @@ func TestARateLimitedListingIsWaitedOutAtTheSameAddress(t *testing.T) {
 	r, dir := &run{}, t.TempDir()
 	f := newFetcher(t, &cooler{}, r, h.URL)
 	var retried []string
-	f.cfg.OnRetry = func(file string, _ int, _ time.Duration, _ error) { retried = append(retried, file) }
+	f.cfg.OnRetry = func(file string, _, _ int, _ time.Duration, _ error) { retried = append(retried, file) }
 	if err := fetchAll(t, f, commit, dir); err != nil {
 		t.Fatalf("a throttled listing ended the download: %v", err)
 	}

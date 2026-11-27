@@ -100,6 +100,22 @@ type ModelFileStatus struct {
 	TransferID        string            `json:"transfer_id,omitempty"`
 	TransferErrorCode string            `json:"transfer_error_code,omitempty"`
 	Acquisition       string            `json:"acquisition,omitempty"`
+	// Retry is set while a download waits to ask the address it is at again,
+	// and absent once bytes beyond those it was announced at arrive. It is a
+	// transient observation: the server keeps it in memory, never in the row.
+	Retry *ModelFetchRetry `json:"retry,omitempty"`
+}
+
+// ModelFetchRetry is a download's next attempt at the address it is at:
+// Attempt of Attempts, WaitSeconds from the report. Throttled says the
+// address asked for the wait (429/503); otherwise Cause is the failure's own
+// words (the innermost error, bounded), evidence rather than a message.
+type ModelFetchRetry struct {
+	Attempt     int    `json:"attempt"`
+	Attempts    int    `json:"attempts"`
+	WaitSeconds int64  `json:"wait_seconds"`
+	Throttled   bool   `json:"throttled,omitempty"`
+	Cause       string `json:"cause,omitempty"`
 }
 
 // ModelPreparation is a transient observation of a same-node copy. Attempt

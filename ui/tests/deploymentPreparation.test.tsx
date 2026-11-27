@@ -36,6 +36,18 @@ test("a download shows how long it still needs, and none while its total is unco
     assert.equal(screen.queryByText(/ left$/), null);
     assert.ok(screen.getByText(/14\.0 MiB\/s$/));
 });
+test("a download retrying its last bytes says which attempt comes next, and never reads 100% (GWKS-526)", () => {
+    const GiB = 1024 ** 3;
+    const download = { acquisition: "download", cache: false, size_bytes: 14 * GiB, downloaded: 14 * GiB - 1024, rate_bps: 0, message: "downloading from modelscope.cn" };
+    show([row({ ...download, preparation: { phase: "downloading", total_known: true, idle_seconds: 0 }, retry: { attempt: 9, attempts: 16, wait_seconds: 15, cause: "read: connection reset by peer" } })]);
+    assert.notEqual(screen.getByRole("progressbar").getAttribute("aria-valuenow"), "100");
+    assert.ok(screen.getByText("99.9%"));
+    assert.ok(screen.getByText(/ · retrying in 15s \(attempt 9 of 16\) after: read: connection reset by peer$/));
+    cleanup();
+    show([row({ ...download, rate_bps: 14 * 1024 ** 2, preparation: { phase: "downloading", total_known: true, idle_seconds: 0 } })]);
+    assert.equal(screen.queryByText(/retrying/), null, "no retry, no note: the rate and time come back");
+    assert.ok(screen.getByText(/14\.0 MiB\/s · under 1 min left$/));
+});
 test("old agent, unknown total and checking have no invented percentage", () => {
     show([row({ rate_bps: 0, preparation: { phase: "checking", total_known: false, idle_seconds: 0 } })]);
     assert.ok(screen.getByText(labels.phase.checking));

@@ -294,10 +294,10 @@ func (n *NodeRuntime) downloadRepo(ctx context.Context, mf proto.ModelFileTask, 
 			n.log.Warn("model download moved to the next source", "key", mf.Key, "from", s.From, "to", s.To, "reason", s.Reason)
 			say(switchedMessage(s))
 		},
-		OnRetry: func(file string, attempt int, delay time.Duration, err error) {
+		OnRetry: func(file string, attempt, attempts int, delay time.Duration, err error) {
 			n.log.Warn("model file download interrupted; retrying",
-				"file", file, "attempt", attempt, "retry_in", delay.String(), "err", err)
-			from.retrying(err, delay)
+				"file", file, "attempt", attempt, "attempts", attempts, "retry_in", delay.String(), "err", err)
+			from.retrying(err, attempt, attempts, delay)
 		},
 	})
 	if err != nil {
