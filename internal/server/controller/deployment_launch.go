@@ -162,7 +162,9 @@ const refusalChangeFloor = 10 * time.Second
 // nodes, those its requirements exclude, those cordoned, those offline - and
 // the stage a placed replica waits at. An edit to the requirements or a node
 // going away is news. How busy the candidates are is not: it moves with every
-// other deployment.
+// other deployment. A replica flipping between two stages is news each time,
+// so it writes at most one row per refusalChangeFloor; that is the bound, and
+// a stage a whole window stale would be worse.
 var refusalIdentity = []string{"first", "nodes", "unmet", "cordoned", "offline", "stage"}
 
 // sameRefusal reports whether a recorded schedule event is the refusal about

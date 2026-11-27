@@ -952,7 +952,7 @@ When a replica already has a node but does not start, the deployment's schedulin
 | `previous_generation_leaving` | the generation it replaces still holds the node's master port | wait for it to retire; if it does not, check that instance's events |
 | `pool_unreadable` | the candidate nodes could not be read | the platform retries shortly; if it persists, check the server log |
 
-These waits rewrite the scheduling event once per window; past the pending timeout the deployment is treated as unschedulable, and the reason says what to check.
+These waits rewrite the scheduling event once per window; past the pending timeout the deployment shows as stalled in scheduling, and the reason says what to check.
 
 ### Long Downloads: Check Source Switching and Resume Progress
 
@@ -1611,7 +1611,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 42fed8d49a7803ff38e5219e59e18fbd01e2d979874ce46b0f29cd76d6b78913 ## Model Downloads Stall, Fail, or Leave Incomplete Directories -->
 <!-- translation-source-sha256: 178536686b1efd8668c7e8d46049e9e86b9e70f96c29fb441228f7b2442ca5ff ### Check Completeness First -->
 <!-- translation-source-sha256: 013d23a93b7ad4aa7bca003a2fcbbfb97c6e17c6571ac8fa8df03ea0144fda27 ### Choose a Resolution Based on the Error -->
-<!-- translation-source-sha256: 40779d92ec00edb21751621d444c5e9844308260c2ac25b092c525e970f40933 ### A placed replica does not start -->
+<!-- translation-source-sha256: 94368dfd351ab7b7d77506dc1f74de9909e7769e9de5680d4c09e6fa4303814d ### A placed replica does not start -->
 <!-- translation-source-sha256: 5a7b086b91b907b2bfa866cb337a4c68fcc148c423d0ff3c9885d0f957d15aa1 ### Long Downloads: Check Source Switching and Resume Progress -->
 <!-- translation-source-sha256: 15199cdc0f07486d121b220a634cb7cbd7198b8935c85f1396a0eca8440eb136 ### Retry After the Fix and Confirm the Result -->
 <!-- translation-source-sha256: e0dfe8a8bfbb8a0f359c56d406e3618b4b7ea94111dbc7526470cc3e9f9a6848 ## Image Pull Failures -->

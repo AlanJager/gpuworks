@@ -954,7 +954,7 @@ message 为 `insufficient disk space at <path>: available=… required=…`。
 | `previous_generation_leaving` | 它替换的上一代实例还没离开节点的 master 端口 | 等上一代退完；长时间不退看该实例的事件 |
 | `pool_unreadable` | 读取候选节点失败 | 平台稍后重试；一直如此看服务端日志 |
 
-这些等待会按窗口重写调度事件；超过待定超时后部署按不可放置处理，可以按提示继续排查。
+这些等待会按窗口重写调度事件；超过待定超时后部署显示为调度停滞（stalled），可以按提示继续排查。
 
 ### 长时间没完成：看切源与续传进度
 
