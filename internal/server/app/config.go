@@ -208,6 +208,16 @@ func masterSecret(cfg Config, policies ...securefile.Policy) (string, error) {
 	return secret, nil
 }
 
+// sessionPolicy is the sign-in and session policy the API enforces: the
+// session deadlines, who may sign in with a password (auth.local_password),
+// the proxies trusted for the browser origin and the session cookie's name.
+func (cfg Config) sessionPolicy(proxies *auth.ProxyTrust) auth.SessionPolicy {
+	return auth.SessionPolicy{
+		IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime,
+		Proxies: proxies, Cookie: cfg.sessionCookie(), LocalPassword: cfg.AuthLocalPassword,
+	}
+}
+
 func normalizeRuntimeConfig(cfg Config) Config {
 	policy := (auth.SessionPolicy{IdleTimeout: cfg.SessionIdleTimeout, MaxLifetime: cfg.SessionMaxLifetime}).Normalized()
 	cfg.SessionIdleTimeout, cfg.SessionMaxLifetime = policy.IdleTimeout, policy.MaxLifetime

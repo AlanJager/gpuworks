@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/server/aihelper"
 	"gpuworks.ai/gpuworks/internal/server/api/dto"
@@ -26,7 +28,7 @@ func disabledAccountUser(t *testing.T, rig *tokenRig, username string) (store.Us
 	if err := rig.st.DB().Create(&user).Error; err != nil {
 		t.Fatal(err)
 	}
-	signer, err := auth.NewTokenSigner("platform-token-test-secret", 3600*1e9)
+	signer, err := auth.NewTokenSigner("platform-token-test-secret", time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,5 +383,52 @@ func TestAccountsWireJSON(t *testing.T) {
 	again, err := json.Marshal(round)
 	if err != nil || string(again) != strings.TrimSpace(rec.Body.String()) {
 		t.Fatalf("round trip:\n got: %s\nwant: %s", again, rec.Body)
+	}
+}
+
+// auth.local_password: local_admin keeps password sign-in for the local
+// administrators only. The policy is judged after the password, so a wrong
+// password tells nobody which policy is in force; the default lets everyone
+// in.
+func TestLocalPasswordPolicyLimitsPasswordSignIn(t *testing.T) {
+	signIn := func(t *testing.T, policy auth.SessionPolicy, username, password string) *httptest.ResponseRecorder {
+		t.Helper()
+		rig := newTokenRig(t)
+		t.Cleanup(func() { _ = rig.st.Close() })
+		disabledAccountUser(t, rig, "member")
+		signer, err := auth.NewTokenSigner("platform-token-test-secret", time.Hour)
+		if err != nil {
+			t.Fatal(err)
+		}
+		h := Router(Deps{AuthSigner: signer, Store: rig.st}, policy)
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login",
+			strings.NewReader(fmt.Sprintf(`{"username":%q,"password":%q}`, username, password)))
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	limited := auth.SessionPolicy{LocalPassword: auth.LocalPasswordLocalAdmin}
+	for _, tc := range []struct {
+		name               string
+		policy             auth.SessionPolicy
+		username, password string
+		status             int
+		code               string
+	}{
+		{"member, right password, local_admin", limited, "member", "gpuworks-test-password-2026", http.StatusForbidden, ErrorLocalPasswordDisabled},
+		{"member, wrong password, local_admin", limited, "member", "not-the-password-2026", http.StatusUnauthorized, ErrorInvalidCredentials},
+		{"local administrator, local_admin", limited, "admin", "gpuworks-test-password-2026", http.StatusOK, ""},
+		{"member, default policy", auth.SessionPolicy{}, "member", "gpuworks-test-password-2026", http.StatusOK, ""},
+		{"member, all", auth.SessionPolicy{LocalPassword: auth.LocalPasswordAll}, "member", "gpuworks-test-password-2026", http.StatusOK, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := signIn(t, tc.policy, tc.username, tc.password)
+			if rec.Code != tc.status || (tc.code != "" && !strings.Contains(rec.Body.String(), `"code":"`+tc.code+`"`)) {
+				t.Fatalf("login = %d %s, want %d %s", rec.Code, rec.Body, tc.status, tc.code)
+			}
+			if tc.status != http.StatusOK && strings.Contains(rec.Body.String(), `"token"`) {
+				t.Fatalf("a refused login handed out a token: %s", rec.Body)
+			}
+		})
 	}
 }

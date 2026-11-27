@@ -238,3 +238,18 @@ func TestPeerRelayHostConfigurationReachesStartup(t *testing.T) {
 		t.Fatalf("omitted host config no safe default: %+v %v", got, err)
 	}
 }
+
+// server.yaml's auth.local_password reaches the runtime configuration as
+// written; absent leaves it empty, which the session policy reads as all.
+func TestAuthLocalPasswordReachesTheConfiguration(t *testing.T) {
+	cfg := app.DefaultConfig()
+	applyServerConfig(&cfg, serverconfig.File{Auth: serverconfig.Auth{LocalPassword: serverconfig.LocalPasswordLocalAdmin}}, nil)
+	if cfg.AuthLocalPassword != serverconfig.LocalPasswordLocalAdmin {
+		t.Fatalf("local_admin mapped to %q", cfg.AuthLocalPassword)
+	}
+	cfg = app.DefaultConfig()
+	applyServerConfig(&cfg, serverconfig.File{}, nil)
+	if cfg.AuthLocalPassword != "" {
+		t.Fatalf("an absent auth.local_password mapped to %q", cfg.AuthLocalPassword)
+	}
+}
