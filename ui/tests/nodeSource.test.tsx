@@ -100,6 +100,10 @@ function nodesServer(nodes: Node[]) {
       }
       matched = nodes.filter(({ source }) => !source ? manual : (!!source.provider_id && providers.has(source.provider_id)) || (!!source.cluster_uuid && clusters.has(source.cluster_uuid)));
     }
+    // The server refuses a state it does not know with 400, as it does a source (list_query.go).
+    for (const value of query.state ?? []) {
+      if (!["online", "connecting", "offline"].includes(value)) throw new APIError("LIST_FILTER_INVALID", { name: "state", value }, `unknown state filter "${value}"`, 400);
+    }
     if (query.state?.length) matched = matched.filter((item) => query.state!.includes(item.state));
     const start = (query.page - 1) * query.page_size;
     return {
@@ -289,7 +293,7 @@ test("ticking sources asks the server for the nodes of any of them and keeps the
   assert.equal(address(), "/providers");
 });
 
-test("a status filter set on a list opened on a source keeps the source: both go to the server and the address is left as it was", async () => {
+test("a status filter set on a list opened on a source keeps the source: both go to the server and both are in the address", async () => {
   const offline = { ...node("ecs-down", { resource: "vm", provider_id: 3, provider_name: "ali-prod", provider_kind: "aliyun" }), state: "offline" as const };
   stubApi([...fleet, offline]);
   const { address } = renderAt(platformNodesPath(3));
@@ -300,7 +304,7 @@ test("a status filter set on a list opened on a source keeps the source: both go
   fireEvent.click(within(await screen.findByRole("group", { name: "Filter by Status" })).getByRole("checkbox", { name: "Offline" }));
   await waitFor(() => assert.deepEqual(listed(), ["ecs-down"]));
   assert.deepEqual([queries.at(-1)?.state, queries.at(-1)?.extra?.source], [["offline"], ["provider:3"]]);
-  assert.equal(address(), platformNodesPath(3));
+  assert.equal(address(), platformNodesPath(3) + "&state=offline");
   assert.deepEqual(chips(), ["Status: Offline", "Source: ali-prod"]);
 });
 
@@ -425,4 +429,32 @@ test("a platform's address opens its row: an account's by id, with one of its cl
   assert.equal(platformPath({ provider_id: 3, cluster_uuid: "e-1", resource: "slurm" }), "/providers?open=p3&cluster=e-1", "an E-HPC cluster is under its account");
   const read = new URLSearchParams(platformPath({ provider_id: 3, cluster_uuid: "u-1&open=k2" }).split("?")[1]);
   assert.deepEqual([read.getAll("open"), read.get("cluster"), read.has("tab")], [["p3"], "u-1&open=k2", false]);
+});
+
+// The state filter lives in the address as well, so the overview's offline
+// count opens the list already on the offline nodes (GWKS-536), and clearing
+// the choice takes it out of the address again.
+test("an address naming a state opens the list filtered on it, from the very first request", async () => {
+  stubApi();
+  const { address } = renderAt("/nodes?state=offline");
+  await waitFor(() => assert.ok(queries.length > 0));
+  assert.deepEqual(queries.map((query) => query.state), queries.map(() => ["offline"]), "from the very first request");
+  await waitFor(() => assert.ok(chips().some((chip) => chip.includes("Offline"))));
+  assert.equal(address(), "/nodes?state=offline");
+});
+
+test("clearing the state filter takes it out of the address and the next request", async () => {
+  stubApi();
+  const { address } = renderAt("/nodes?state=offline");
+  const chip = await waitFor(() => { const found = screen.getAllByRole("button", { name: /^Clear filter: / }).find((button) => button.textContent?.includes("Offline")); assert.ok(found); return found; });
+  fireEvent.click(chip);
+  await waitFor(() => assert.equal(address(), "/nodes"));
+  await waitFor(() => assert.deepEqual(queries.at(-1)?.state ?? [], []));
+});
+
+test("a state the server does not know is refused, and the list does not stand in for it", async () => {
+  stubApi();
+  renderAt("/nodes?state=bogus");
+  assert.ok((await screen.findByRole("alert")).textContent?.includes('unknown state filter "bogus"'));
+  assert.equal(screen.queryAllByRole("button", { name: "by-hand" }).length, 0, "the whole fleet is not shown in place of the refused filter");
 });

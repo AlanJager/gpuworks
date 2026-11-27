@@ -67,7 +67,8 @@ for (const language of ["en", "zh"] as const) {
 
     assert.deepEqual(listed(), ["ali-prod", "Pods", "Hosts", "prod-gpu", "lab"]);
     assert.equal(screen.queryAllByText("ack-gpu").length, 0, "the account's own cluster is listed under the account");
-    assert.ok(screen.getByText(summaries[language].count));
+    // The header does not repeat the count the table states (GWKS-538).
+    assert.equal(screen.queryAllByText(summaries[language].count).length, 0);
     // 6 + 0 + 1 through the accounts, 3 + 0 through the clusters; ack-gpu's 4 are in its account's 6.
     assert.ok(screen.getByText(summaries[language].summary));
   });

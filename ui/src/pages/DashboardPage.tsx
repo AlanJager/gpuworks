@@ -145,7 +145,7 @@ export default function DashboardPage() {
   const storageRows = storage.data?.rows ?? [];
   const currentStoragePage = Math.min(storagePage, Math.max(1, Math.ceil(storageRows.length / STORAGE_PAGE_SIZE)));
   const attentionGroups: AttentionGroup[] = [
-    { label: t("overview.offlineNodesGroup", { count: fmt(fleet?.nodes.offline ?? offlineNodes.data?.total ?? 0) }), count: fleet?.nodes.offline ?? offlineNodes.data?.total ?? 0, to: "/nodes" },
+    { label: t("overview.offlineNodesGroup", { count: fmt(fleet?.nodes.offline ?? offlineNodes.data?.total ?? 0) }), count: fleet?.nodes.offline ?? offlineNodes.data?.total ?? 0, to: "/nodes?state=offline" },
     { label: t("overview.unusableGpusGroup", { count: fmt(gpus.data?.overview.allocation?.unusable ?? unusableGpus.length) }), count: gpus.data?.overview.allocation?.unusable ?? unusableGpus.length, to: "/gpus" },
     { label: t("overview.failedServicesGroup", { count: fmt(failedServices.length) }), count: failedServices.length, to: "/monitor" },
     { label: t(modelIssuesIncomplete ? "overview.failedModelsGroupPartial" : "overview.failedModelsGroup", { count: fmt(failedModelCount) }), count: failedModelCount, to: "/models" },
@@ -155,7 +155,7 @@ export default function DashboardPage() {
   ].filter((group) => group.count > 0);
   const attentionCount = attentionGroups.reduce((sum, group) => sum + group.count, 0);
   const issues: Issue[] = attentionCount <= ATTENTION_DETAIL_LIMIT ? [
-    ...(offlineNodes.data?.items ?? []).map((node) => ({ kind: t("overview.issueNode"), name: node.name || node.hostname, reason: t("overview.offline"), to: "/nodes" })),
+    ...(offlineNodes.data?.items ?? []).map((node) => ({ kind: t("overview.issueNode"), name: node.name || node.hostname, reason: t("overview.offline"), to: "/nodes?state=offline" })),
     ...unusableGpus.map((gpu) => ({ kind: "GPU", name: gpu.name, reason: t("overview.unavailableGpu"), to: `/gpus?gpu=${encodeURIComponent(gpu.uuid)}` })),
     ...failedServices.map((service) => ({ kind: t("overview.issueService"), name: service.name, reason: t("overview.probeFailed"), to: `/monitor/d/${service.deployment_id}` })),
     ...failedModels.map((model) => ({ kind: t("overview.models"), name: model.name, reason: t("overview.fileFailed"), to: `/models?detail=${model.id}` })),
