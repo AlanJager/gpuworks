@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import { useSessionUser } from "../components/sessionUser";
 
 // A viewer's acknowledgements of console banners (dto.ConsoleBanner.ack_key).
@@ -62,10 +62,12 @@ export interface BannerAck {
 export function useBannerAck(): BannerAck {
   const userID = useSessionUser()?.id;
   // Subscribing re-renders the caller whenever an acknowledgement changes, so
-  // the reader below, made on each render, answers from the current store.
+  // the functions below, made on each render, answer from the current store.
+  // Neither is memoized: callers use them during render and in handlers, never
+  // as effect or memo dependencies.
   useSyncExternalStore(subscribe, snapshot, snapshot);
   const acknowledged = (ackKey: string | undefined) => !!ackKey && stored(userID, ackKey);
-  const acknowledge = useCallback((ackKey: string) => {
+  const acknowledge = (ackKey: string) => {
     let saved = false;
     if (userID !== undefined) {
       try { window.localStorage.setItem(bannerAckStorageKey(userID, ackKey), "1"); saved = true; }
@@ -73,7 +75,7 @@ export function useBannerAck(): BannerAck {
     }
     if (!saved) unsaved.add(`${userID ?? ""}.${ackKey}`);
     bump();
-  }, [userID]);
+  };
   return { acknowledged, acknowledge };
 }
 
