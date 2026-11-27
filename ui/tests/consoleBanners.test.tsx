@@ -298,3 +298,46 @@ test("an acknowledgement made before the user is known records nothing", async (
   renderBanners();
   assert.ok(await screen.findByRole("button", { name: ack }));
 });
+
+// breakStorage makes the browser's storage refuse: reads and writes throw,
+// as a browser does with storage disabled or full. It returns the restore.
+function breakStorage(): () => void {
+  const proto = Object.getPrototypeOf(window.localStorage) as Storage;
+  const { getItem, setItem } = proto;
+  let reads = 0, writes = 0;
+  proto.getItem = function () { reads++; throw new DOMException("denied", "SecurityError"); };
+  proto.setItem = function () { writes++; throw new DOMException("full", "QuotaExceededError"); };
+  breakStorage.counts = () => ({ reads, writes });
+  return () => { proto.getItem = getItem; proto.setItem = setItem; };
+}
+breakStorage.counts = () => ({ reads: 0, writes: 0 });
+
+test("with storage refusing reads and writes a banner still shows and an acknowledgement holds for this visit", async () => {
+  stub(manifest([
+    { id: "soon", severity: "info", message: reminder, ack_key: "soon:30" },
+    { id: "other", severity: "warning", message: { code: "NO_SUCH_CODE", message: "Other matter" } },
+  ]));
+  const restore = breakStorage();
+  try {
+    const user = renderBanners();
+    // A read that throws is "not acknowledged": the banner shows.
+    assert.ok(await screen.findByText("Renew soon"));
+    assert.ok(breakStorage.counts().reads > 0, "the read was attempted");
+    await user.click(screen.getByRole("button", { name: ack }));
+    // The write threw; the acknowledgement holds in memory for this visit.
+    await waitFor(() => assert.equal(screen.queryByText("Renew soon"), null));
+    assert.equal(breakStorage.counts().writes, 1);
+    assert.ok(screen.getByText("Other matter"));
+    cleanup();
+    renderBanners();
+    assert.ok(await screen.findByText("Other matter"));
+    assert.equal(screen.queryByText("Renew soon"), null, "still acknowledged on another page of the same visit");
+    cleanup();
+    // A reload forgets what could not be stored: the banner is back, without an error.
+    resetBannerAckForTest();
+    renderBanners();
+    assert.ok(await screen.findByText("Renew soon"));
+  } finally {
+    restore();
+  }
+});
