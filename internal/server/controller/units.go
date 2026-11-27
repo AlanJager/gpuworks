@@ -202,8 +202,13 @@ func (c *Controller) reconcileUnits(ctx context.Context, dep *store.Deployment, 
 		}
 		if !ready {
 			// The model is still arriving on a rank's node (an image wait of
-			// a multi-node generation records itself).
-			c.recordWaitingOnNode(dep, waitingStageModelArriving, nodes[0])
+			// a multi-node generation records itself). Which rank is behind is
+			// not known here, so only a single-node replica names its node.
+			var at *store.Node
+			if len(nodes) == 1 {
+				at = nodes[0]
+			}
+			c.recordWaitingOnNode(dep, waitingStageModelArriving, at)
 			continue
 		}
 		launched, err := c.launchGeneration(ctx, deployment, model, slot, nodes, len(attempts)+1)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/scheduler"
@@ -58,11 +59,18 @@ func TestAPlacedReplicaThatCannotStartSaysWhatItWaitsFor(t *testing.T) {
 		if insts != 0 || stage != waitingStageCacheEviction || node != nodes[0].DisplayName() {
 			t.Fatalf("instances=%d stage=%q node=%v", insts, stage, node)
 		}
+		// The re-check is the short poll, not the refusal record's window: an
+		// eviction of another model on that node wakes nothing, so a replica
+		// waiting for the eviction would otherwise wait a whole
+		// PendingTimeout (600 s by default) to look again.
 		c.q.mu.Lock()
-		_, queued := c.q.pending[depKey(dep.ID)]
+		at, queued := c.q.pending[depKey(dep.ID)]
 		c.q.mu.Unlock()
 		if !queued {
 			t.Fatal("the wait did not schedule its re-check")
+		}
+		if until := time.Until(at); until > groupPollInterval+2*time.Second {
+			t.Fatalf("the re-check is due in %s, want at most %s", until, groupPollInterval)
 		}
 		release()
 		if _, _, insts := waitingStage(t, c, st, dep); insts != 1 {

@@ -939,6 +939,21 @@ Start from the code in `metadata_notice` or in the "fetch metadata" error. It te
 
 When a model is `failed` or `download_required` on a node, the deployment wait reason is `model_unavailable`, with the model, node, and error specified. Replicas with automatic node selection skip that node and try placement elsewhere.
 
+### A placed replica does not start
+
+When a replica already has a node but does not start, the deployment's scheduling reason is `waiting_on_node`, and the `stage` parameter says what it waits for:
+
+| stage | meaning | what to do |
+|---|---|---|
+| `cache_eviction` | the node is evicting model cache to make room for another model | wait for the eviction to finish (usually tens of seconds to minutes); if it hangs, check the node's cache operations and the agent log |
+| `model_arriving` | the model is still being transferred to that node | watch the node's download progress on the models page; for a failure see `model_unavailable` above |
+| `node_offline` | the node the replica names is offline | wait for it to reconnect, or pick another node under Adjust replicas |
+| `node_missing` | the node the replica names is no longer part of the placement | pick a node again under Adjust replicas |
+| `previous_generation_leaving` | the generation it replaces still holds the node's master port | wait for it to retire; if it does not, check that instance's events |
+| `pool_unreadable` | the candidate nodes could not be read | the platform retries shortly; if it persists, check the server log |
+
+These waits rewrite the scheduling event once per window; past the pending timeout the deployment is treated as unschedulable, and the reason says what to check.
+
 ### Long Downloads: Check Source Switching and Resume Progress
 
 Candidates consist of the alternative addresses in site rules and the site itself. The host in progress and failure messages identifies the source currently being tried and the reason for switching; while a download waits to retry the same address, progress shows the next attempt's number, the seconds until it, and the last failure, and it shows at most 99.9% until all files are in place. See [How Nodes Try Sources in Sequence](configure-pull-settings.md#节点怎样依次尝试).
@@ -1596,6 +1611,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 42fed8d49a7803ff38e5219e59e18fbd01e2d979874ce46b0f29cd76d6b78913 ## Model Downloads Stall, Fail, or Leave Incomplete Directories -->
 <!-- translation-source-sha256: 178536686b1efd8668c7e8d46049e9e86b9e70f96c29fb441228f7b2442ca5ff ### Check Completeness First -->
 <!-- translation-source-sha256: 013d23a93b7ad4aa7bca003a2fcbbfb97c6e17c6571ac8fa8df03ea0144fda27 ### Choose a Resolution Based on the Error -->
+<!-- translation-source-sha256: 40779d92ec00edb21751621d444c5e9844308260c2ac25b092c525e970f40933 ### A placed replica does not start -->
 <!-- translation-source-sha256: 5a7b086b91b907b2bfa866cb337a4c68fcc148c423d0ff3c9885d0f957d15aa1 ### Long Downloads: Check Source Switching and Resume Progress -->
 <!-- translation-source-sha256: 15199cdc0f07486d121b220a634cb7cbd7198b8935c85f1396a0eca8440eb136 ### Retry After the Fix and Confirm the Result -->
 <!-- translation-source-sha256: e0dfe8a8bfbb8a0f359c56d406e3618b4b7ea94111dbc7526470cc3e9f9a6848 ## Image Pull Failures -->
