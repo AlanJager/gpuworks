@@ -1277,6 +1277,8 @@ The gateway error body has the OpenAI shape: `{"error":{"message":"…","type":"
 | 503 | `MODEL_NODE_OFFLINE` | A replica is running, but its node's agent is not connected. Check the node's connection state |
 | 503 | `DISTRIBUTED_NOT_READY`, `DISTRIBUTED_LEADER_OFFLINE` | A rank or the leader in a multi-node deployment is not ready |
 | 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE` (`message` contains `did not reattach within 5s`) | The node data lane did not reconnect within 5 seconds of disconnecting. **Retryable**; there is no fallback to the control lane |
+| 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE` (`message` contains `has no live agent session`) | The agent is reconnecting: its old session closed and no new one registered within 5 seconds. **Retryable**. A node that was already offline when the request was routed gets `MODEL_NODE_OFFLINE`; one that disconnected after routing and sent no heartbeat in the last 30 seconds is not waited for and gets a 502 `UPSTREAM_UNAVAILABLE` |
+| 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE` (`message` contains `agent session did not accept the stream within 5s`) | The node's session did not accept the stream within the 5-second budget (opening it on that session's control or data lane timed out). **Retryable**. Usually right after an agent reconnect; it also happens when a session is stuck without any reconnect |
 | 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE` (`message` contains `data lane closed under an open stream`) | The data lane disconnected after the request reached the node but before a response arrived. **Retryable**. If it disconnects after the response starts, the client receives a truncated response |
 | 503 + `Retry-After: 2` | `PD_PREFILL_UNAVAILABLE` | The PD deployment has no available prefill instance |
 | 502 | `UPSTREAM_UNAVAILABLE` | The tunnel or connection to the engine failed. Check node connectivity and engine logs |
@@ -1628,7 +1630,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 9fc0546899e8801217945461926cdfddbf92aeaebba15b22768f0392951830e5 ### Container Exits After Reaching Running -->
 <!-- translation-source-sha256: 9b440725e326934e1723979abbdb7feca7f9a96cf5fac88ee19b1482db1500e2 ### Engine Stops Responding After Reaching Running -->
 <!-- translation-source-sha256: add832ec4ab268d576c36b2fc99eba23a41a9ba25040cceb7b68ff0583f0f8ab ### Retry After Fixing the Cause -->
-<!-- translation-source-sha256: b13f0f68455c5a89e6f54e0035b7999cb6b7f94cdb9e5abafa81f18c85e4618a ## Gateway Returns 401, 404, or 503 -->
+<!-- translation-source-sha256: 9a0d3b26f07b18af50009812e57ba83c2151a2d170f03f4dad39c0699c395d42 ## Gateway Returns 401, 404, or 503 -->
 <!-- translation-source-sha256: 2c0e5a7c9e97b4735744c0fee373cf39d0326a987466dd32c03c0357bb55abe1 ## dGPU Capability Unavailable -->
 <!-- translation-source-sha256: 0e3041f49383f6df9bdad9e0f779abe9dad3c8fc082a5d108e8da5e178c515bc ## Sleep / Wake Failure -->
 <!-- translation-source-sha256: 6bed70deff3f0668d6c10fbbf64777d85d384d8c080f53cef873e0f3e0a97a34 ### Schedules, Yielding, or Waiting Did Not Run as Expected -->

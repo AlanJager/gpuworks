@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"net"
 	"os"
 	"path/filepath"
@@ -297,10 +298,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		}
 		// A session that lasted a while resets backoff — transient drops recover
 		// fast, but a server that rejects us immediately backs off.
-		if time.Since(start) > 60*time.Second {
-			backoff.reset()
-		}
-		d := backoff.next()
+		d := reconnectDelay(backoff, time.Since(start))
 		c.RecordReconnect(d)
 		a.log.Info("reconnecting", "in", d.String())
 		select {
@@ -405,6 +403,35 @@ func (b *backoff) next() time.Duration {
 }
 
 func (b *backoff) reset() { b.cur = b.base }
+
+const (
+	// longSessionBeforeFastReconnect is how long a ctrl session must have
+	// lasted for its drop to be treated as a loss rather than a rejection: a
+	// served session's agent redials at once, while one the server keeps
+	// refusing still backs off.
+	longSessionBeforeFastReconnect = 60 * time.Second
+	// fastReconnectJitter bounds the first reconnect delay after a session
+	// that lasted. The agent's data lane already reconnects at once after a
+	// lane that served (internal/agent/conn/datalane.go), and its backoff
+	// comment asks for the two to be kept in step: this is the ctrl side of
+	// that, short enough to close the window a request can wait through, and
+	// jittered so a fleet dropped at once does not dial back in lockstep.
+	fastReconnectJitter = 250 * time.Millisecond
+)
+
+// reconnectDelay is the wait before a ctrl reconnect. A session that served
+// for longer than longSessionBeforeFastReconnect gets a short jittered delay
+// (0-250ms) and only then the exponential sequence, so a transient drop
+// recovers without a full second of outage; a session the server rejected or
+// that failed fast keeps the existing sequence, resetting it only once it has
+// lasted — so a server that refuses every attempt still backs off.
+func reconnectDelay(b *backoff, lasted time.Duration) time.Duration {
+	if lasted > longSessionBeforeFastReconnect {
+		b.reset()
+		return time.Duration(rand.Int64N(int64(fastReconnectJitter)))
+	}
+	return b.next()
+}
 
 // simulatedNetwork reports a configured network inventory instead of the
 // host's; every other handler is the node runtime's.

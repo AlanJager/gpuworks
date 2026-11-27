@@ -1279,6 +1279,8 @@ SGLang 默认的 `/health` 会向调度器提交一个只生成 1 个 token 的�
 | 503 | `MODEL_NODE_OFFLINE` | 副本在运行，但所在节点的 agent 没有连接；看节点连接状态 |
 | 503 | `DISTRIBUTED_NOT_READY`、`DISTRIBUTED_LEADER_OFFLINE` | 多机部署的 rank 或 leader 没就绪 |
 | 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE`（`message` 含 `did not reattach within 5s`） | 节点数据通道断开后 5 秒内没重连；**可重试**，不会回落到控制通道 |
+| 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE`（`message` 含 `has no live agent session`） | agent 正在重连：旧会话已关、5 秒内新会话没注册上；**可重试**。路由时节点已经离线的，直接回 `MODEL_NODE_OFFLINE`；路由之后才断开、且 30 秒内没有心跳的节点不等，回 502 `UPSTREAM_UNAVAILABLE` |
+| 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE`（`message` 含 `agent session did not accept the stream within 5s`） | 节点的会话在 5 秒预算内没有接受这条流（在它的控制通道或数据通道上开流超时）；**可重试**。多见于 agent 刚重连；没有重连、但会话卡住时也会出现 |
 | 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE`（`message` 含 `data lane closed under an open stream`） | 请求已经发到节点、还没收到响应时数据通道断开；**可重试**。响应开始返回之后才断开的，客户端看到的是被截断的响应 |
 | 503 + `Retry-After: 2` | `PD_PREFILL_UNAVAILABLE` | PD 部署没有可用的 prefill 实例 |
 | 502 | `UPSTREAM_UNAVAILABLE` | 到引擎的隧道或连接失败，查节点在线性和引擎日志 |

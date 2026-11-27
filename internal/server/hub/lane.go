@@ -104,11 +104,15 @@ func (s *Session) awaitDataLane(ctx context.Context) (*yamux.Session, error) {
 		}
 		changed := s.dataChangeCh
 		s.dataMu.Unlock()
+		s.hub.parked(waitSiteDataLane)
 		select {
 		case <-changed:
 			continue
 		case <-s.closed:
-			return nil, fmt.Errorf("%w: node %s ctrl session closed while waiting for the data lane", ErrDataLaneUnavailable, s.NodeUUID)
+			// Still ErrDataLaneUnavailable, but with the closed-session cause
+			// attached so a caller that can look the node up again knows the
+			// node may already have a replacement session (Hub.OpenTunnel).
+			return nil, fmt.Errorf("%w: node %s %w", ErrDataLaneUnavailable, s.NodeUUID, errCtrlSessionClosed)
 		case <-waitCtx.Done():
 			if ctx.Err() != nil {
 				return nil, ctx.Err()
@@ -238,7 +242,7 @@ func (h *Hub) CtrlDataPlaneStreamCount(uuid string) int64 {
 // one line before yamux in every case: a TDataAck envelope on success or a
 // TReject envelope for rejected credentials or sessions. An unreadable hello
 // or unavailable authentication store closes the lane without a rejection.
-func (h *Hub) serveDataLane(netConn net.Conn, c *websocket.Conn, remote string) {
+func (h *Hub) serveDataLane(ctx context.Context, netConn net.Conn, c *websocket.Conn, remote string) {
 	line, err := readLine(netConn)
 	if err != nil {
 		// No usable hello line: close without attaching and without a reply.
@@ -266,6 +270,19 @@ func (h *Hub) serveDataLane(netConn net.Conn, c *websocket.Conn, remote string) 
 		return
 	}
 	sess := h.session(n.UUID)
+	if sess == nil && hello.SessionID != "" {
+		// A data lane can reach this member before the ctrl session that
+		// issued its id is registered here: the relayed session of a leader
+		// change arrives just after its agent's lane. Wait briefly for it
+		// instead of rejecting a lane that would attach a moment later (the
+		// agent reads for its ack with no deadline, so no wire change is
+		// needed). A session registered under another id ends the wait at
+		// once inside awaitSessionID, and so does the hub stopping its
+		// sessions (ctx). An agent that hangs up meanwhile is not noticed
+		// before the wait ends: reading the connection to see it would take
+		// bytes of the yamux session that follows the ack.
+		sess = h.awaitSessionID(ctx, n.UUID, hello.SessionID, h.dataHelloWaitBudget())
+	}
 	if sess == nil || sess.sessionID == "" || sess.sessionID != hello.SessionID {
 		// The ctrl session is gone or the presented id is stale: a data lane must
 		// never attach to a session other than the one that issued its id.
