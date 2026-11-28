@@ -381,15 +381,11 @@ func (h *Hub) SyncNode(uuid string) error {
 // OpenTunnel opens a data-plane stream to a node's agent, which bridges it to
 // dst (e.g. 127.0.0.1:30000). Returns a net.Conn (the yamux stream).
 //
-// ctx bounds a detached data lane's wait for reattachment (see
-// Session.dataLaneRoute); the proxy passes the request's context so a client
-// disconnect or deadline aborts the wait instead of outliving it.
+// It rides an agent reconnect: every wait it meets — for the node's session,
+// for that session's data lane, for the node's next session — shares one
+// budget, dataLaneReattachWait, never longer than ctx (see openTunnel).
 func (h *Hub) OpenTunnel(ctx context.Context, nodeUUID, dst string) (net.Conn, error) {
-	s := h.session(nodeUUID)
-	if s == nil {
-		return nil, errors.New("node not connected: " + nodeUUID)
-	}
-	return s.openStream(ctx, proto.StreamHeader{Kind: proto.StreamTunnel, Dst: dst})
+	return h.openTunnel(ctx, nodeUUID, proto.StreamHeader{Kind: proto.StreamTunnel, Dst: dst})
 }
 
 // OpenLogtail opens a log stream for an instance (ref = instance uuid). The

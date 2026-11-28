@@ -13,6 +13,15 @@ func RedactLaunchText(value string) string {
 	return commandlog.RedactScript(value)
 }
 
+// RedactLaunchArgv is RedactLaunchText for an argv: secret-bearing flags and
+// assignments are redacted word by word.
+func RedactLaunchArgv(argv []string) []string {
+	return commandlog.RedactArgv(argv)
+}
+
+// RedactedValue is what a redacted secret reads as in a launch fact.
+const RedactedValue = commandlog.Redacted
+
 // RedactLaunchEnv returns a detached, redacted environment projection.
 func RedactLaunchEnv(values map[string]string) map[string]string {
 	return commandlog.RedactEnv(values)

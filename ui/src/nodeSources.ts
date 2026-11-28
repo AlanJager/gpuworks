@@ -29,5 +29,14 @@ export function platformPath(row: { provider_id?: number; cluster_uuid?: string;
 
 /** The sources a node list address asks for (?source=a,b), as written: which values are valid is the server's to say (it answers 400 with the value it refused). */
 export function nodeSourcesOf(params: URLSearchParams): string[] {
-  return [...new Set((params.get("source") ?? "").split(",").map((value) => value.trim()).filter(Boolean))];
+  return listParam(params, "source");
+}
+
+/** The node states the list is filtered on (?state=offline,online). */
+export function nodeStatesOf(params: URLSearchParams): string[] {
+  return listParam(params, "state");
+}
+
+function listParam(params: URLSearchParams, key: string): string[] {
+  return [...new Set((params.get(key) ?? "").split(",").map((value) => value.trim()).filter(Boolean))];
 }

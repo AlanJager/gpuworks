@@ -21,7 +21,7 @@ import {
   type TopoHighlight,
 } from "../api";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { nodeSourcesOf } from "../nodeSources";
+import { nodeSourcesOf, nodeStatesOf } from "../nodeSources";
 import { useTranslation } from "react-i18next";
 import ResourceTable, { storedPageSize, type ServerSort } from "../components/resourceTable/ResourceTable";
 import { NODE_TABLE_ID, nodeColumns } from "./nodes/nodeColumns";
@@ -80,18 +80,15 @@ export default function NodesPage() {
   // page used to fetch and render all of them every few seconds.
   const [search, setSearch] = useState("");
   const [labelFilter, setLabelFilter] = useState<string[]>([]);
-  const [states, setStates] = useState<string[]>([]);
   const [sort, setSort] = useState<ServerSort | null>(null);
   // The source filter lives in the address, so an external platform's node
   // count can open this list on the nodes that joined through it (?source=).
   const [searchParams, setSearchParams] = useSearchParams();
   const sources = nodeSourcesOf(searchParams);
-  const setSources = (next: string[]) => {
-    const params = new URLSearchParams(searchParams);
-    if (next.length) params.set("source", next.join(","));
-    else params.delete("source");
-    setSearchParams(params, { replace: true });
-  };
+  // The state filter lives there too, so a link such as the overview's
+  // offline-node count opens the list already filtered (?state=offline).
+  const states = nodeStatesOf(searchParams);
+
   const { data, refetch, refresh, loading, error, updatedAt, pagination } = usePagedList(api.nodesPage, {
     filters: { q: search, label: labelFilter, state: states, extra: { agent_upgrade: [fleetGroup], ...(sources.length ? { source: sources } : {}) }, ...(sort ? { sort: `${sort.order === "desc" ? "-" : ""}${sort.key}` } : {}) },
     pageSize: storedPageSize(NODE_TABLE_ID, NODE_PAGE_SIZE),
@@ -277,10 +274,14 @@ export default function NodesPage() {
           sort={sort}
           onSortChange={setSort}
           onFiltersChange={(filters) => {
-            setStates(filters.state ?? []);
-            // The address is rewritten only when the choice changed: every filter change reports them all.
+            // The address is rewritten only when a choice changed: every filter change reports them all.
+            const nextStates = filters.state ?? [];
             const next = filters.source ?? [];
-            if (next.join(",") !== sources.join(",")) setSources(next);
+            if (nextStates.join(",") === states.join(",") && next.join(",") === sources.join(",")) return;
+            const params = new URLSearchParams(searchParams);
+            if (nextStates.length) params.set("state", nextStates.join(",")); else params.delete("state");
+            if (next.length) params.set("source", next.join(",")); else params.delete("source");
+            setSearchParams(params, { replace: true });
           }}
           toolbar={
             <>

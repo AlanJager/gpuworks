@@ -155,7 +155,7 @@ func TestModelDeletionSeesExternalDeploymentCommits(t *testing.T) {
 		deployments = append(deployments, dep)
 	}
 	for _, dep := range deployments {
-		if err := s.DeleteModel(model.ID); !errors.Is(err, ErrReferenced) {
+		if _, err := s.DeleteModel(model.ID, false); !errors.Is(err, ErrReferenced) {
 			t.Fatalf("model with %s deployment: got %v, want ErrReferenced", dep.State, err)
 		}
 		reply := runSQLitePeer(t, sqlitePeerRequest{Operation: "delete_deployment", Path: path, DeploymentID: dep.ID})
@@ -163,7 +163,7 @@ func TestModelDeletionSeesExternalDeploymentCommits(t *testing.T) {
 			t.Fatalf("external deletion affected %d rows, want 1", reply.Rows)
 		}
 	}
-	deleteErr := s.DeleteModel(model.ID)
+	_, deleteErr := s.DeleteModel(model.ID, false)
 	// Observe after the attempted deletion so another connection cannot heal
 	// the server's stale view before the operation under test runs.
 	remaining := runSQLitePeer(t, sqlitePeerRequest{Operation: "count_deployments", Path: path, ModelID: model.ID})
@@ -191,14 +191,14 @@ func TestExternalDeploymentRemovalPreservesModelReferencePolicy(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := s.DeleteModel(model.ID); !errors.Is(err, ErrReferenced) {
+			if _, err := s.DeleteModel(model.ID, false); !errors.Is(err, ErrReferenced) {
 				t.Fatalf("%s deployment must keep its model: %v", state, err)
 			}
 			removed := runSQLitePeer(t, sqlitePeerRequest{Operation: "delete_deployment", Path: path, DeploymentID: dep.ID})
 			if removed.Rows != 1 {
 				t.Fatalf("external deletion affected %d rows, want 1", removed.Rows)
 			}
-			if err := s.DeleteModel(model.ID); err != nil {
+			if _, err := s.DeleteModel(model.ID, false); err != nil {
 				t.Fatalf("model without its %s reference: %v", state, err)
 			}
 		})

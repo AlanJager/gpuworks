@@ -593,7 +593,7 @@ macOS 忽略 `no_systemd`。
 | GET | `/api/v1/models/{id}/logo` | 模型 logo 图片 | JWT |
 | GET | `/api/v1/models/{id}` | 模型详情 | JWT |
 | PATCH | `/api/v1/models/{id}` | 修改本地 / HTTP 目录模型的来源 ID（`{"source_id"}`，详情的 `source_id_editable` 表示可改）；公共仓库模型 400 `MODEL_SOURCE_ID_FIXED`，与已有模型重名 409 `MODEL_SOURCE_ID_TAKEN`，有进行中的复制、下载或删除 409 `MODEL_TRANSFER_ACTIVE`；已有副本路径不变 | JWT |
-| DELETE | `/api/v1/models/{id}` | 删除模型 | JWT(admin) |
+| DELETE | `/api/v1/models/{id}` | 删除模型。有部署引用时返回 409 `MODEL_IN_USE`，`params.deployments` 列出各部署 `{id, name, state, instances}`，`deletable_with_deployments` 表示它们是否全部已停止且已没有任何实例记录（还留着停止或失败的实例记录，说明容器清理或资源释放尚未完成）；此时带 `?delete_stopped_deployments=true` 会把这些部署与模型在同一事务里一起删除，仍有运行中的则整体拒绝 | JWT(admin) |
 | POST | `/api/v1/models/{id}/metadata/refresh` | 重新拉取模型元数据（config/README/logo）。什么都没读到时按来源站点的回答报错：404 `MODEL_REPO_NOT_FOUND` / `MODEL_REVISION_NOT_FOUND`、403 `MODEL_REPO_ACCESS_DENIED`（`params.host`、`params.repo`、`params.status` 为站点与它的 HTTP 状态码）；站点没有给出关于仓库的回答时 502 `MODEL_METADATA_UNREACHABLE` 或 `MODEL_METADATA_FORBIDDEN` | JWT |
 | POST | `/api/v1/models/{id}/download` | 发起公共仓库下载：`storage_id` 选存储（省略为默认存储），本地存储再给 `node_uuid` 或 `node_uuids`，共享存储由一台写入节点下载一次 | JWT |
 | POST | `/api/v1/models/{id}/download/cancel` | 取消指定存储的模型下载（`storage_id`，本地存储另带 `node_uuid`）；保留已下载数据以供重试 | JWT |
@@ -610,7 +610,7 @@ macOS 忽略 `no_systemd`。
 
 ### 列表筛选与就位汇总
 
-模型详情的本地节点行与共享存储行可带 `transfer_error_code`，列文件阶段的终态分类为：`MODEL_DOWNLOAD_NETWORK_EXHAUSTED`（瞬时网络或上游错误重试耗尽）、`MODEL_DOWNLOAD_SOURCE_NOT_FOUND`（仓库或版本不存在）、`MODEL_DOWNLOAD_SOURCE_ACCESS_DENIED`（401/403）、`MODEL_DOWNLOAD_SOURCE_THROTTLED`（持续限流）、`MODEL_DOWNLOAD_SOURCE_REJECTED`（其他确定的来源拒绝）。`message` 保留原始平台和地址错误详情，页面同时展示分类与详情。`retry` 在下载正等待向同一地址重试时出现，为 `{attempt, attempts, wait_seconds, throttled, cause}`：下一次是第 `attempt` 次（共 `attempts` 次）、`wait_seconds` 秒后重试；`throttled` 表示来源主动要求等待（429/503），否则 `cause` 是上次失败的最内层原文（最多 160 字节，仅作证据展示）。它来自 agent 的实时进度、只在内存中保留，字节继续到达或换地址即消失，不落库；旧 agent 不发送时省略。旧 agent、未知错误或多个来源失败类型不一致时可省略该字段；省略不代表成功。重新发起下载会清理旧下载错误码、分配新的传输 ID，迟到的旧任务回报不能覆盖新任务。
+模型详情的本地节点行与共享存储行可带 `transfer_error_code`，列文件阶段的终态分类为：`MODEL_DOWNLOAD_NETWORK_EXHAUSTED`（瞬时网络或上游错误重试耗尽）、`MODEL_DOWNLOAD_SOURCE_NOT_FOUND`（仓库或版本不存在）、`MODEL_DOWNLOAD_SOURCE_ACCESS_DENIED`（401/403）、`MODEL_DOWNLOAD_SOURCE_THROTTLED`（持续限流）、`MODEL_DOWNLOAD_SOURCE_REJECTED`（其他确定的来源拒绝）。`message` 保留原始平台和地址错误详情，页面同时展示分类与详情。`retry` 在下载正等待向同一地址重试时出现，为 `{attempt, attempts, wait_seconds, throttled, cause, file, listing}`（`file` 是正在重试的仓库内文件路径，最多 256 字节：更长时从前面截掉、保留结尾的文件名并加 `…` 前缀，控制字符、双向控制字符和行、段分隔符替换为 U+FFFD，所以它不一定是原样路径，不能拿去和仓库文件列表做精确匹配；重试的是文件列表时 `listing` 为 `true`、不带 `file`）：下一次是第 `attempt` 次（共 `attempts` 次）、`wait_seconds` 秒后重试；`throttled` 表示来源主动要求等待（429/503），否则 `cause` 是上次失败的最内层原文（最多 160 字节，仅作证据展示）。它来自 agent 的实时进度、只在内存中保留，字节继续到达或换地址即消失，不落库；旧 agent 不发送时省略。旧 agent、未知错误或多个来源失败类型不一致时可省略该字段；省略不代表成功。重新发起下载会清理旧下载错误码、分配新的传输 ID，迟到的旧任务回报不能覆盖新任务。
 
 `GET /api/v1/models` 不带分页参数时返回全部模型及逐节点、存储的就位明细。
 带 `page` 或 `page_size` 时返回 `{items, page, page_size, total, summary}`：
@@ -880,10 +880,11 @@ const importBody = {
 - `yaml` 可原样导入，开头的注释与 `notes` 说的是同一组事实；注释是英文，界面按 `notes` 的 `code` 与 `params` 本地化。
 - `checks`：每个操作一项检查，`id` 都是 `operation_reply`，`operation` 指明哪个操作。chat、completions、embeddings、System One 决策各发一个与健康检查相同的最小请求：应答 2xx 为 `status: "pass"`（`TEMPLATE_OPERATION_ANSWERED`），否则为 `fail`，`code` 为 `TEMPLATE_OPERATION_HTTP_ERROR`、`TEMPLATE_OPERATION_NO_REPLICA`、`TEMPLATE_OPERATION_TIMED_OUT` 或 `TEMPLATE_OPERATION_REPLY_INCOMPLETE`，网关或引擎返回的原文只放在 `evidence`。视频、图片、语音等操作不发请求，`status: "skip"`，`code` 为 `TEMPLATE_OPERATION_NOT_PROBED`（没有声明接口地址时为 `TEMPLATE_OPERATION_NO_ENDPOINT`），并有一条 `operation_not_tested`。`params` 带 `operation`、`endpoint?`、`http_status?`，`message` 是英文 fallback。
 - 有操作实测失败时 `verified`、`saveable` 都是 `false`，`yaml` 只供排查。
-- `notes` 的 `code`：`verified_on`、`operation_passed`、`operation_failed`、`operation_not_tested`、`kv_bytes_per_token` 缺失时的 `kv_bytes_missing`、`model_config_missing`、`placement_omitted`（`gpu_count`、`gpu_memory_mib`）、`vram_limit`、`env_excluded`、`parameters_dropped`（没有引擎 flag 承载的设置，如 `cpu_cores`）、`container_overrides_omitted`。
+- 部署的命令里有密钥，或写出了未保留在模板里的部署环境变量时，这些值已脱敏，`saveable` 为 `false`，`notes` 里有 `command_redacted`（写出未保留变量时另有 `command_env_withheld`，带 `keys`）。
+- `notes` 的 `code`：`verified_on`、`operation_passed`、`operation_failed`、`operation_not_tested`、`kv_bytes_per_token` 缺失时的 `kv_bytes_missing`、`model_config_missing`、`placement_omitted`（`gpu_count`、`gpu_memory_mib`）、`vram_limit`、`env_excluded`、`parameters_dropped`（没有引擎 flag 承载的设置，如 `cpu_cores`）、`container_overrides_omitted`；部署用手写命令时还有 `manual_command`、`cards_pinned`（`count`，placement 钉死为实测卡数）、`command_redacted`、`command_env_withheld`（`keys`）、`command_sets_platform_env`（`keys`，命令设置了平台为每个节点自行设置的变量）、`manual_command_port_unstated`（`flag`、`variable`）。
 - `evidence` 是提交上游时附带的纯文本测试记录。
 
-写不成模板时返回 409 `TEMPLATE_EXPORT_UNAVAILABLE`，`params.reason` 为：`not_running`（部署未运行或没有运行中的实例）、`distributed`（多机）、`pd`、`no_gpu_facts`、`template_assets`、`components`（源模板带随包文件或组件模型）、`weights_not_public`（不支持的权重来源，如 URL；本地注册模型支持 `local` 来源）、`revision_unpinned`（权重版本不是 commit）、`revisions_differ`、`template_missing`、`model_missing`、`launch_changed`（配置或运行实例已变化）、`launch_snapshot_missing`（没有完整可核验的启动记录）、`heterogeneous_gpus`（绑定了不同型号的卡）、`command_overridden`（部署替换了引擎命令）。导出的参数重建不出原命令时返回 409 `LAUNCH_NOT_EXPORTABLE`。部署不存在 404，请求体不是合法 JSON 400。生成规则见[把部署另存为推理模板](../how-to/save-deployment-as-template.md)。
+写不成模板时返回 409 `TEMPLATE_EXPORT_UNAVAILABLE`，`params.reason` 为：`not_running`（部署未运行或没有运行中的实例）、`distributed`（多机）、`pd`、`no_gpu_facts`、`template_assets`、`components`（源模板带随包文件或组件模型）、`weights_not_public`（不支持的权重来源，如 URL；本地注册模型支持 `local` 来源）、`revision_unpinned`（权重版本不是 commit）、`revisions_differ`、`template_missing`、`model_missing`、`launch_changed`（配置或运行实例已变化）、`launch_snapshot_missing`（没有完整可核验的启动记录）、`heterogeneous_gpus`（绑定了不同型号的卡）、`command_image_entry`（部署运行镜像自带的命令）、`command_full_argv`（命令是完整 argv）、`command_model_mount`（手写命令配合改过的模型挂载路径，`params.model_mount_path`）、`command_mount`（手写命令用到了额外挂载路径，`params.mount_path`）、`command_not_importable`（命令写进 spec 后目录导入会拒绝）。导出的参数或命令重建不出原命令时返回 409 `LAUNCH_NOT_EXPORTABLE`。部署不存在 404，请求体不是合法 JSON 400。生成规则见[把部署另存为推理模板](../how-to/save-deployment-as-template.md)。
 
 本地模型另存的 YAML 使用 `weights.sources: [{local: <source_id>}]`，只引用已注册权重，不打包文件或保存主机路径。`local_weights` 说明携带 `repo_id`。缺少本地注册时，创建部署返回 400 `MODEL_SOURCE_UNAVAILABLE`，`params.reason=local_model_not_registered`；不会创建空模型。详情见[本地模型复用](../how-to/save-deployment-as-template.md)。
 
@@ -2530,7 +2531,7 @@ Playground 与 `/v1` 网关的边界、外部模型命名 `external:<config-id>:
 | `edition` | 构建名称，仅用于展示 |
 | `features[]` | 已声明功能（编译模块声明的与当前已安装插件包声明的合在一起，安装或卸载插件后立即变化）的当前可用性，按 `key` 排序：`{key, access, presentation, link?, message?, limits}`。`access` 为 `full` / `read_only` / `locked` / `hidden`；`presentation` 为 `promote`（不可用时显示为锁定并给出 `link`）或 `hidden`（不可用时完全隐藏，此时锁定按 `hidden` 返回）；`message` 是说明当前可用性的产品消息 `{code, params?, message}`；`limits` 为 `[{dim, max}]`，`max` 为 `null` 表示不限 |
 | `nav[]` | 扩展加入控制台菜单的入口 `{id, group, label_key, icon?, route, feature?}`；所属功能为 `hidden` 的入口不返回 |
-| `banners[]` | 显示在每个页面顶部的通知 `{id, severity, message, link?}`，`severity` 为 `info` / `warning` / `danger`（其他值按 `info` 返回），`message` 为产品消息 `{code, params?, message}` |
+| `banners[]` | 显示在每个页面顶部的通知 `{id, severity, message, link?, ack_key?}`，`severity` 为 `info` / `warning` / `danger`（其他值按 `info` 返回），`message` 为产品消息 `{code, params?, message}`；带 `ack_key` 的通知可以由用户确认，控制台按用户记住确认过的键、不再显示带同一个键的通知，来源换了键就重新显示（`ack_key` 为字母、数字与 `._:-`，至多 128 个字符，不符合的不返回） |
 
 ### GPU 容量是否已知
 

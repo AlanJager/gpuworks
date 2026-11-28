@@ -380,6 +380,8 @@ const (
 	// ReasonNodeCordoned: a replica that names its node ({node}) waits while
 	// an operator has stopped scheduling on it.
 	ReasonNodeCordoned = "node_cordoned"
+	// ReasonWaitingOnNode: placed on {node}, but waiting there ({stage}).
+	ReasonWaitingOnNode = "waiting_on_node"
 	// ReasonPoolNoFit: the pool's best candidates ({tried} of {candidates})
 	// were each planned and none had room; {node} and {first} are the best
 	// one and why it refused.

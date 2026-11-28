@@ -53,11 +53,30 @@ func (s *Service) reconcile(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// A drain lives inside one pass: end the gateway preferences of attempts
+	// that are no longer active, and return an attempt found in the draining
+	// stage with no drain held here to the queue — it dispatched nothing, and
+	// leaving it there would hold the platform's slot until the server
+	// restarted.
+	active, pending := make(map[uint]bool, len(items)), make(map[uint]bool, len(items))
+	for _, i := range items {
+		pending[i.ID] = true
+		if activePhase(i.Phase) {
+			active[i.ID] = true
+		}
+	}
+	s.holds.releaseInactive(active)
+	s.holds.forgetRequeues(pending)
+	if err := s.requeueAbandonedDrains(items); err != nil {
+		return err
+	}
 	// Record expiry before consuming fresh evidence. A late formal reconnect
 	// can verify the reservation, but cannot rewrite a missed deadline as success.
 	for index := range items {
 		i := &items[index]
-		if activePhase(i.Phase) && (i.DeadlineAt == nil || !s.now().Before(*i.DeadlineAt)) {
+		// A draining attempt has no deadline until it is dispatched: its wait
+		// is bounded by DrainTimeout, inside this runner's pass.
+		if i.Phase != "draining" && activePhase(i.Phase) && (i.DeadlineAt == nil || !s.now().Before(*i.DeadlineAt)) {
 			if err := s.unconfirmed(*i, "confirmation_timeout", "the agent upgrade was not confirmed before its deadline"); err != nil {
 				return err
 			}
@@ -154,12 +173,43 @@ func (s *Service) execute(ctx context.Context, run store.AgentUpgradeRun, item s
 	if item.Transport == "pull" && node.ConnectMode == "server_dial" {
 		return skip("legacy_unverified", "this older server-dial agent cannot prove a download address")
 	}
-	deadline := now.Add(s.cfg.TransferTimeout + s.cfg.ConfirmTimeout)
-	claimed, err := s.st.ClaimAgentUpgrade(item.ID, conn.SessionID, now, deadline, s.heldSince())
-	if err != nil || !claimed {
+	// The upgrade restarts the agent under whatever serves on the node: when
+	// its deployments are served elsewhere, let those requests finish first,
+	// routed there meanwhile (drain.go). What to wait for is read before the
+	// claim, so a failed read leaves the attempt queued.
+	set, err := s.planDrain(node)
+	if err != nil {
 		return err
 	}
-	item.BaselineSessionID, item.StartedAt, item.DeadlineAt, item.Phase = conn.SessionID, &now, &deadline, "transferring"
+	if s.holds.requeues(item.ID) >= maxDrainRequeues {
+		// The node reconnected under every drain so far: waiting again would
+		// hold the platform's slot without ever upgrading it, so this
+		// dispatch does not wait.
+		set = nil
+	}
+	if len(set) > 0 {
+		ok, err := s.drain(ctx, &item, set)
+		if err != nil || !ok {
+			return err
+		}
+		// A node that reconnected, or went, while it drained is judged again
+		// from the queue, with the checks above, on its new session.
+		baseline := conn.SessionID
+		if conn, online = s.cfg.Transport.AgentUpgradeConnection(item.NodeUUID); !online || conn.SessionID != baseline {
+			return s.requeueDrain(item)
+		}
+		now = s.now()
+		if ok, err := s.dispatchDrained(&item, conn.SessionID, now, now.Add(s.cfg.TransferTimeout+s.cfg.ConfirmTimeout)); err != nil || !ok {
+			return err
+		}
+	} else {
+		deadline := now.Add(s.cfg.TransferTimeout + s.cfg.ConfirmTimeout)
+		claimed, err := s.st.ClaimAgentUpgrade(item.ID, conn.SessionID, now, deadline, s.heldSince())
+		if err != nil || !claimed {
+			return err
+		}
+		item.BaselineSessionID, item.StartedAt, item.DeadlineAt, item.Phase = conn.SessionID, &now, &deadline, "transferring"
+	}
 	m, err := s.loadManifest(run.ID)
 	if err != nil {
 		return s.artifactFailure(item, err)
@@ -180,6 +230,7 @@ func (s *Service) execute(ctx context.Context, run store.AgentUpgradeRun, item s
 		err = s.cfg.Transport.RequestAgentUpgrade(transferCtx, item.NodeUUID, conn.SessionID)
 	}
 	if ctx.Err() != nil {
+		s.holds.release(item.ID)
 		_, saveErr := s.st.UpdateAgentUpgradeItem(item.ID, []string{"transferring"}, map[string]any{"phase": "observing_recovery", "reason": "server_stopped", "error": "server stopped while the upgrade outcome was pending"})
 		return saveErr
 	}
@@ -188,6 +239,10 @@ func (s *Service) execute(ctx context.Context, run store.AgentUpgradeRun, item s
 		if errors.As(err, &rejected) && !rejected.Busy {
 			return s.finish(item, "failed", "agent_rejected", err.Error())
 		}
+		// The transfer failed: the agent most likely did not restart, and the
+		// node's instances serve on, so they are preferred again at once
+		// rather than for as long as the outcome stays open.
+		s.holds.release(item.ID)
 		_, saveErr := s.st.UpdateAgentUpgradeItem(item.ID, []string{"transferring"}, map[string]any{"phase": "observing_recovery", "reason": "transport_uncertain", "error": err.Error()})
 		s.notify()
 		return saveErr
@@ -208,6 +263,7 @@ func (s *Service) artifactFailure(i store.AgentUpgradeItem, err error) error {
 }
 func (s *Service) finish(i store.AgentUpgradeItem, phase, reason, detail string) error {
 	now := s.now()
+	s.holds.release(i.ID)
 	_, err := s.st.UpdateAgentUpgradeItem(i.ID, []string{"transferring", "waiting_registration", "observing_recovery"}, map[string]any{"phase": phase, "reason": reason, "error": detail, "finished_at": now})
 	s.notify()
 	return err
@@ -277,6 +333,7 @@ func (s *Service) observeConnection(i store.AgentUpgradeItem) error {
 		_, err = s.st.VerifyAgentUpgrade(i.ID, now, "system", "target_registered", "the original upgrade later reached the fixed target on a new formal session")
 		return err
 	}
+	s.holds.release(i.ID)
 	_, err = s.st.UpdateAgentUpgradeItem(i.ID, []string{"transferring", "waiting_registration", "observing_recovery"}, map[string]any{"phase": "succeeded", "reason": "target_registered", "registered_at": now, "observed_version": conn.Version, "finished_at": now})
 	s.notify()
 	return err

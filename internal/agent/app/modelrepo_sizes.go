@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"gpuworks.ai/gpuworks/internal/agent/download"
@@ -209,9 +210,14 @@ func (m *fetchMessage) at(done, total int64, revision string) {
 // for (429/503) is marked as such on the retry rather than written into the
 // message, which says only where the bytes come from. It ends when bytes
 // beyond those reached arrive.
-func (m *fetchMessage) retrying(err error, attempt, attempts int, wait time.Duration) {
+func (m *fetchMessage) retrying(file string, err error, attempt, attempts int, wait time.Duration) {
 	_, throttled := modelfetch.ThrottleWait(err)
 	retry := &proto.ModelFetchRetry{Attempt: attempt + 1, Attempts: attempts, WaitSeconds: int64(wait.Round(time.Second) / time.Second), Throttled: throttled}
+	if file == modelfetch.ListingRetry {
+		retry.File, retry.Listing = "", true
+	} else {
+		retry.File = retryFile(file)
+	}
 	if !throttled {
 		retry.Cause = retryCause(err)
 	}
@@ -243,6 +249,32 @@ func (m *fetchMessage) quietLocked() proto.ModelFileStatus {
 	st := m.last
 	st.Message, st.RateBytesPerS, st.Retry = m.address, 0, m.retry
 	return st
+}
+
+// retryFileLimit bounds the path a retry names: the listing that supplied it
+// is the source's, so its length is too. The end is kept, where the file
+// name is.
+const retryFileLimit = 256
+
+// retryFile is the path a retry names, bounded from the front and with
+// control characters, bidirectional controls and line and paragraph
+// separators replaced, so a path the source made up cannot reshape the line
+// it is shown in.
+func retryFile(path string) string {
+	path = strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) || unicode.Is(unicode.Bidi_Control, r) || r == '\u2028' || r == '\u2029' {
+			return utf8.RuneError
+		}
+		return r
+	}, path)
+	if len(path) <= retryFileLimit {
+		return path
+	}
+	path = path[len(path)-retryFileLimit:]
+	for !utf8.ValidString(path) {
+		path = path[1:]
+	}
+	return "…" + path
 }
 
 // retryCauseLimit bounds the failure a retry carries: it is evidence shown

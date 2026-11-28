@@ -191,7 +191,7 @@ func (a *apiHandlers) agentUpgradeItems(w http.ResponseWriter, r *http.Request) 
 	if !ok {
 		return
 	}
-	phases := []string{"queued", "transferring", "waiting_registration", "observing_recovery", "succeeded", "failed", "skipped", "cancelled", "interrupted", "unconfirmed"}
+	phases := []string{"queued", "draining", "transferring", "waiting_registration", "observing_recovery", "succeeded", "failed", "skipped", "cancelled", "interrupted", "unconfirmed"}
 	q, err := parseListQuery(r, phases)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)

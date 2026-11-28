@@ -56,7 +56,7 @@ func (h *Hub) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 	remote := h.agentRemote(r)
 	if lane == proto.LaneData {
-		h.serveDataLane(netConn, c, remote)
+		h.serveDataLane(sessionCtx, netConn, c, remote)
 		return
 	}
 	sess, cleanup, err := h.acceptYamuxServerAs(netConn, lane, relayedSessionID(r.Context()), remote)

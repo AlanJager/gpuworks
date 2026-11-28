@@ -99,6 +99,10 @@ type Hub struct {
 	// sessionWork is store work a session started. Close the store only after
 	// it finishes, or a write can recreate a WAL file under a directory removal.
 	sessionWork sessionLifetime
+
+	// waits wakes whoever waits for one node's session when that node's
+	// entry in sessions changes (session_waits.go).
+	waits sessionWaits
 }
 
 type reconnectState struct {
@@ -512,6 +516,7 @@ func (h *Hub) register(s *Session) {
 	h.sessions[s.NodeUUID] = s
 	h.noteReplacedLocked(s, old)
 	duplicate, flagged := h.duplicates.observe(s, old, h.now()) // under h.mu: in replacement order
+	h.waits.notify(s.NodeUUID)
 	h.mu.Unlock()
 	if flagged {
 		h.logDuplicateAgents(s, duplicate)
@@ -548,6 +553,7 @@ func (h *Hub) deregister(s *Session) {
 	h.mu.Lock()
 	if cur, ok := h.sessions[s.NodeUUID]; ok && cur == s {
 		delete(h.sessions, s.NodeUUID)
+		h.waits.notify(s.NodeUUID)
 		h.mu.Unlock()
 		h.statusQ.forget(s.NodeUUID) // a stale report would mark it online again
 		h.storageQ.forget(s.NodeUUID)

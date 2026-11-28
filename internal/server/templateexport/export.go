@@ -58,6 +58,15 @@ type Input struct {
 	// KVBytesPerToken is the catalog's value for this model and engine,
 	// zero when the catalog has none.
 	KVBytesPerToken int64
+	// Command is the deployment's own command (CommandOf), the zero value
+	// for the engine's. SourceManualCommand is the manual_command of the
+	// spec the deployment was created from, empty when it states none.
+	Command             Command
+	SourceManualCommand string
+	// PlatformEnv is the env the platform set for the instance's node (its
+	// launch's system layer): a command that sets these keys again fixes
+	// them to this node's values.
+	PlatformEnv map[string]string
 	// Checks are the operation checks run for this export.
 	Checks []Check
 }
@@ -141,7 +150,8 @@ type Export struct {
 	// ExcludedEnv are the user env keys left out of the spec.
 	ExcludedEnv []string
 	// Verified reports that every tested operation answered; Saveable that
-	// the result may be written into the catalog as it is.
+	// the result may be written into the catalog as it is: verified, and
+	// holding no redacted command.
 	Verified bool
 	Saveable bool
 	// Evidence is the plain-text test record a contributor attaches when
@@ -208,9 +218,39 @@ func Build(in Input) (Export, error) {
 	spec.GPUs = gpus
 	spec.Args = launch.Args
 	spec.Env = env
+	pinned, err := applyCommand(&spec, in.Command, in.SourceManualCommand, in.GPUCount)
+	if err != nil {
+		return Export{}, err
+	}
 	model.Specs = []inferencecatalog.InferenceSpec{spec}
+	if in.Command.Stated() {
+		// The import validates what the command is written into (the
+		// manual command's size and variables, the pinned placement); a
+		// spec it refuses is no template. The script is checked as it ran,
+		// before redaction.
+		if err := importable(model); err != nil {
+			return Export{}, Unavailable(ReasonCommandNotImportable, nil)
+		}
+	}
+	// A command that writes out a deployment env value the export leaves out
+	// would carry it into the catalog anyway: the value is redacted and the
+	// result is not saveable, as for a secret.
+	withheld := withholdEnv(&model.Specs[0], in.UserEnv, excluded)
+	redacted := redactCommand(&model.Specs[0]) || len(withheld) > 0
 
 	notes := launchNotes(in, launch, excluded, model)
+	if len(withheld) > 0 {
+		notes = append(notes, Note{Code: NoteCommandEnvWithheld, Params: map[string]any{"keys": withheld}})
+	}
+	if keys := platformEnvSet(model.Specs[0], in); len(keys) > 0 {
+		notes = append(notes, Note{Code: NoteCommandSetsPlatformEnv, Params: map[string]any{"keys": keys}})
+	}
+	if pinned {
+		notes = append(notes, Note{Code: NoteCardsPinned, Params: map[string]any{"count": in.GPUCount}})
+	}
+	if redacted {
+		notes = append(notes, Note{Code: NoteCommandRedacted})
+	}
 	notes = append(notes, modelNotes...)
 	notes = append(notes, checkNotes(in.Checks)...)
 	verified := true
@@ -219,12 +259,22 @@ func Build(in Input) (Export, error) {
 			verified = false
 		}
 	}
-	out := Export{Model: model, Checks: in.Checks, Notes: notes, ExcludedEnv: excluded, Verified: verified, Saveable: verified}
+	out := Export{Model: model, Checks: in.Checks, Notes: notes, ExcludedEnv: excluded, Verified: verified, Saveable: verified && !redacted}
 	if out.YAML, err = renderYAML(model, in, notes); err != nil {
 		return Export{}, err
 	}
 	out.Evidence = renderEvidence(in, notes)
 	return out, nil
+}
+
+// importable validates model the way the catalog's import does.
+func importable(model inferencecatalog.InferenceModel) error {
+	data, err := inferencecatalog.MarshalYAML(inferencecatalog.FlatCatalog{Models: []inferencecatalog.InferenceModel{model}})
+	if err != nil {
+		return err
+	}
+	_, err = inferencecatalog.ParseYAML(data)
+	return err
 }
 
 // fromTemplate starts the spec from the one the deployment was created from:

@@ -97,6 +97,16 @@ func (c *Controller) launchGeneration(ctx context.Context, deployment *unitDeplo
 	}
 	release, pinned := c.store.TryPinNodeCaches(nodeIDs)
 	if !pinned {
+		// A cache eviction owns one of the nodes (which one is the store's
+		// to know, so a single-node replica names it and a multi-node one
+		// does not). The wait is recorded, and the re-check stays the short
+		// poll: the refusal record's own requeue is a whole timeout window,
+		// and an eviction of another model never wakes this deployment.
+		at := ""
+		if len(nodes) == 1 {
+			at = nodes[0].DisplayName()
+		}
+		c.recordWaitingOnNode(deployment.dep, waitingStageCacheEviction, at)
 		c.q.addAfter(depKey(deployment.dep.ID), groupPollInterval)
 		return false, nil
 	}

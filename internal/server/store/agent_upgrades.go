@@ -97,14 +97,15 @@ func (s *Store) AgentUpgradeItem(runID uint, uuid string) (*AgentUpgradeItem, er
 }
 
 // upgradeOutstanding selects the attempts that hold the platform's single
-// upgrade slot: those in flight, and those unconfirmed at heldSince or later
-// and not verified since. An unconfirmed attempt holds it only for a while
+// upgrade slot: those in flight, those draining the node they are about to
+// upgrade, and those unconfirmed at heldSince or later and not verified since.
+// An unconfirmed attempt holds it only for a while
 // (the caller's policy): its agent has settled by then, confirmed or rolled
 // back, so another node may go ahead; the attempt itself stays unverified
 // until its node says how it ended. The zero heldSince holds every
 // unverified one.
 func upgradeOutstanding(q *gorm.DB, heldSince time.Time) *gorm.DB {
-	return q.Where("phase IN ? OR (phase = ? AND verified_at IS NULL AND finished_at >= ?)", []string{"transferring", "waiting_registration", "observing_recovery"}, "unconfirmed", heldSince)
+	return q.Where("phase IN ? OR (phase = ? AND verified_at IS NULL AND finished_at >= ?)", []string{"draining", "transferring", "waiting_registration", "observing_recovery"}, "unconfirmed", heldSince)
 }
 
 // AgentUpgradeBlocker is the first attempt that holds the slot
@@ -200,6 +201,30 @@ func (s *Store) CreateAgentUpgrade(run *AgentUpgradeRun, items []AgentUpgradeIte
 // ClaimAgentUpgrade starts a queued attempt when nothing holds the slot
 // (heldSince as for upgradeOutstanding).
 func (s *Store) ClaimAgentUpgrade(itemID uint, session string, now, deadline, heldSince time.Time) (bool, error) {
+	return s.claimAgentUpgrade(itemID, heldSince, map[string]any{"phase": "transferring", "baseline_session_id": session, "started_at": now, "deadline_at": deadline})
+}
+
+// ClaimAgentUpgradeDrain claims a queued attempt, under the same slot rules
+// as ClaimAgentUpgrade, for the wait that precedes its dispatch: it holds the
+// platform's slot in the draining stage, with no session or deadline yet,
+// which the dispatch writes when the wait ends.
+func (s *Store) ClaimAgentUpgradeDrain(itemID uint, now, heldSince time.Time) (bool, error) {
+	return s.claimAgentUpgrade(itemID, heldSince, map[string]any{"phase": "draining", "started_at": now})
+}
+
+// requeueDrain is what returns a draining attempt to the queue: it dispatched
+// nothing, so it keeps none of its claim.
+func requeueDrain() map[string]any {
+	return map[string]any{"phase": "queued", "reason": "", "started_at": nil, "deadline_at": nil, "baseline_session_id": ""}
+}
+
+// RequeueAgentUpgradeDrain returns an attempt still in the draining stage to
+// the queue, as unstarted as it was before its claim.
+func (s *Store) RequeueAgentUpgradeDrain(itemID uint) (bool, error) {
+	return s.UpdateAgentUpgradeItem(itemID, []string{"draining"}, requeueDrain())
+}
+
+func (s *Store) claimAgentUpgrade(itemID uint, heldSince time.Time, values map[string]any) (bool, error) {
 	claimed := false
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		var item AgentUpgradeItem
@@ -220,12 +245,12 @@ func (s *Store) ClaimAgentUpgrade(itemID uint, session string, now, deadline, he
 		if count != 0 {
 			return nil
 		}
-		r := tx.Model(&AgentUpgradeItem{}).Where("id = ? AND phase = ?", itemID, "queued").Updates(map[string]any{"phase": "transferring", "baseline_session_id": session, "started_at": now, "deadline_at": deadline})
+		r := tx.Model(&AgentUpgradeItem{}).Where("id = ? AND phase = ?", itemID, "queued").Updates(values)
 		claimed = r.RowsAffected == 1
 		return r.Error
 	})
 	if err == nil && claimed {
-		s.Bus.PublishChange("agent_upgrade", "", "transferring")
+		s.Bus.PublishChange("agent_upgrade", "", values["phase"].(string))
 	}
 	return claimed, err
 }
@@ -260,7 +285,11 @@ func (s *Store) StopAgentUpgrade(id uint, now time.Time, actor string) error {
 		if err := tx.Model(&AgentUpgradeRun{}).Where("id = ? AND stop_requested_at IS NULL", run.ID).Updates(map[string]any{"stop_requested_at": now, "stop_requested_by": actor}).Error; err != nil {
 			return err
 		}
-		return tx.Model(&AgentUpgradeItem{}).Where("run_id = ? AND phase = ?", id, "queued").Updates(map[string]any{"phase": "cancelled", "reason": "stopped", "finished_at": now}).Error
+		// A draining attempt has dispatched nothing yet: it is cancelled with
+		// the queue, so no later step can return it there under a stopped
+		// batch, and its dispatch, which moves it out of the stage by
+		// compare-and-set, cannot happen.
+		return tx.Model(&AgentUpgradeItem{}).Where("run_id = ? AND phase IN ?", id, []string{"queued", "draining"}).Updates(map[string]any{"phase": "cancelled", "reason": "stopped", "finished_at": now, "started_at": nil}).Error
 	})
 	if err == nil {
 		s.Bus.PublishChange("agent_upgrade", uintKey(id), "stopped")
@@ -283,6 +312,12 @@ func (s *Store) RecoverAgentUpgrades(target string) error {
 		if err := tx.Model(&AgentUpgradeItem{}).Where("phase IN ?", []string{"transferring", "waiting_registration"}).Update("phase", "observing_recovery").Error; err != nil {
 			return err
 		}
+		// A draining attempt dispatched nothing: the node was only taken out
+		// of the gateway's routing, in memory, and that ended with the
+		// process. It goes back to the queue for the next dispatch.
+		if err := tx.Model(&AgentUpgradeItem{}).Where("phase = ?", "draining").Updates(requeueDrain()).Error; err != nil {
+			return err
+		}
 		// Older servers paused a batch whenever one node's attempt went
 		// unconfirmed, and left it for an administrator. An unconfirmed
 		// attempt no longer pauses anything, so those batches go on.
@@ -296,7 +331,7 @@ func (s *Store) RecoverAgentUpgrades(target string) error {
 
 func (s *Store) AgentUpgradePendingItems() ([]AgentUpgradeItem, error) {
 	var items []AgentUpgradeItem
-	err := s.reader().Where("phase IN ? OR (phase = ? AND verified_at IS NULL)", []string{"queued", "transferring", "waiting_registration", "observing_recovery"}, "unconfirmed").Order("id").Find(&items).Error
+	err := s.reader().Where("phase IN ? OR (phase = ? AND verified_at IS NULL)", []string{"queued", "draining", "transferring", "waiting_registration", "observing_recovery"}, "unconfirmed").Order("id").Find(&items).Error
 	return items, err
 }
 func (s *Store) AgentUpgradeQueuedBlocker() (*AgentUpgradeItem, error) {

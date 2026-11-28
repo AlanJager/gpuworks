@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/agentupgrade"
@@ -27,6 +28,14 @@ func (upgradeAdapterTransport) RequestAgentUpgrade(context.Context, string, stri
 	return errors.New("adapter must record intent without dispatch")
 }
 
+// upgradeAdapterGateway answers that nothing serves on the nodes: the adapter
+// test is about the wire, not about draining.
+type upgradeAdapterGateway struct{}
+
+func (upgradeAdapterGateway) ServedElsewhere(uint, []string) bool { return false }
+func (upgradeAdapterGateway) Avoid(uint, []string) func()         { return func() {} }
+func (upgradeAdapterGateway) InstancesInFlight([]string) int      { return 0 }
+
 func TestAgentUpgradeAPIAdapterPreservesScopeAuditAndWire(t *testing.T) {
 	ctx := context.Background()
 	st, err := store.Open(filepath.Join(t.TempDir(), "db.sqlite"), bus.New())
@@ -45,7 +54,7 @@ func TestAgentUpgradeAPIAdapterPreservesScopeAuditAndWire(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	service, err := agentupgrade.New(st, agentupgrade.Config{TargetVersion: "target", ArtifactDir: t.TempDir(), Transport: upgradeAdapterTransport{}, ReadBinary: func(string) ([]byte, error) { return []byte("verified-fixture"), nil }})
+	service, err := agentupgrade.New(st, agentupgrade.Config{TargetVersion: "target", ArtifactDir: t.TempDir(), Transport: upgradeAdapterTransport{}, Gateway: upgradeAdapterGateway{}, ReadBinary: func(string) ([]byte, error) { return []byte("verified-fixture"), nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,5 +123,21 @@ func TestUpgradePreviewFlagsOnlyKnownReleaseDowngrades(t *testing.T) {
 	}
 	if !got.Nodes[0].Downgrade || got.Nodes[1].Downgrade || got.Nodes[2].Downgrade {
 		t.Fatal(got.Nodes)
+	}
+}
+
+// The stage the console shows while a node drains is a value of the item
+// DTO's existing phase field: the wire keeps its shape and its keys.
+func TestAgentUpgradeItemWireCarriesTheDrainingStage(t *testing.T) {
+	started := time.Date(2026, 11, 27, 9, 0, 0, 0, time.UTC)
+	deadline := started.Add(10 * time.Minute)
+	got := toAgentUpgradeItem(agentupgrade.ItemView{Record: store.AgentUpgradeItem{RunID: 3, NodeUUID: "n1", Phase: "draining", StartedAt: &started, DeadlineAt: &deadline}}, "v26.12.0")
+	body, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"run_id":3,"node_uuid":"n1","name":"","from_version":"","target_version":"v26.12.0","current_version":"","os":"","arch":"","transport":"","phase":"draining","started_at":"2026-11-27T09:00:00Z","deadline_at":"2026-11-27T09:10:00Z"}`
+	if string(body) != want {
+		t.Fatalf("item wire =\n%s\nwant\n%s", body, want)
 	}
 }

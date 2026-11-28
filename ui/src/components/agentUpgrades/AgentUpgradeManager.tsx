@@ -1,4 +1,3 @@
-import { Alert, Button, Empty, Modal, Select, Space, Spin, Typography } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, useEvents, usePolling } from "../../api";
@@ -7,6 +6,13 @@ import { agentUpgradeRunning, type AgentUpgradePreview } from "../../agentUpgrad
 import UpgradePreviewModal from "./UpgradePreviewModal";
 import UpgradeRunDrawer from "./UpgradeRunDrawer";
 import UpgradeSummary from "./UpgradeSummary";
+import EmptyState from "../EmptyState";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Notice } from "../../ui-kit/Notice";
+import { OptionSelect } from "../../ui-kit/OptionSelect";
+import { Spinner } from "../../ui-kit/Spinner";
 
 /** upgradeAllRequest counts the times the page asked to upgrade every node; each new value opens the whole-fleet preview. */
 export default function AgentUpgradeManager({ isAdmin, requestedRunID, selectedNodeUUIDs, upgradeAllRequest = 0, onStarted }: { isAdmin: boolean; requestedRunID?: number; selectedNodeUUIDs: string[]; upgradeAllRequest?: number; onStarted?: () => void }) {
@@ -66,24 +72,37 @@ export default function AgentUpgradeManager({ isAdmin, requestedRunID, selectedN
   upgradeAll.current = () => { if (blocker) { setHistoryOpen(true); refresh(); } else loadPreview(undefined, true); };
   useEffect(() => { if (isAdmin && upgradeAllRequest) upgradeAll.current(); }, [isAdmin, upgradeAllRequest]);
   return <>
-    <Space wrap>
-      {isAdmin && <Button disabled={!selectedNodeUUIDs.length || previewLoading || busy || !!blocker} onClick={() => {
+    <div className="flex flex-wrap gap-2">
+      {isAdmin && <Button variant="secondary" disabled={!selectedNodeUUIDs.length || previewLoading || busy || !!blocker} onClick={() => {
         selectedSnapshot.current = [...selectedNodeUUIDs]; loadPreview();
       }}>{t("batchUpgrade.selected")}</Button>}
-      <Button onClick={() => { setHistoryOpen(true); refresh(); }}>{t("batchUpgrade.history")}</Button>
-    </Space>
-    <Modal open={historyOpen} title={t("batchUpgrade.history")} onCancel={() => setHistoryOpen(false)} footer={<Button onClick={refresh}>{t("batchUpgrade.refresh")}</Button>} width={850}>
-      <Space direction="vertical" style={{ width: "100%" }}>
-        {runs.loading && <Spin aria-label={t("batchUpgrade.loadingRuns")} />}
-        {runs.error && <Alert type="error" showIcon message={runs.error.message} />}
-        {blocker && <Alert type={blocker.reason === "unconfirmed" ? "info" : "warning"} showIcon message={t(blocker.reason === "unconfirmed" ? "batchUpgrade.blocked" : "batchUpgrade.activeBlock", { name: blocker.name || blocker.node_uuid })} action={<Button size="small" onClick={() => { setRunID(blocker.run_id); setHistoryOpen(false); }}>{t("batchUpgrade.details")}</Button>} />}
-        {latest ? <>
-          <Space wrap><Typography.Text>{t("batchUpgrade.target", { version: latest.target_version })}</Typography.Text><Typography.Text>{t(`batchUpgrade.runState.${latest.state}`, { defaultValue: t("batchUpgrade.runState.unknown") })}</Typography.Text><Button onClick={() => { setRunID(latest.id); setHistoryOpen(false); }}>{t("batchUpgrade.details")}</Button></Space>
-          <UpgradeSummary counts={latest.counts} />
-        </> : !runs.loading && !runs.error && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t("batchUpgrade.empty")} />}
-        {!!runs.data?.items.length && <Select aria-label={t("batchUpgrade.history")} placeholder={t("batchUpgrade.history")} style={{ minWidth: 260 }} value={runID} onChange={(id) => { setRunID(id); setHistoryOpen(false); }} options={runs.data.items.map((run) => ({ value: run.id, label: t("batchUpgrade.historyItem", { id: run.id, version: run.target_version }) }))} />}
-      </Space>
-    </Modal>
+      <Button variant="secondary" onClick={() => { setHistoryOpen(true); refresh(); }}>{t("batchUpgrade.history")}</Button>
+    </div>
+    <Dialog open={historyOpen} onOpenChange={(next) => { if (!next) setHistoryOpen(false); }}>
+      <DialogContent size="lg" closeButtonLabel={t("batchUpgrade.close")} className="flex max-h-[calc(100dvh-32px)] w-[min(850px,calc(100vw-32px))] max-w-none flex-col gap-4">
+        <DialogHeader><DialogTitle>{t("batchUpgrade.history")}</DialogTitle></DialogHeader>
+        <div className="flex min-h-0 flex-col gap-3 overflow-y-auto">
+          {runs.loading && <Spinner label={t("batchUpgrade.loadingRuns")} />}
+          {runs.error && <Notice tone="danger" title={runs.error.message} />}
+          {blocker && <Notice tone={blocker.reason === "unconfirmed" ? "info" : "warning"} title={t(blocker.reason === "unconfirmed" ? "batchUpgrade.blocked" : "batchUpgrade.activeBlock", { name: blocker.name || blocker.node_uuid })}
+            action={<Button size="sm" variant="secondary" onClick={() => { setRunID(blocker.run_id); setHistoryOpen(false); }}>{t("batchUpgrade.details")}</Button>} />}
+          {latest ? <>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-fg-default">{t("batchUpgrade.target", { version: latest.target_version })}</span>
+              <Badge size="sm" status="neutral">{t(`batchUpgrade.runState.${latest.state}`, { defaultValue: t("batchUpgrade.runState.unknown") })}</Badge>
+              <Button size="sm" variant="secondary" onClick={() => { setRunID(latest.id); setHistoryOpen(false); }}>{t("batchUpgrade.details")}</Button>
+            </div>
+            <UpgradeSummary counts={latest.counts} />
+          </> : !runs.loading && !runs.error && <EmptyState compact description={t("batchUpgrade.empty")} />}
+          {!!runs.data?.items.length && <div className="w-[260px]">
+            <OptionSelect aria-label={t("batchUpgrade.history")} placeholder={t("batchUpgrade.history")} value={runID === undefined ? undefined : String(runID)}
+              onChange={(id) => { if (id) { setRunID(Number(id)); setHistoryOpen(false); } }}
+              options={runs.data.items.map((run) => ({ value: String(run.id), label: t("batchUpgrade.historyItem", { id: run.id, version: run.target_version }) }))} />
+          </div>}
+        </div>
+        <DialogFooter><Button variant="secondary" onClick={refresh}>{t("batchUpgrade.refresh")}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
     <UpgradePreviewModal open={previewOpen} preview={preview} loading={previewLoading} busy={busy} error={error} onClose={() => setPreviewOpen(false)} onRefresh={() => loadPreview(sourceRun)} onStart={start} />
     {runID !== undefined && <UpgradeRunDrawer key={runID} runID={runID} isAdmin={isAdmin} onClose={() => setRunID(undefined)} onContinue={loadPreview} onChanged={refresh} />}
   </>;

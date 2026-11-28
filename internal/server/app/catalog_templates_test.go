@@ -181,9 +181,9 @@ func TestLoadRefusesDeploymentsASpecCannotDescribe(t *testing.T) {
 		}, templateexport.ReasonNotRunning},
 		{"multi-node", func(f *templateFixture) { f.update(t, "n_nodes", 2) }, templateexport.ReasonDistributed},
 		{"pd", func(f *templateFixture) { f.update(t, "placement", `{"pd":{"mode":"vllm-nixl","roles":{}}}`) }, templateexport.ReasonPD},
-		{"command overridden", func(f *templateFixture) {
+		{"full argv", func(f *templateFixture) {
 			f.update(t, "container_overrides", `{"cmd_display":"[\"python\",\"serve.py\"]"}`)
-		}, templateexport.ReasonCommandOverridden},
+		}, templateexport.ReasonCommandFullArgv},
 		{"unbound instance", func(f *templateFixture) {
 			mustCreateRow(t, f.st.DB().Model(&store.Instance{}).Where("id = ?", f.instance.ID).Update("gpu_idents", "").Error)
 		}, templateexport.ReasonNoGPUFacts},

@@ -93,7 +93,7 @@ func TestTemplateAutomaticModelRejectsFailedArtifact(t *testing.T) {
 				// Remove the other registrations so a failed exact match cannot hide
 				// behind another candidate, or be upserted again as a new download.
 				for _, model := range []*store.Model{f.hf, f.shared} {
-					if err := f.h.d.Store.DeleteModel(model.ID); err != nil {
+					if _, err := f.h.d.Store.DeleteModel(model.ID, false); err != nil {
 						t.Fatal(err)
 					}
 				}

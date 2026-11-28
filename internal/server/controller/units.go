@@ -181,24 +181,29 @@ func (c *Controller) reconcileUnits(ctx context.Context, dep *store.Deployment, 
 		nodes, ready := c.unitNodes(ctx, dep, deployment, model, slot.Unit)
 		if !ready {
 			placementResolved = false
+			// unitNodes records why; a pool replica's refusal is recorded in its pool.
 			continue
 		}
 		if leaving := masterPortHolder(dep, insts, nodes[0]); leaving != nil {
 			placementResolved = false
-			// The generation it replaces still listens on the master port;
-			// its retirement requeues the deployment.
+			// The generation it replaces still listens on the master port.
 			c.log.Info("replica waits for the generation it replaces to leave its leader node", "dep", dep.ID, "unit", slot.Key, "leaving", leaving.UUID)
+			c.recordWaitingOnNode(dep, waitingStageGeneration, nodes[0].DisplayName())
 			continue
 		}
 		for _, node := range nodes {
 			preparing = append(preparing, node.ID)
 		}
 		c.placements.set(dep, preparing)
-		ready, err := c.generationReady(ctx, dep, model, nodes)
+		ready, modelWaiting, err := c.generationReady(ctx, dep, model, nodes)
 		if err != nil {
 			return err
 		}
 		if !ready {
+			// A model still arriving names the rank's node that lacks it.
+			if modelWaiting != nil {
+				c.recordWaitingOnNode(dep, waitingStageModelArriving, modelWaiting.DisplayName())
+			}
 			continue
 		}
 		launched, err := c.launchGeneration(ctx, deployment, model, slot, nodes, len(attempts)+1)
@@ -504,6 +509,7 @@ func (c *Controller) unitNodes(ctx context.Context, dep *store.Deployment, deplo
 	out := make([]*store.Node, 0, len(unit.Ranks))
 	for _, rank := range unit.Ranks {
 		var picked *store.Node
+		rejected := false
 		for _, uuid := range rank.Nodes {
 			node := deployment.nodes[uuid]
 			if node == nil {
@@ -511,6 +517,7 @@ func (c *Controller) unitNodes(ctx context.Context, dep *store.Deployment, deplo
 			}
 			if err := c.matchDeploymentRequirements(deployment, node); err != nil {
 				c.recordUnschedulable(dep, scheduler.Reason{Code: scheduler.ReasonPlacementRejected, Params: map[string]any{"detail": err.Error()}})
+				rejected = true
 				continue
 			}
 			if !node.Scheduling.TakesReplicas() {
@@ -519,12 +526,18 @@ func (c *Controller) unitNodes(ctx context.Context, dep *store.Deployment, deplo
 			}
 			if !c.hub.Online(node.UUID) {
 				c.log.Debug("deployment waiting: node offline", "dep", dep.ID, "node", node.UUID)
+				c.recordWaitingOnNode(dep, waitingStageNodeOffline, node.DisplayName())
 				return nil, false
 			}
 			picked = node
 			break
 		}
 		if picked == nil {
+			// A candidate that failed the requirements was recorded as that;
+			// only nodes gone from the placement are missing.
+			if !rejected {
+				c.recordWaitingOnNode(dep, waitingStageNodeMissing, strings.Join(rank.Nodes, ", "))
+			}
 			return nil, false
 		}
 		out = append(out, picked)
@@ -539,12 +552,18 @@ func (c *Controller) unitNodes(ctx context.Context, dep *store.Deployment, deplo
 // image pulls finished ten minutes apart). It starts what is missing and
 // reports whether everything is there; a multi-node generation also has its
 // image pulled onto every node ahead of the launch.
-func (c *Controller) generationReady(ctx context.Context, dep *store.Deployment, model *store.Model, nodes []*store.Node) (bool, error) {
+func (c *Controller) generationReady(ctx context.Context, dep *store.Deployment, model *store.Model, nodes []*store.Node) (bool, *store.Node, error) {
 	ready := true
+	// The first rank's node whose model is not there; an image still arriving
+	// has its own reason, and alternating with it would defeat its exemption.
+	var modelWaiting *store.Node
 	for rank, node := range nodes {
 		_, present, err := c.ensureDeploymentModelsPresent(ctx, node, dep, model, rank)
 		if err != nil {
-			return false, err
+			return false, nil, err
+		}
+		if !present && modelWaiting == nil {
+			modelWaiting = node
 		}
 		delivery := c.deploymentImageDelivery(ctx, dep, node)
 		ready = ready && present && delivery.present
@@ -555,7 +574,7 @@ func (c *Controller) generationReady(ctx context.Context, dep *store.Deployment,
 	if !ready && len(nodes) > 1 {
 		c.q.addAfter(depKey(dep.ID), groupPollInterval)
 	}
-	return ready, nil
+	return ready, modelWaiting, nil
 }
 
 // masterPortHolder is the leaving leader of an ordinary multi-node deployment

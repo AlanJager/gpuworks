@@ -22,7 +22,7 @@ test("the overlay SDK exports exactly the pinned runtime names", () => {
     "Table", "TableBody", "TableCell", "TableHead", "TableHeader", "TableRow", "Tabs", "TabsList", "Timeline", "Tooltip", "Trans",
     "apiErrorText", "confirm", "createContext", "createElement", "downloadFile", "getJSON", "message", "productMessageText", "saveBlob",
     "sendForm", "sendJSON", "useCallback", "useContext", "useCopy", "useEffect", "useId", "useLocation", "useMemo", "useNavigate",
-    "useParams", "useReducer", "useRef", "useSearchParams", "useState", "useTranslation",
+    "useBannerAck", "useParams", "useReducer", "useRef", "useSearchParams", "useState", "useTranslation",
   ].sort());
 });
 

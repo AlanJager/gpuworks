@@ -44,6 +44,7 @@ const { act, cleanup, fireEvent, render, screen, waitFor } = await import("@test
 const { default: userEvent } = await import("@testing-library/user-event");
 const { default: AddNodeDrawer } = await import("../src/components/AddNodeDrawer");
 const apiModule = await import("../src/api");
+const { logSelection } = await import("../src/theme/terminalTheme");
 // A required field's label ends in a visual "*" mark; match the label text without it.
 const required = { normalizer: (text: string) => text.replace(/\s*\*$/, "").trim() };
 
@@ -342,6 +343,8 @@ for (const language of ["en", "zh"] as const) {
         assert.equal(create.bodies.length, 1, "one node is created for the displayed command");
         assert.equal(create.bodies[0].connect_mode, direction);
         assert.equal(document.querySelector("pre")?.textContent, command, "keep the server's runnable command intact");
+        // GWKS-540: the command sits on the inverse (dark in the light theme) surface.
+        assert.equal(document.querySelector("pre")?.style.getPropertyValue("--text-selection"), logSelection);
         fireEvent.click(screen.getByRole("button", { name: new RegExp(t("add.copyCommand")) }));
         await waitFor(() => assert.deepEqual(clipboard.copied, [command]));
       } finally {

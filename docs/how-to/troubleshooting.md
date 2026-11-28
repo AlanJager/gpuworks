@@ -314,7 +314,8 @@ CLI 可在节点执行 `gpuworks-agent doctor`；退出码恒为 `0`，应读取
 
 | 观察到的结果 | 下一步 |
 |---|---|
-| GPU 为 0、没有厂商工具 | 在节点核对驱动、工具是否安装，以及 agent 用户的 `PATH`；按硬件选择 `nvidia-smi`、`npu-smi info`、`ppu-smi` 或 `hy-smi` |
+| GPU 为 0、没有厂商工具 | 在节点核对驱动、工具是否安装，以及 agent 用户的 `PATH`；按硬件选择 `nvidia-smi`、`npu-smi info`、`ppu-smi`、`hy-smi`、`amd-smi list`；昆仑 P800 可用 `/usr/local/xpu/bin/xpu-smi -L` 列卡，SDK 目录可能未加入 SSH 的 `PATH` |
+| 添加节点时 GPU 预检为 `skip / CHECK_COMMAND_NOT_RUN` | Linux 上所有厂商共用 10 秒 GPU 探测时限。驱动繁忙也可能超时，其他检查会继续。在同一 SSH 用户下单独运行对应命令，确认耗时与卡片清单后重试 |
 | **厂商工具未响应**、`gpu probe failed` | 在节点运行对应工具，查看耗时与报错；持续卡住时检查驱动日志，旧显存读数不能作为当前容量 |
 | **运行时无法使用**、**驱动初始化失败** | 查看该卡的诊断依据与其他卡的结果；先恢复驱动，再重做诊断 |
 | **读不到信息** | 检查厂商工具是否可执行、能否返回；不据此直接判定硬件损坏 |
@@ -329,14 +330,9 @@ CLI 可在节点执行 `gpuworks-agent doctor`；退出码恒为 `0`，应读取
 
 驱动或 `nvidia-smi` 没装 / 不在 `PATH`：prober 返回 0 张 GPU 且不报错，节点在线但没有 GPU。
 
-**平台如何识别厂商**：agent 按 `hy-smi`、`npu-smi`、`ppu-smi`、`nvidia-smi` 顺序选第一个真正应答的，
-NVIDIA 的判据是 `nvidia-smi --query-gpu=index` 能成功。NVIDIA 排最后，因为 PPU SDK 自带一个
-CUDA 兼容的 `nvidia-smi`（`/usr/local/PPU_SDK/CUDA_SDK/bin`），它会把 PPU 卡当作 GPU 正常应答。
+**添加节点时的 SSH 预检**依次尝试 `nvidia-smi`、`npu-smi`、`ppu-smi`、`hy-smi`、`amd-smi`，最后检查昆仑。昆仑与 Intel 都提供 `xpu-smi`。预检先确认 `/dev/xpuctrl` 是字符设备，再运行可执行的 `/usr/local/xpu/bin/xpu-smi -L`；该路径不可执行时从 SSH 的 `PATH` 查找同名工具。命令成功并列出至少一行 `XPU <编号>:` 卡片信息时通过。探测执行完毕且所有厂商检查均失败时，返回 `CHECK_GPU_TOOL_MISSING`。
 
-都不应答时按**厂商设备文件**（`/dev/davinci_manager`、`/dev/alixpu_ctl`、`/dev/nvidiactl`）判，再按**装了哪家 CLI**判
-（`npu-smi`、`hy-smi`、`ppu-smi`、`nvidia-smi` 顺序，NVIDIA 最后：别家主机上常留着一个过期的 `nvidia-smi`）；
-都没有才是「没有加速卡」，厂商为空。驱动还在加载时（昇腾主机开机后 agent 先起、`npu-smi` 尚未应答、
-设备文件也还没建）节点因此仍是昇腾节点，随后的探测能补上卡。
+**节点上线后的 agent 自动探测**依次检查海光、昇腾、PPU、昆仑、NVIDIA、Apple 和 AMD。昆仑探针读取 `xpu-smi -q -x` 返回的卡片品牌；PPU 排在 NVIDIA 前面，因为 PPU SDK 自带的 CUDA 兼容工具也能响应 `nvidia-smi`。如果探针均未就绪，agent 依次检查厂商控制设备（昆仑为 `/dev/xpuctrl`）、能标识厂商的已安装工具，以及 PCI 设备。
 
 **昇腾启动期间暂时为 0**
 
@@ -941,6 +937,21 @@ message 为 `insufficient disk space at <path>: available=… required=…`。
 
 模型在某节点为 `failed` 或 `download_required` 时，部署等待原因是 `model_unavailable`，其中写明模型、节点和错误；自动选节点的副本会跳过该节点，尝试放到别处。
 
+### 副本已放置但一直不启动
+
+副本已经落在某个节点上、却迟迟不启动时，部署的调度原因是 `waiting_on_node`，参数 `stage` 说明在等什么：
+
+| stage | 含义 | 处理 |
+|---|---|---|
+| `cache_eviction` | 该节点正在清理模型缓存，为别的模型腾空间 | 等清理结束（通常数十秒到数分钟）；卡住时看该节点的缓存操作与 agent 日志 |
+| `model_arriving` | 模型还在往该节点传输 | 在模型页看该节点的下载进度；失败时见上文 `model_unavailable` |
+| `node_offline` | 副本指定的节点离线 | 等节点重连；也可以“调整副本”换一台节点 |
+| `node_missing` | 副本指定的节点已不在部署的放置里 | 在“调整副本”里重新选节点 |
+| `previous_generation_leaving` | 它替换的上一代实例还没离开节点的 master 端口 | 等上一代退完；长时间不退看该实例的事件 |
+| `pool_unreadable` | 读取候选节点失败 | 平台稍后重试；一直如此看服务端日志 |
+
+这些等待会按窗口重写调度事件；超过待定超时后部署显示为调度停滞（stalled），可以按提示继续排查。
+
 ### 长时间没完成：看切源与续传进度
 
 候选由站点规则的替代地址及站点本身组成。进度和失败文案中的 host 表示当前尝试的来源及切换原因；在原地址等待重试时，进度显示下一次的次数、等待秒数和上次失败的原因，文件全部到位前最多显示 99.9%，见[节点怎样依次尝试](configure-pull-settings.md#节点怎样依次尝试)。
@@ -1264,6 +1275,8 @@ SGLang 默认的 `/health` 会向调度器提交一个只生成 1 个 token 的�
 | 503 | `MODEL_NODE_OFFLINE` | 副本在运行，但所在节点的 agent 没有连接；看节点连接状态 |
 | 503 | `DISTRIBUTED_NOT_READY`、`DISTRIBUTED_LEADER_OFFLINE` | 多机部署的 rank 或 leader 没就绪 |
 | 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE`（`message` 含 `did not reattach within 5s`） | 节点数据通道断开后 5 秒内没重连；**可重试**，不会回落到控制通道 |
+| 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE`（`message` 含 `has no live agent session`） | agent 正在重连：旧会话已关、5 秒内新会话没注册上；**可重试**。路由时节点已经离线的，直接回 `MODEL_NODE_OFFLINE`；路由之后才断开、且 30 秒内没有心跳的节点不等，回 502 `UPSTREAM_UNAVAILABLE` |
+| 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE`（`message` 含 `agent session did not accept the stream within 5s`） | 节点的会话在 5 秒预算内没有接受这条流（在它的控制通道或数据通道上开流超时）；**可重试**。多见于 agent 刚重连；没有重连、但会话卡住时也会出现 |
 | 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE`（`message` 含 `data lane closed under an open stream`） | 请求已经发到节点、还没收到响应时数据通道断开；**可重试**。响应开始返回之后才断开的，客户端看到的是被截断的响应 |
 | 503 + `Retry-After: 2` | `PD_PREFILL_UNAVAILABLE` | PD 部署没有可用的 prefill 实例 |
 | 502 | `UPSTREAM_UNAVAILABLE` | 到引擎的隧道或连接失败，查节点在线性和引擎日志 |

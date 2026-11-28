@@ -1101,7 +1101,13 @@
       "vram_limit": "The deployment ran under a dGPU memory limit of {{vram_limit_mib}} MiB per card. That is this deployment's choice, not written as a requirement.",
       "env_excluded": "The deployment's own environment variables were left out: {{keys}}.",
       "parameters_dropped": "Settings that no engine flag carries were left out: {{keys}}.",
-      "container_overrides_omitted": "Mounts and docker arguments describe one host and were left out."
+      "container_overrides_omitted": "Mounts and docker arguments describe one host and were left out.",
+      "manual_command": "The template runs the deployment's manual command; its args do not reach the engine.",
+      "cards_pinned": "The manual command writes out its own parallelism, so the template only accepts {{count}} card(s) on one node.",
+      "command_redacted": "The command holds a secret or env this template leaves out. It is redacted, so the template cannot be saved.",
+      "command_env_withheld": "The command writes out deployment env left out of this template: {{keys}}. Keep those keys in the template, or take them out of the command.",
+      "command_sets_platform_env": "The command sets {{keys}}, which the platform sets for each node. The values in it are this node's.",
+      "manual_command_port_unstated": "The manual command states no {{flag}} and does not use {{variable}}, so the engine may not listen on the port a new deployment is given."
     },
     "reason": {
       "not_running": "The deployment is not running, or none of its instances is running. Start it, then save it as a template.",
@@ -1115,7 +1121,11 @@
       "revisions_differ": "The model's copies resolved to different commits. Pin the model to one commit and deploy again.",
       "template_missing": "The template this deployment was created from has been deleted.",
       "model_missing": "The deployment's model has been deleted.",
-      "command_overridden": "The deployment replaced the engine command, so its launch cannot be written as template arguments.",
+      "command_image_entry": "The deployment runs the image's own command, which a template cannot state. Switch to the engine command or a manual command, then try again.",
+      "command_full_argv": "The deployment replaced the engine command with a complete argv, which a template cannot state. Write it as a manual shell command, then try again.",
+      "command_model_mount": "The manual command runs with the model mounted at {{model_mount_path}}, which a template does not carry. Use the default model path, then try again.",
+      "command_mount": "The manual command uses {{mount_path}}, an extra mount that a template does not carry. Take it out of the command, then try again.",
+      "command_not_importable": "The deployment's command cannot be written into a template the catalog accepts, for example a manual command longer than 64 KiB.",
       "launch_changed": "The saved configuration or running instance changed. Restart the deployment to apply its configuration, then try again.",
       "launch_snapshot_missing": "The running instance has no complete launch snapshot that can be verified. Restart it with this server version, then try again.",
       "heterogeneous_gpus": "The instance uses different GPU models. One tested-card selector cannot describe this combination."

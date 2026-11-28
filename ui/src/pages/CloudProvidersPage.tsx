@@ -326,12 +326,8 @@ export default function CloudProvidersPage() {
       <PageHeader
         title={t("platforms.title")}
         description={t("platforms.description")}
-        extra={
-          <>
-            <span className="text-body text-fg-muted">{t("page.count", { count: rows.length })}</span>
-            <Button variant="primary" onClick={() => openAdd()}>{t("page.add")}</Button>
-          </>
-        }
+        // The connected table below already counts them; the header only acts.
+        extra={<Button variant="primary" onClick={() => openAdd()}>{t("page.add")}</Button>}
       />
 
       <section className="platform-block">

@@ -116,6 +116,13 @@ type ModelFetchRetry struct {
 	WaitSeconds int64  `json:"wait_seconds"`
 	Throttled   bool   `json:"throttled,omitempty"`
 	Cause       string `json:"cause,omitempty"`
+	// File is the repository path being retried: a file that keeps failing
+	// is named while it fails, not only once it has failed the whole
+	// download. Empty when Listing.
+	File string `json:"file,omitempty"`
+	// Listing says the retry is of the repository's file list, which has no
+	// path of its own.
+	Listing bool `json:"listing,omitempty"`
 }
 
 // ModelPreparation is a transient observation of a same-node copy. Attempt

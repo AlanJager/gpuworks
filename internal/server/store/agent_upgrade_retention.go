@@ -19,7 +19,7 @@ func (s *Store) PruneAgentUpgrades(keep int) error {
 		}
 		protected := map[uint]bool{}
 		for _, i := range items {
-			if i.Phase == "queued" || i.Phase == "transferring" || i.Phase == "waiting_registration" || i.Phase == "observing_recovery" || (i.Phase == "unconfirmed" && i.VerifiedAt == nil) {
+			if i.Phase == "queued" || i.Phase == "draining" || i.Phase == "transferring" || i.Phase == "waiting_registration" || i.Phase == "observing_recovery" || (i.Phase == "unconfirmed" && i.VerifiedAt == nil) {
 				protected[i.RunID] = true
 			}
 		}

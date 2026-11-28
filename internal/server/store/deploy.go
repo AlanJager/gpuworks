@@ -3,7 +3,6 @@ package store
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -247,47 +246,6 @@ func (s *Store) FindModelArtifact(sourceID, source, revision, subfolder string) 
 	return &model, nil
 }
 
-// DeleteModel removes an unused model and its derived node/profile rows. A
-// deployment keeps the model definition authoritative, even after it stops.
-func (s *Store) DeleteModel(id uint) error {
-	var model Model
-	if err := s.db.First(&model, id).Error; errors.Is(err, gorm.ErrRecordNotFound) {
-		return ErrNotFound
-	} else if err != nil {
-		return err
-	}
-	var deployments int64
-	if err := s.db.Model(&Deployment{}).Where("model_id = ?", id).Count(&deployments).Error; err != nil {
-		return err
-	}
-	if deployments > 0 {
-		return fmt.Errorf("%w: model is used by %d deployment(s)", ErrReferenced, deployments)
-	}
-	if err := s.db.Transaction(func(tx *gorm.DB) error {
-		if err := checkNoCacheDeletion(tx.Where("model_id = ?", id)); err != nil {
-			return err
-		}
-		if err := tx.Where("model_id = ?", id).Delete(&ModelFile{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("model_id = ?", id).Delete(&Profile{}).Error; err != nil {
-			return err
-		}
-		result := tx.Delete(&Model{}, id)
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected == 0 {
-			return ErrNotFound
-		}
-		return nil
-	}); err != nil {
-		return err
-	}
-	s.Bus.PublishChange("model", uintKey(id), "deleted")
-	return nil
-}
-
 // ---- deployments ----
 
 // CreateDeployment persists a new deployment (desired state) that states no
@@ -443,65 +401,85 @@ func (s *Store) SetDeploymentState(id uint, state DeploymentState) error {
 // removed together with the deployment; its names stay behind in
 // DeletedDeployment for the usage and statistics it leaves.
 func (s *Store) DeleteDeployment(id uint) error {
-	var deletedInstances, scopedKeys []string
-	var removals []InstanceEvent
+	var gone deletedDeployment
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		var dep Deployment
-		if err := tx.Select("ID", "Name", "ServedName").First(&dep, id).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return ErrNotFound
-			}
-			return err
-		}
-		if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&DeletedDeployment{
-			ID: dep.ID, Name: dep.Name, ServedName: dep.ServedName, DeletedAt: time.Now().UTC(),
-		}).Error; err != nil {
-			return err
-		}
-		var insts []Instance
-		if err := tx.Where("deployment_id = ?", id).Find(&insts).Error; err != nil {
-			return err
-		}
-		for _, inst := range insts {
-			deletedInstances = append(deletedInstances, inst.UUID)
-			removed, err := deleteInstanceRecords(tx, &inst)
-			if err != nil {
-				return err
-			}
-			removals = append(removals, removed...)
-		}
-		if err := tx.Where("deployment_id = ?", id).Delete(&DeploymentNodeRequirement{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("deployment_id = ?", id).Delete(&LifecycleSchedule{}).Error; err != nil {
-			return err
-		}
 		var err error
-		if scopedKeys, err = dropDeploymentGrants(tx, id); err != nil {
-			return err
-		}
-		result := tx.Delete(&Deployment{}, id)
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected == 0 {
-			return ErrNotFound
-		}
-		return nil
+		gone, err = deleteDeploymentTx(tx, id)
+		return err
 	})
-	for _, prefix := range scopedKeys {
-		s.apiKeys.forget(prefix)
-	}
 	if err == nil {
-		for _, ev := range removals {
-			s.observe(ev, nil)
-		}
-		for _, uuid := range deletedInstances {
-			s.Bus.PublishChange("instance", uuid, "deleted")
-		}
-		s.Bus.PublishChange("deployment", uintKey(id), "deleted")
+		s.publishDeletedDeployment(id, gone)
 	}
 	return err
+}
+
+// deletedDeployment is what deleting a deployment's rows leaves to announce
+// once the transaction commits.
+type deletedDeployment struct {
+	instances  []string
+	scopedKeys []string
+	removals   []InstanceEvent
+}
+
+// deleteDeploymentTx removes a deployment's rows in tx (DeleteDeployment).
+func deleteDeploymentTx(tx *gorm.DB, id uint) (deletedDeployment, error) {
+	var out deletedDeployment
+	var dep Deployment
+	if err := tx.Select("ID", "Name", "ServedName").First(&dep, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return out, ErrNotFound
+		}
+		return out, err
+	}
+	if err := tx.Clauses(clause.OnConflict{UpdateAll: true}).Create(&DeletedDeployment{
+		ID: dep.ID, Name: dep.Name, ServedName: dep.ServedName, DeletedAt: time.Now().UTC(),
+	}).Error; err != nil {
+		return out, err
+	}
+	var insts []Instance
+	if err := tx.Where("deployment_id = ?", id).Find(&insts).Error; err != nil {
+		return out, err
+	}
+	for _, inst := range insts {
+		out.instances = append(out.instances, inst.UUID)
+		removed, err := deleteInstanceRecords(tx, &inst)
+		if err != nil {
+			return out, err
+		}
+		out.removals = append(out.removals, removed...)
+	}
+	if err := tx.Where("deployment_id = ?", id).Delete(&DeploymentNodeRequirement{}).Error; err != nil {
+		return out, err
+	}
+	if err := tx.Where("deployment_id = ?", id).Delete(&LifecycleSchedule{}).Error; err != nil {
+		return out, err
+	}
+	var err error
+	if out.scopedKeys, err = dropDeploymentGrants(tx, id); err != nil {
+		return out, err
+	}
+	result := tx.Delete(&Deployment{}, id)
+	if result.Error != nil {
+		return out, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return out, ErrNotFound
+	}
+	return out, nil
+}
+
+// publishDeletedDeployment announces a committed deployment deletion.
+func (s *Store) publishDeletedDeployment(id uint, gone deletedDeployment) {
+	for _, prefix := range gone.scopedKeys {
+		s.apiKeys.forget(prefix)
+	}
+	for _, ev := range gone.removals {
+		s.observe(ev, nil)
+	}
+	for _, uuid := range gone.instances {
+		s.Bus.PublishChange("instance", uuid, "deleted")
+	}
+	s.Bus.PublishChange("deployment", uintKey(id), "deleted")
 }
 
 // UpdateDeploymentLaunchConfig rewrites the three columns that together are a

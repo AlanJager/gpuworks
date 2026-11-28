@@ -1,0 +1,7 @@
+{
+  "code": "TEMPLATE_EXPORT_UNAVAILABLE",
+  "error": "the deployment cannot be saved as a template: command_image_entry",
+  "params": {
+    "reason": "command_image_entry"
+  }
+}

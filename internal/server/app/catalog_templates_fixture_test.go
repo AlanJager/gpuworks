@@ -21,8 +21,9 @@ const catalogTemplateFixturesEnv = "GPUWORKS_UPDATE_UI_FIXTURES"
 
 // The "Save as template" dialog's answers, from the real router, exporter and
 // import: an export whose check passed and that left two env vars out, the
-// same export keeping one of them, an export whose check failed, a refusal,
-// and the import of the exported YAML.
+// same export keeping one of them, an export whose check failed, an export of
+// a manual command that set a secret, two refusals, and the import of the
+// exported YAML.
 //
 // Regenerate: GPUWORKS_UPDATE_UI_FIXTURES=1 go test ./internal/server/app/ -run TestCatalogTemplateUIFixtures
 func TestCatalogTemplateUIFixtures(t *testing.T) {
@@ -76,6 +77,22 @@ func TestCatalogTemplateUIFixtures(t *testing.T) {
 		t.Fatalf("export with a failed check = %d %s", status, body)
 	} else {
 		checkCatalogTemplateFixture(t, dir, "check-failed", body, update)
+	}
+
+	reply = templateexport.ProbeReply{HTTPStatus: http.StatusOK, InstanceUUID: f.instance.UUID}
+	f.update(t, "container_overrides", `{"env":{"HF_TOKEN":"hf_secret"},"command_mode":"manual","cmd_display":"export HF_TOKEN=hf_secret\nexec vllm serve /models --served-model-name olmo --port 30000"}`)
+	f.persistRuntimeLaunch(t)
+	if status, body := call(http.MethodPost, exportPath, "", ""); status != http.StatusOK {
+		t.Fatalf("export of a manual command with a secret = %d %s", status, body)
+	} else {
+		checkCatalogTemplateFixture(t, dir, "manual-redacted", body, update)
+	}
+	f.update(t, "container_overrides", `{"command_mode":"image-entry"}`)
+	f.persistRuntimeLaunch(t)
+	if status, body := call(http.MethodPost, exportPath, "", ""); status != http.StatusConflict {
+		t.Fatalf("image entry = %d %s", status, body)
+	} else {
+		checkCatalogTemplateFixture(t, dir, "image-entry", body, update)
 	}
 
 	f.update(t, "desired_state", store.DeployStopped)

@@ -951,6 +951,7 @@
     },
     "phase": {
       "queued": "等待执行",
+      "draining": "请求排空中",
       "transferring": "传输／下载中",
       "waiting_registration": "等待重新连接",
       "observing_recovery": "观察恢复",
@@ -999,6 +1000,7 @@
       "capabilities_changed": "预览后节点能力已变化。",
       "transport_uncertain": "传输结果不确定；节点重新连接后自动判定。",
       "server_stopped": "执行期间控制面已停止。",
+      "drain_incomplete": "排空到时仍有请求在运行，Agent 重启时这些请求被中断。",
       "agent_failed": "Agent 报告升级失败。",
       "artifact_unavailable": "固定的目标制品不可用。",
       "confirmation_timeout": "没有在时限内确认升级结果；节点重新连接后自动判定。",
@@ -1028,7 +1030,7 @@
     "summary": "将升级 {{eligible}} 个节点，跳过 {{skipped}} 个。",
     "summaryAll": "将升级 {{eligible}} 个节点。",
     "warning": {
-      "interrupt": "升级时 Agent 会重启，节点上进行中的推理请求会中断。多机推理和 PD 分离节点建议逐台升级。"
+      "interrupt": "升级时 Agent 会重启：在其他节点上有副本的部署先排空请求，其余部署进行中的推理请求会中断。多机推理和 PD 分离节点建议逐台升级。"
     }
   },
   "cardScheduling": {

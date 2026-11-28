@@ -288,7 +288,7 @@ func assembleBusiness(cfg Config, log *slog.Logger, b *bus.Bus, st *store.Store,
 	readAgent := func(name string) ([]byte, error) { return cfg.agents.Read(dlDir, name) }
 	provSvc.SetAgentBinaryReader(readAgent)
 	h.SetAgentBinaryReader(readAgent)
-	a.agentUpgrades, err = newAgentUpgrades(st, h, cfg.DataDir, cfg.agents, log)
+	a.agentUpgrades, err = newAgentUpgrades(st, h, px, cfg.DataDir, cfg.agents, log)
 	if err != nil {
 		return nil, err
 	}

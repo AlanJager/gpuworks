@@ -345,7 +345,9 @@ function CredentialFieldInput({ control, field, editing, disabled }: { control: 
     >
       {(binding) => field.secret
         ? <PasswordInput {...binding} value={binding.value ?? ""} disabled={disabled} placeholder={placeholder} autoComplete="off" />
-        : <Input {...binding} value={binding.value ?? ""} disabled={disabled} placeholder={placeholder} />}
+        : <Input {...binding} value={binding.value ?? ""} disabled={disabled} placeholder={placeholder}
+          // Addresses, ids and keys are not prose: no spelling underline, no autocorrection.
+          spellCheck={false} autoCapitalize="off" autoCorrect="off" />}
     </FormField>
   );
 }

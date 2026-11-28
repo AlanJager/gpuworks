@@ -197,7 +197,9 @@ hash over it.
 
 When documenting behaviour, read the code first. Flag tables in the reference manual must
 match `--help` output. Relative links and anchors are checked by `make check-doc-links`
-(part of `make test-unit`).
+(part of `make test-unit`). A link from a `docs-en/` page whose target has no English
+translation (development notes, ADRs) resolves to the same path under `docs/`, and its anchor is
+checked against that Chinese page; a link that resolves in neither tree is broken.
 
 ## Commits and pull requests
 

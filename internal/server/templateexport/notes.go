@@ -28,9 +28,25 @@ const (
 	ReasonLaunchChanged    = "launch_changed"
 	ReasonLaunchMissing    = "launch_snapshot_missing"
 	ReasonMixedGPUs        = "heterogeneous_gpus"
-	// ReasonCommandOverridden: the deployment replaced the engine command,
-	// so its launch is not the engine's command plus args.
-	ReasonCommandOverridden = "command_overridden"
+	// ReasonCommandImageEntry: the deployment runs the image's own
+	// executable (image-entry mode, or a manual mode without a command),
+	// which no spec field states.
+	ReasonCommandImageEntry = "command_image_entry"
+	// ReasonCommandFullArgv: the deployment replaced the engine command with
+	// a complete argv; a spec states args or a shell script, not an argv.
+	ReasonCommandFullArgv = "command_full_argv"
+	// ReasonCommandModelMount: the deployment's manual script runs with the
+	// model mounted at model_mount_path, which the spec does not carry.
+	ReasonCommandModelMount = "command_model_mount"
+	// ReasonCommandMount: the deployment's manual script uses the container
+	// path of an extra mount (mount_path), which a spec does not carry: a
+	// deployment of the spec would not have it.
+	ReasonCommandMount = "command_mount"
+	// ReasonCommandNotImportable: the spec the deployment's command is
+	// written into is one the catalog's import refuses (a manual command
+	// over its size limit, a variable no launch states, a placement that
+	// cannot be pinned to the tested cards).
+	ReasonCommandNotImportable = "command_not_importable"
 )
 
 // Unavailable is the error for a deployment that cannot be saved as a
@@ -83,6 +99,27 @@ const (
 	NoteParametersDropped = "parameters_dropped"
 	// NoteContainerOverridesOmitted: mounts and docker args are not exported.
 	NoteContainerOverridesOmitted = "container_overrides_omitted"
+	// NoteManualCommand: the spec runs the deployment's manual script as its
+	// manual_command; its args do not reach the engine.
+	NoteManualCommand = "manual_command"
+	// NoteCardsPinned: the placement accepts only the card count the manual
+	// script ran on (count), because the script states its parallelism.
+	NoteCardsPinned = "cards_pinned"
+	// NoteCommandRedacted: the deployment's command (manual script or
+	// entrypoint) set a secret or a withheld env value, so the spec holds it
+	// redacted and cannot be saved as it is.
+	NoteCommandRedacted = "command_redacted"
+	// NoteCommandEnvWithheld: the command writes out the values of
+	// deployment env keys (keys) the export leaves out; they are redacted.
+	NoteCommandEnvWithheld = "command_env_withheld"
+	// NoteCommandSetsPlatformEnv: the command sets keys (keys) the platform
+	// sets for each node itself, such as a collective network interface;
+	// the values it holds are this node's.
+	NoteCommandSetsPlatformEnv = "command_sets_platform_env"
+	// NoteManualCommandPortUnstated: the manual script neither states the
+	// port flag nor references the API port variable (flag, variable; see
+	// deploy.ManualCommandStatesPort).
+	NoteManualCommandPortUnstated = "manual_command_port_unstated"
 )
 
 func launchNotes(in Input, launch deploy.ExportedArgs, excluded []string, model inferencecatalog.InferenceModel) []Note {
@@ -113,6 +150,12 @@ func launchNotes(in Input, launch deploy.ExportedArgs, excluded []string, model 
 	}
 	if in.HasContainerOverrides {
 		notes = append(notes, Note{Code: NoteContainerOverridesOmitted})
+	}
+	if script := in.Command.ManualCommand; script != "" {
+		notes = append(notes, Note{Code: NoteManualCommand})
+		if !deploy.ManualCommandStatesPort(script) {
+			notes = append(notes, Note{Code: NoteManualCommandPortUnstated, Params: deploy.ManualCommandPortFix()})
+		}
 	}
 	return notes
 }

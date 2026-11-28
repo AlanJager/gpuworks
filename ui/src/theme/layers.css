@@ -60,3 +60,28 @@ pre,
   font-size: var(--font-size-body);
   line-height: var(--line-height-code);
 }
+
+/* Selected text on surfaces that keep a dark background in both themes. The
+   global ::selection (app.css) takes --text-selection from the element the
+   text is in; the light theme's tint is meant for light surfaces and all but
+   vanishes on these, so they use the dark theme's tint, which main.tsx puts
+   on the root from the generated tokens (terminalTheme.ts, as the log panels
+   do). Until it is set, the fallback is the current brand at the dark
+   strength. Elements styled inline use fixedDarkSelectionStyle instead. */
+.code-block,
+.terminal-page,
+.node-terminal,
+.node-terminal-bar,
+.deploy-command-preview,
+.deploy-runtime-command pre,
+.deploy-command-editor,
+.template-command-preview,
+.template-operation-usage pre,
+.markdown-content pre,
+.markdown-code-header,
+.playground-code,
+.playground-operation-grid pre,
+.playground-realtime-log,
+.playground-preview-source {
+  --text-selection: var(--text-selection-on-dark, color-mix(in srgb, var(--brand) 40%, transparent));
+}

@@ -565,6 +565,14 @@
   }
 }
 
+/* Selected text. Unlayered on purpose: it must beat the utilities layer's
+   selection:bg-selection on Zeron's managed inputs without editing them, and
+   the antd layer. --selection is a selected row's fill, far too faint for
+   text. */
+::selection {
+  background-color: var(--text-selection);
+}
+
 .z-underlay {
     z-index: var(--layer-underlay);
 }
@@ -611,4 +619,16 @@
 
 .z-tooltip {
     z-index: var(--layer-tooltip);
+}
+
+/* Product tokens, after the CLI-generated :root and .dark blocks so a
+   regeneration leaves them alone. Selected text is the brand tint at a
+   strength that reads on the theme's surfaces; a surface that stays dark in
+   both themes takes the .dark value instead (theme/layers.css,
+   terminalTheme.ts). */
+:root {
+  --text-selection: color-mix(in srgb, var(--brand) 22%, transparent);
+}
+.dark {
+  --text-selection: color-mix(in srgb, var(--brand) 40%, transparent);
 }

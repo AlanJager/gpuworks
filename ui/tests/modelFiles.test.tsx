@@ -473,6 +473,15 @@ test("a download retrying near its end says which attempt comes next in place of
   assert.ok(file.getByText((_, element) => element?.children.length === 0 && (element.textContent ?? "").endsWith(` · ${note}`)));
   assert.equal(file.queryByText(/MiB\/s/), null, "the retry takes the rate's place");
   cleanup();
+  // The file it is stuck on is named while it is stuck (GWKS-532).
+  renderSection(modelWith({ storages: [shared({ ...retrying, retry: { attempt: 3, attempts: 16, wait_seconds: 8, cause: "read: connection reset by peer", file: "assets/dsv4_performance.png" } })] }));
+  const onFile = fill(models.retry.onFile, { file: "assets/dsv4_performance.png", note: fill(models.retry.afterFailure, { seconds: 8, attempt: 3, attempts: 16, cause: "read: connection reset by peer" }) });
+  assert.ok(screen.getByText((_, element) => element?.children.length === 0 && (element.textContent ?? "").endsWith(` · ${onFile}`)));
+  cleanup();
+  renderSection(modelWith({ storages: [shared({ ...retrying, retry: { attempt: 2, attempts: 16, wait_seconds: 1, cause: "read: connection reset by peer", listing: true } })] }));
+  const onList = fill(models.retry.onFile, { file: models.retry.fileList, note: fill(models.retry.afterFailure, { seconds: 1, attempt: 2, attempts: 16, cause: "read: connection reset by peer" }) });
+  assert.ok(screen.getByText((_, element) => element?.children.length === 0 && (element.textContent ?? "").endsWith(` · ${onList}`)), "the listing is named as such");
+  cleanup();
   renderSection(modelWith({ storages: [shared({ ...retrying, retry: { attempt: 2, attempts: 16, wait_seconds: 110, throttled: true } })] }));
   assert.ok(screen.getByText((_, element) => element?.children.length === 0 && (element.textContent ?? "").endsWith(fill(models.retry.throttled, { seconds: 110, attempt: 2, attempts: 16 }))));
   cleanup();

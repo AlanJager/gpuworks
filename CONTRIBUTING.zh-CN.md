@@ -177,7 +177,8 @@ make check-translations
 改动没碰过的页面上，那是既有的缺口——留给那一页的维护者，不要直接把源文件哈希盖上去。
 
 写具体行为时先读代码。参考手册里的 flag 表必须以 `--help` 输出为准。相对链接和锚点由
-`make check-doc-links` 校验（已包含在 `make test-unit` 里）。
+`make check-doc-links` 校验（已包含在 `make test-unit` 里）。`docs-en/` 页面链接的目标没有英文译本时（开发说明、ADR），
+按 `docs/` 下的同路径解析，锚点按该中文页校验；两边都找不到才算断链。
 
 ## 提交与拉取请求
 

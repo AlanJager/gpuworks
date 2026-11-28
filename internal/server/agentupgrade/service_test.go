@@ -21,6 +21,7 @@ type testTransport struct {
 	pushErr     error
 	pullErr     error
 	push        func(context.Context) error
+	onPush      func()
 }
 
 func (f *testTransport) AgentUpgradeConnection(uuid string) (Connection, bool) {
@@ -32,8 +33,11 @@ func (f *testTransport) AgentUpgradeConnection(uuid string) (Connection, bool) {
 func (f *testTransport) PushAgentUpgrade(ctx context.Context, uuid, session, name string, b []byte) error {
 	f.mu.Lock()
 	f.calls = append(f.calls, "push:"+uuid)
-	err, fn := f.pushErr, f.push
+	err, fn, onPush := f.pushErr, f.push, f.onPush
 	f.mu.Unlock()
+	if onPush != nil {
+		onPush()
+	}
 	if fn != nil {
 		return fn(ctx)
 	}
@@ -51,13 +55,22 @@ func (f *testTransport) set(uuid string, c Connection) {
 	f.connections[uuid] = c
 }
 func (f *testTransport) count() int { f.mu.Lock(); defer f.mu.Unlock(); return len(f.calls) }
+func (f *testTransport) callList() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.calls...)
+}
 
 type fixture struct {
 	s   *Service
 	st  *store.Store
 	tr  *testTransport
+	gw  *testGateway
 	now time.Time
 	cfg Config
+	// deployments maps a test's deployment number to the row servesOn created
+	// (drain_fixture_test.go).
+	deployments map[uint]uint
 }
 
 func newFixture(t *testing.T, count int, push bool) *fixture {
@@ -67,7 +80,7 @@ func newFixture(t *testing.T, count int, push bool) *fixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = st.Close() })
-	f := &fixture{st: st, tr: &testTransport{connections: map[string]Connection{}}, now: time.Date(2026, 10, 29, 1, 0, 0, 0, time.UTC)}
+	f := &fixture{st: st, tr: &testTransport{connections: map[string]Connection{}}, gw: &testGateway{}, now: time.Date(2026, 10, 29, 1, 0, 0, 0, time.UTC)}
 	caps := []string{}
 	if push {
 		caps = []string{proto.CapUpgradePush}
@@ -83,13 +96,16 @@ func newFixture(t *testing.T, count int, push bool) *fixture {
 		}
 		f.tr.set(uuid, Connection{SessionID: "old-" + uuid, Version: "old", Ready: true, Caps: caps})
 	}
-	f.cfg = Config{TargetVersion: "target", ArtifactDir: filepath.Join(t.TempDir(), "artifacts"), Transport: f.tr, ReadBinary: func(string) ([]byte, error) { return []byte("verified-agent-binary"), nil }, Now: func() time.Time { return f.now }, TransferTimeout: time.Minute, ConfirmTimeout: time.Minute, PollInterval: time.Millisecond}
+	f.cfg = Config{TargetVersion: "target", ArtifactDir: filepath.Join(t.TempDir(), "artifacts"), Transport: f.tr, Gateway: f.gw, ReadBinary: func(string) ([]byte, error) { return []byte("verified-agent-binary"), nil }, Now: func() time.Time { return f.now }, TransferTimeout: time.Minute, ConfirmTimeout: time.Minute, PollInterval: time.Millisecond, DrainTimeout: time.Minute, DrainPoll: time.Millisecond}
 	f.s, err = New(st, f.cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return f
 }
+
+// deploymentID is the store id of the fixture's deployment numbered dep.
+func (f *fixture) deploymentID(dep uint) uint { return f.deployments[dep] }
 func (f *fixture) create(t *testing.T, key string, uuids []string, source uint) RunView {
 	t.Helper()
 	p, err := f.s.Preview(context.Background(), uuids)

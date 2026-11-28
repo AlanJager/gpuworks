@@ -130,6 +130,7 @@ func (c *Controller) pickPoolNode(ctx context.Context, deployment *unitDeploymen
 	pool, err := c.poolOf(deployment, model)
 	if err != nil {
 		c.log.Warn("deployment candidate pool", "dep", dep.ID, "err", err)
+		c.recordWaitingOnNode(dep, waitingStagePool, "")
 		return nil, false
 	}
 	if len(pool.Ranked) == 0 {

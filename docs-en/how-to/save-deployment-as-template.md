@@ -18,7 +18,8 @@ When you are done you have a flat YAML document that imports as it is, and a tes
 | `model_config`, `context_length`, `input_modalities` | Current catalog model metadata for a template deployment (estimation facts that may change with catalog updates), or the registered model row's config.json and metadata for a custom deployment; these are not claimed to be a launch-time snapshot |
 | `api` | The API declaration in the instance's immutable launch record, used to choose operation checks |
 | `kv_bytes_per_token` | Written only when there is a reliable source: the source template, or the catalog's value for the same model. Otherwise it is left out and a comment says so |
-| `placement` | A deployment made from a template keeps the template's; a custom deployment states none, so estimation and scheduling decide the card count, and the tested card count and memory per card go into a comment |
+| `placement` | A deployment made from a template keeps the template's; a custom deployment states none, so estimation and scheduling decide the card count, and the tested card count and memory per card go into a comment. A deployment on a manual command is pinned to the tested card count, see [Custom launch commands](#自定义启动命令) |
+| `entrypoint`, `manual_command` | The launch command the deployment changed itself, see [Custom launch commands](#自定义启动命令) |
 
 One success proves one card model, so `gpus` matches only the tested model; widening it to more models is an explicit edit by you or the reviewer. A dGPU memory limit is this deployment's resource choice, not a requirement of the model, so it only goes into a comment.
 
@@ -92,6 +93,21 @@ curl --silent --show-error -X POST \
 
 Container overrides such as mounts and docker arguments describe one host and are not exported.
 
+## Custom launch commands
+
+When the deployment changed its command under Launch command, the export follows the command mode:
+
+- **The engine command with only its entrypoint replaced** (`entrypoint_display`): written into the spec's `entrypoint`; the engine arguments go into `args` as usual.
+- **A manual command** (a shell script with `command_mode: manual`): the script is written into the spec's `manual_command` as it is, and a deployment made from the spec runs it; `args` no longer reach the engine. When the script says it includes the preparation steps, the spec drops the source template's `pre_start_argv` / `pre_start_script`; otherwise it keeps them.
+  - The script writes out values tied to the card count, such as the tensor parallel size, so `placement` is pinned to the tested card count on one node and a deployment on another card count is refused; the source template's resolver stays behind the pin. When the deployment runs the source template's own `manual_command`, the source template's `placement` is kept and not pinned.
+  - The deploy form's manual command editor writes an `export` line for every launch environment variable, the deployment's own included. A deployment environment variable you did not keep in the template (see [the previous section](#2-决定带上哪些环境变量)) is not carried into it through the command either, whether the command assigns it or just contains its value: those values are replaced with `<redacted>`, `saveable` is `false`, and the `command_env_withheld` note lists the variable names. Keep them in the template or take them out of the command, then save as template again.
+  - A secret in the command is redacted the same way: `saveable` is `false` and the note `command_redacted` says so. Secrets are recognised by the command-log rules: variable names containing `TOKEN`, `PASSWORD`, `SECRET`, `API_KEY`, `ACCESS_KEY` or `PRIVATE_KEY`, flags such as `--token` and `--api-key`, `hf_` and `sk-` shaped tokens, and passwords in URLs. When such a variable is assigned, the whole script is replaced with `<redacted>`; copy it again from the deployment's launch command and take the secret out. Put private values these rules do not cover into the deployment's environment variables, not into the command.
+  - When the script sets environment variables the platform sets for each node itself (such as the collective network interface `NCCL_SOCKET_IFNAME`), the note `command_sets_platform_env` says the values are this node's and may be wrong on another node.
+  - When the script neither states `--port` nor references `${GPUWORKS_API_PORT}`, a note warns that the engine may not listen on the port a new deployment is given.
+  - Secrets in an `entrypoint` are redacted by the same rules.
+
+The image's own command (`image-entry`), a command written as a complete argv, a manual command with a moved model mount, and a manual command that uses an extra mount's path cannot be written as a template; see the table below. Before answering, the platform rebuilds the launch from the spec's command the way a new deployment would and compares it field by field with what the instance ran; any difference is refused rather than approximated. That comparison still carries this deployment's container overrides such as mounts and docker arguments (they are not exported, and the note `container_overrides_omitted` says so), so it proves the command itself reproduces, not that the command does not depend on those overrides; a command that names an extra mount's path is refused.
+
 ## 3. Save into the catalog or propose it upstream
 
 - **Save into this cluster's catalog**: an administrator checks the `yaml` with `POST /api/v1/inference-templates/evaluate`, then imports it with `POST /api/v1/inference-templates/import`. An export of a deployment made from a template is a new user spec under the original model, and importing it leaves the existing specs alone. An export with a failed check (`saveable: false`) is for troubleshooting only; do not import it.
@@ -111,16 +127,21 @@ For 409 `TEMPLATE_EXPORT_UNAVAILABLE`, read `params.reason`:
 | `launch_changed` | Configuration or the running instance changed; apply it and restart before retrying |
 | `launch_snapshot_missing` | The instance has no complete, verifiable launch snapshot; restart it with the current server version |
 | `heterogeneous_gpus` | The instance uses different card models that one tested-model selector cannot describe |
-| `command_overridden` | The deployment replaced the engine command, so its launch cannot be written as template arguments |
+| `command_image_entry` | The deployment runs the image's own command, which a template cannot state; switch to the engine command or a manual command |
+| `command_full_argv` | The deployment replaced the engine command with a complete argv; write it as a manual shell command |
+| `command_model_mount` | The manual command runs with the model mounted at another path (`params.model_mount_path`), which a template does not carry; use the default model path |
+| `command_mount` | The manual command uses an extra mount's path (`params.mount_path`), which a template does not carry; take it out of the command |
+| `command_not_importable` | The spec the command is written into is one the catalog import refuses, such as a manual command longer than 64 KiB |
 | `no_gpu_facts`, `template_missing`, `model_missing` | The instance is not bound to specific cards, or the source template or model has been deleted |
 
-409 `LAUNCH_NOT_EXPORTABLE` means the exported arguments cannot rebuild the deployment's original command line, and the platform refuses to give an approximation; report the deployment's launch arguments and engine version to the maintainers.
+409 `LAUNCH_NOT_EXPORTABLE` means the exported arguments or command cannot rebuild the deployment's original command line, and the platform refuses to give an approximation; report the deployment's launch arguments and engine version to the maintainers.
 
 <!-- translation-source-sha256: 0e44e702027a05a1582569d5e3578ed96fea66f155e3336e4984c3970da73ff3 # Save a Deployment as an Inference Template -->
-<!-- translation-source-sha256: 401ec64e2c90a2b39cc673547d845ae05ee0faff5a1ae38c0154004fbae39471 ## Where the data comes from -->
+<!-- translation-source-sha256: 76cb150cfa6df5eb1d820f0f697e87180abf92157ed9a2dbab147db4c7c248c4 ## Where the data comes from -->
 <!-- translation-source-sha256: 9a41243f6cda7fd1f57a383dccad2e6f40338f4ff05e148998194122b345b4c5 ## In the console -->
 <!-- translation-source-sha256: 92725c5493d0e62885a78363ba06a3fe5ba0cdd1f7c1ac4da129b84d8db62c5e ## Reuse registered local weights -->
 <!-- translation-source-sha256: 9271969b16e8636594df83814c66fc82cfad6ac18147d830e93b1ad82f4feea3 ## 1. Export -->
 <!-- translation-source-sha256: 59399b7e6c36fe6be686081ff9449862e2ce26b0509b25787cd5d367df815008 ## 2. Decide which environment variables to keep -->
+<!-- translation-source-sha256: 8238d8bc7d7e7edce9d531ca93d4af22d4a1af5d940643d6fb3fc63d953337f4 ## Custom launch commands -->
 <!-- translation-source-sha256: a08513f6674d90361f65c4ad7efb755869b865aa696c542932af88f6e7b3322d ## 3. Save into the catalog or propose it upstream -->
-<!-- translation-source-sha256: 38520fea4db6e838ab090737ca02afa1cc07ee55d7a5d192ef4f3e25a264fcb7 ## When the export is refused -->
+<!-- translation-source-sha256: 39c3411bebad7c76cba33761663c5b9f43e96141f02eee643d17cbfe5f72b420 ## When the export is refused -->

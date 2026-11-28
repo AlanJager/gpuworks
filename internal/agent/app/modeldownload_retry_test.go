@@ -76,6 +76,82 @@ func TestDownloadRepoRetriesInterruptedModelScopeFile(t *testing.T) {
 	}
 }
 
+// A file in a subfolder of the repository breaks off once and then arrives:
+// the status the real download reports while it waits to retry names that
+// file by its repository path, the one modelfetch is retrying, and the
+// retry is gone once the file is in.
+func TestDownloadRepoNamesTheFileItIsRetrying(t *testing.T) {
+	const picture = "assets/dsv4_performance.png"
+	config := []byte(`{"model_type":"test"}`)
+	weights := []byte("fixture-weights")
+	image := bytes.Repeat([]byte("png-bytes\n"), 2048)
+
+	var transfers atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/models/org/model/repo/files":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = fmt.Fprintf(w,
+				`{"Code":200,"Data":{"Files":[`+
+					`{"Path":"config.json","Size":%d,"Type":"blob","Revision":"%s"},`+
+					`{"Path":"model.safetensors","Size":%d,"Type":"blob","Revision":"%s"},`+
+					`{"Path":"assets","Type":"tree","Revision":"%s"},`+
+					`{"Path":"%s","Size":%d,"Type":"blob","Revision":"%s"}`+
+					`]}}`,
+				len(config), modelDownloadRetryFixtureRevision,
+				len(weights), modelDownloadRetryFixtureRevision,
+				modelDownloadRetryFixtureRevision,
+				picture, len(image), modelDownloadRetryFixtureRevision,
+			)
+		case "/models/org/model/resolve/" + modelDownloadRetryFixtureRevision + "/" + picture:
+			if r.Header.Get("Range") == "bytes=0-0" {
+				w.Header().Set("Content-Length", fmt.Sprint(len(image)))
+				_, _ = w.Write(image)
+				return
+			}
+			if transfers.Add(1) == 1 {
+				// Short of Content-Length: the client sees io.ErrUnexpectedEOF.
+				w.Header().Set("Content-Length", fmt.Sprint(len(image)))
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write(image[:len(image)/3])
+				return
+			}
+			// The retry resumes where the break left off.
+			http.ServeContent(w, r, "dsv4_performance.png", time.Time{}, bytes.NewReader(image))
+		default:
+			http.Error(w, "unexpected fixture request "+r.URL.String(), http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	n, task, target, statuses := newModelDownloadRetryFixture(t, server.URL, config, weights)
+	n.downloadRepo(context.Background(), task, target, target)
+
+	if got := lastModelFileStatus(t, statuses); got.State != proto.MFPresent || got.Retry != nil {
+		t.Fatalf("final status = %+v, want present with no retry", got)
+	}
+	if count := transfers.Load(); count != 2 {
+		t.Fatalf("%s was transferred %d times, want the broken one and its retry", picture, count)
+	}
+	if downloaded, err := os.ReadFile(filepath.Join(target, picture)); err != nil || !bytes.Equal(downloaded, image) {
+		t.Fatalf("%s: %d bytes, err=%v; want %d", picture, len(downloaded), err, len(image))
+	}
+	var retries []proto.ModelFetchRetry
+	for _, st := range *statuses {
+		if st.Retry != nil {
+			retries = append(retries, *st.Retry)
+		}
+	}
+	if len(retries) == 0 {
+		t.Fatalf("no status announced the retry: %+v", statusTrail(*statuses))
+	}
+	for _, retry := range retries {
+		if retry.File != picture || retry.Listing || retry.Attempt != 2 || retry.Throttled || retry.Cause == "" {
+			t.Fatalf("retry = %+v, want attempt 2 of %s with its cause", retry, picture)
+		}
+	}
+}
+
 func TestDownloadRepoDoesNotRetryPermanentHTTPError(t *testing.T) {
 	config := []byte(`{"model_type":"test"}`)
 	weights := []byte("fixture-weights")

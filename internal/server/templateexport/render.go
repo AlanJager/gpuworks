@@ -80,6 +80,18 @@ func noteText(note Note) string {
 		return fmt.Sprintf("Settings no engine flag carries, not exported: %s.", joinKeys(p["keys"]))
 	case NoteContainerOverridesOmitted:
 		return "Container overrides (mounts, docker args) are not exported."
+	case NoteManualCommand:
+		return "The spec runs the deployment's manual command; its args do not reach the engine."
+	case NoteCardsPinned:
+		return fmt.Sprintf("Placement accepts only %v card(s) on one node: the manual command states its parallelism itself.", p["count"])
+	case NoteCommandRedacted:
+		return "The command set a secret and is redacted: copy it again from the deployment's launch command and write it without the secret before saving this template."
+	case NoteCommandEnvWithheld:
+		return fmt.Sprintf("The command writes out deployment env left out of this template (%s); those values are redacted.", joinKeys(p["keys"]))
+	case NoteCommandSetsPlatformEnv:
+		return fmt.Sprintf("The command sets %s, which the platform sets for each node: the values are this node's.", joinKeys(p["keys"]))
+	case NoteManualCommandPortUnstated:
+		return fmt.Sprintf("The manual command states no %v and does not reference %v: the engine may not listen on the assigned port.", p["flag"], p["variable"])
 	}
 	return note.Code
 }

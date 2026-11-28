@@ -575,7 +575,8 @@ test("a node-list refresh failure preserves an open upgrade preview and its retr
   await waitFor(() => assert.equal(submitted.length, 2));
   assert.equal(submitted[0].idempotency_key, submitted[1].idempotency_key);
   assert.deepEqual(submitted[1].node_uuids, [onlineNode.uuid]);
-  assert.ok(screen.getByRole("button", { name: "Recent Agent upgrades" }));
+  // The toolbar is still there behind the dialog, which keeps the page inert while it is open.
+  assert.ok(screen.getByRole("button", { name: "Recent Agent upgrades", hidden: true }));
 });
 
 test("an offline node uses doctor and reruns replace the partial report", async () => {

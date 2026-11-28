@@ -1101,7 +1101,13 @@
       "vram_limit": "部署在 dGPU 每卡 {{vram_limit_mib}} MiB 的显存上限下运行。这是本次部署的选择，没有写成要求。",
       "env_excluded": "未导出部署自己的环境变量：{{keys}}。",
       "parameters_dropped": "没有引擎参数承载的设置未导出：{{keys}}。",
-      "container_overrides_omitted": "挂载与 docker 参数描述的是某一台主机，未导出。"
+      "container_overrides_omitted": "挂载与 docker 参数描述的是某一台主机，未导出。",
+      "manual_command": "模板运行部署的手写命令，模板参数不会传给引擎。",
+      "cards_pinned": "手写命令自己写死了并行度，模板只接受单节点 {{count}} 张卡。",
+      "command_redacted": "命令含密钥或未导出的环境变量，模板中已脱敏，不能保存。",
+      "command_env_withheld": "命令写出了本模板未导出的部署环境变量：{{keys}}。把它们保留在模板里，或从命令中去掉。",
+      "command_sets_platform_env": "命令设置了 {{keys}}，平台会为每个节点自行设置这些变量。命令里写的是本节点的值。",
+      "manual_command_port_unstated": "手写命令没写 {{flag}}，也没用 {{variable}}，引擎可能不在分配的端口上服务。"
     },
     "reason": {
       "not_running": "部署没有在运行，或没有运行中的实例。先启动它，再另存为模板。",
@@ -1115,7 +1121,11 @@
       "revisions_differ": "模型的各个副本解析到了不同的 commit。把模型固定到一个 commit 后重新部署。",
       "template_missing": "创建这个部署所用的模板已被删除。",
       "model_missing": "部署的模型已被删除。",
-      "command_overridden": "部署替换了引擎命令，启动方式无法写成模板参数。",
+      "command_image_entry": "部署运行的是镜像自带的命令，模板无法表达。改用引擎命令或手写命令后重试。",
+      "command_full_argv": "部署用完整的 argv 替换了引擎命令，模板无法表达。改写成手写 shell 命令后重试。",
+      "command_model_mount": "手写命令运行时模型挂载在 {{model_mount_path}}，模板不带这个路径。改用默认模型路径后重试。",
+      "command_mount": "手写命令用到了额外挂载 {{mount_path}}，模板不带这个挂载。从命令中去掉后重试。",
+      "command_not_importable": "部署的命令写进模板后目录不接受，例如手写命令超过 64 KiB。",
       "launch_changed": "已保存的配置或运行实例发生了变化。请重启部署以应用配置，再重试。",
       "launch_snapshot_missing": "运行实例缺少可核验的完整启动快照。请用当前服务端版本重启实例，再重试。",
       "heterogeneous_gpus": "实例使用了不同型号的 GPU，单一实测型号选择器无法描述这种组合。"

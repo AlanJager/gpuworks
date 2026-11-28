@@ -157,6 +157,26 @@ func targetAnchors(repo, target string) (map[string]bool, error) {
 	return siteAnchors(target)
 }
 
+// docsFallback is where a link from a docs-en/ page resolves when the English
+// target is missing: the same path under docs/. The site may link an English
+// page to a page that only has a Chinese version (development notes, ADRs);
+// the link is then checked against that page and its anchors. Only links from
+// docs-en/ that land inside docs-en/ fall back.
+func docsFallback(repo, from, resolved string) (string, bool) {
+	if !strings.HasPrefix(filepath.ToSlash(from), "docs-en/") {
+		return "", false
+	}
+	rel, err := filepath.Rel(filepath.Join(repo, "docs-en"), resolved)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	source := filepath.Join(repo, "docs", rel)
+	if _, err := os.Stat(source); err != nil {
+		return "", false
+	}
+	return source, true
+}
+
 func check(repo string) ([]string, error) {
 	files, err := scope(repo)
 	if err != nil {
@@ -189,6 +209,12 @@ func check(repo string) ([]string, error) {
 				continue
 			}
 			st, err := os.Stat(resolved)
+			if err != nil {
+				if source, ok := docsFallback(repo, f, resolved); ok {
+					resolved = source
+					st, err = os.Stat(resolved)
+				}
+			}
 			if err != nil {
 				problems = append(problems, fmt.Sprintf("%s: broken link %s", f, target))
 				continue

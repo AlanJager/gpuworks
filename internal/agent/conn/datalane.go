@@ -19,8 +19,10 @@ import (
 )
 
 // Data-lane reconnect backoff, mirroring the ctrl reconnect policy in
-// internal/agent/app (newBackoff(1s, 30s), jittered exponential). Package conn
-// cannot import app, so the policy is duplicated here; keep the two in step.
+// internal/agent/app (newBackoff(1s, 30s), jittered exponential, and the first
+// reconnect after a connection that served for a while immediate: attempt 0
+// here, a 0-250ms jitter there). Package conn cannot import app, so the policy
+// is duplicated here; keep the two in step.
 const (
 	dataLaneBackoffBase = 1 * time.Second
 	dataLaneBackoffMax  = 30 * time.Second

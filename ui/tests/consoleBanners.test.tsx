@@ -4,19 +4,25 @@ import React from "react";
 import { I18nextProvider } from "react-i18next";
 import { createI18n } from "./helpers/dom.ts";
 
-const { i18n, locale } = await createI18n([]);
-const zh = await createI18n([], "zh");
+const { i18n, locale } = await createI18n(["common", "consoleBanners"]);
+const zh = await createI18n(["common", "consoleBanners"], "zh");
 const { cleanup, render, screen, waitFor, act } = await import("@testing-library/react");
 const userEvent = (await import("@testing-library/user-event")).default;
 const { MemoryRouter, Route, Routes, useLocation } = await import("react-router-dom");
 const manifestModule = await import("../src/consoleManifest.ts");
 const ConsoleBanners = (await import("../src/app/ConsoleBanners.tsx")).default;
 const { resetConsoleManifestForTest } = await import("../src/extensions/featureAccess.ts");
+const { resetBannerAckForTest, bannerAckStorageKey, useBannerAck } = await import("../src/extensions/bannerAck.ts");
+const { SessionUserContext } = await import("../src/components/sessionUser.ts");
 type ConsoleManifest = import("../src/consoleManifest.ts").ConsoleManifest;
 
 const c = locale.common as Record<string, any>;
+const ack = (locale.consoleBanners as Record<string, string>).acknowledge;
 const original = manifestModule.consoleManifestApi.manifest;
-afterEach(() => { cleanup(); manifestModule.consoleManifestApi.manifest = original; resetConsoleManifestForTest(); });
+afterEach(() => {
+  cleanup(); manifestModule.consoleManifestApi.manifest = original; resetConsoleManifestForTest();
+  window.localStorage.clear(); resetBannerAckForTest();
+});
 
 function manifest(banners: ConsoleManifest["banners"]): ConsoleManifest {
   return { edition: "community", features: [], nav: [], banners };
@@ -38,14 +44,17 @@ function Where() {
   return <span data-testid="where">{useLocation().pathname}</span>;
 }
 
-function renderBanners(withI18n = i18n, path = "/dashboard") {
+// userID null renders with no known user.
+function renderBanners(withI18n = i18n, path = "/dashboard", userID: number | null = 7) {
   const user = userEvent.setup();
   render(
     <I18nextProvider i18n={withI18n}>
-      <MemoryRouter initialEntries={[path]}>
-        <ConsoleBanners />
-        <Routes><Route path="*" element={<Where />} /></Routes>
-      </MemoryRouter>
+      <SessionUserContext.Provider value={userID === null ? undefined : { id: userID, username: "ops", role: "admin" }}>
+        <MemoryRouter initialEntries={[path]}>
+          <ConsoleBanners />
+          <Routes><Route path="*" element={<Where />} /></Routes>
+        </MemoryRouter>
+      </SessionUserContext.Provider>
     </I18nextProvider>,
   );
   return user;
@@ -149,4 +158,230 @@ test("banners render in Chinese", async () => {
   const box = await screen.findByRole("region", { name: zc.consoleBanners.region });
   assert.ok(box.textContent?.includes(zc.apiError.FEATURE_READ_ONLY.replace("{{feature}}", "audit")));
   assert.ok(screen.getByRole("link", { name: zc.consoleBanners.details }));
+});
+
+const reminder = { code: "NO_SUCH_CODE", message: "Renew soon" };
+const shownTexts = () => [...(region()?.querySelectorAll("[data-slot=alert]") ?? [])].map((note) => note.textContent ?? "");
+
+test("only a banner with an ack_key offers to be acknowledged", async () => {
+  stub(manifest([
+    { id: "soon", severity: "info", message: reminder, link: "/x/renew", ack_key: "soon:30" },
+    { id: "held", severity: "danger", message: { code: "NO_SUCH_CODE", message: "Nodes held" }, link: "/x/renew" },
+  ]));
+  renderBanners();
+  const box = await screen.findByRole("region", { name: c.consoleBanners.region });
+  const notes = box.querySelectorAll("[data-slot=alert]");
+  assert.equal(notes.length, 2);
+  assert.equal(screen.getAllByRole("button", { name: ack }).length, 1);
+  assert.ok(notes[0].querySelector("button"), "the banner with a key has the control");
+  assert.equal(notes[1].querySelector("button"), null, "a banner without a key cannot be acknowledged");
+  // The details link stays beside the control.
+  assert.equal(screen.getAllByRole("link", { name: c.consoleBanners.details }).length, 2);
+});
+
+test("acknowledging a banner hides it for this user, keeps the others, and survives a reload", async () => {
+  stub(manifest([
+    { id: "soon", severity: "info", message: reminder, ack_key: "soon:30" },
+    { id: "plain", severity: "warning", message: { code: "NO_SUCH_CODE", message: "Other matter" } },
+  ]));
+  const user = renderBanners();
+  await user.click(await screen.findByRole("button", { name: ack }));
+  await waitFor(() => assert.deepEqual(shownTexts().map((t) => t.includes("Other matter")), [true]));
+  assert.equal(window.localStorage.getItem(bannerAckStorageKey(7, "soon:30")), "1");
+  cleanup();
+  renderBanners();
+  await waitFor(() => assert.equal(shownTexts().length, 1));
+  assert.equal(screen.queryByText("Renew soon"), null);
+  cleanup();
+  // Another user on the same browser has not acknowledged it.
+  renderBanners(i18n, "/dashboard", 8);
+  await waitFor(() => assert.equal(shownTexts().length, 2));
+});
+
+test("a banner raised again under a new key shows again", async () => {
+  window.localStorage.setItem(bannerAckStorageKey(7, "soon:30"), "1");
+  stub(manifest([{ id: "soon", severity: "info", message: reminder, ack_key: "soon:7" }]));
+  renderBanners();
+  assert.ok(await screen.findByText("Renew soon"));
+  assert.ok(screen.getByRole("button", { name: ack }));
+});
+
+test("an acknowledgement made elsewhere, in this tab or another, hides the banner at once", async () => {
+  stub(manifest([{ id: "soon", severity: "info", message: reminder, ack_key: "soon:30" }]));
+  function Elsewhere() {
+    const ack = useBannerAck();
+    return <button type="button" onClick={() => ack.acknowledge("soon:30")}>elsewhere</button>;
+  }
+  const user = userEvent.setup();
+  render(
+    <I18nextProvider i18n={i18n}>
+      <SessionUserContext.Provider value={{ id: 7, username: "ops", role: "admin" }}>
+        <MemoryRouter initialEntries={["/dashboard"]}><ConsoleBanners /><Elsewhere /></MemoryRouter>
+      </SessionUserContext.Provider>
+    </I18nextProvider>,
+  );
+  assert.ok(await screen.findByText("Renew soon"));
+  await user.click(screen.getByRole("button", { name: "elsewhere" }));
+  await waitFor(() => assert.equal(region(), null));
+  cleanup();
+  window.localStorage.clear();
+  renderBanners();
+  assert.ok(await screen.findByText("Renew soon"));
+  // Another tab stores the acknowledgement; this one hears of it.
+  await act(async () => {
+    window.localStorage.setItem(bannerAckStorageKey(7, "soon:30"), "1");
+    window.dispatchEvent(new window.StorageEvent("storage", { key: bannerAckStorageKey(7, "soon:30"), newValue: "1" }));
+  });
+  await waitFor(() => assert.equal(region(), null));
+});
+
+test("a banner is acknowledged with the keyboard, and in Chinese", async () => {
+  stub(manifest([{ id: "soon", severity: "info", message: reminder, ack_key: "soon:30" }]));
+  const zack = (zh.locale.consoleBanners as Record<string, string>).acknowledge;
+  const user = renderBanners(zh.i18n);
+  const button = await screen.findByRole("button", { name: zack });
+  assert.equal(zack, "已知晓");
+  await user.tab();
+  assert.equal(document.activeElement, button);
+  await user.keyboard("{Enter}");
+  await waitFor(() => assert.equal(region(), null));
+});
+
+// The shell after a sign-in: the session's user is unknown until /auth/me
+// answers (SessionBoundary), then known.
+function SignedIn({ user }: { user?: { id: number; username: string; role: string } }) {
+  return (
+    <I18nextProvider i18n={i18n}>
+      <SessionUserContext.Provider value={user}>
+        <MemoryRouter initialEntries={["/dashboard"]}><ConsoleBanners /></MemoryRouter>
+      </SessionUserContext.Provider>
+    </I18nextProvider>
+  );
+}
+
+test("until the signed-in user is known a banner with a key waits, so an acknowledged one never flashes", async () => {
+  window.localStorage.setItem(bannerAckStorageKey(7, "done:30"), "1");
+  stub(manifest([
+    { id: "done", severity: "info", message: { code: "NO_SUCH_CODE", message: "Already acknowledged" }, ack_key: "done:30" },
+    { id: "soon", severity: "info", message: reminder, ack_key: "soon:30" },
+    { id: "held", severity: "danger", message: { code: "NO_SUCH_CODE", message: "Nodes held" } },
+  ]));
+  const { rerender } = render(<SignedIn />);
+  // A banner without a key is shown at once; none offers to be acknowledged.
+  assert.ok(await screen.findByText("Nodes held"));
+  assert.equal(screen.queryByText("Already acknowledged"), null);
+  assert.equal(screen.queryByText("Renew soon"), null);
+  assert.equal(screen.queryByRole("button", { name: ack }), null);
+  rerender(<SignedIn user={{ id: 7, username: "ops", role: "admin" }} />);
+  assert.ok(await screen.findByText("Renew soon"));
+  assert.equal(screen.queryByText("Already acknowledged"), null, "the acknowledged banner never showed");
+  assert.equal(screen.getAllByRole("button", { name: ack }).length, 1);
+});
+
+test("an acknowledgement made before the user is known records nothing", async () => {
+  stub(manifest([{ id: "soon", severity: "info", message: reminder, ack_key: "soon:30" }]));
+  let acknowledge!: (key: string) => void;
+  function Probe() {
+    const a = useBannerAck();
+    acknowledge = a.acknowledge;
+    return <span data-testid="ready">{String(a.ready)}</span>;
+  }
+  const { rerender } = render(<SessionUserContext.Provider value={undefined}><Probe /></SessionUserContext.Provider>);
+  assert.equal(screen.getByTestId("ready").textContent, "false");
+  act(() => acknowledge("soon:30"));
+  const keys = Array.from({ length: window.localStorage.length }, (_, i) => window.localStorage.key(i) ?? "");
+  assert.deepEqual(keys.filter((key) => key.startsWith("gpuworks.banner-ack.")), []);
+  rerender(<SessionUserContext.Provider value={{ id: 7, username: "ops", role: "admin" }}><Probe /></SessionUserContext.Provider>);
+  assert.equal(screen.getByTestId("ready").textContent, "true");
+  cleanup();
+  // Once the user is known the banner is there to be acknowledged.
+  renderBanners();
+  assert.ok(await screen.findByRole("button", { name: ack }));
+});
+
+// breakStorage makes the browser's storage refuse: reads and writes throw,
+// as a browser does with storage disabled or full. It returns the restore.
+function breakStorage(): () => void {
+  const proto = Object.getPrototypeOf(window.localStorage) as Storage;
+  const { getItem, setItem } = proto;
+  let reads = 0, writes = 0;
+  proto.getItem = function () { reads++; throw new DOMException("denied", "SecurityError"); };
+  proto.setItem = function () { writes++; throw new DOMException("full", "QuotaExceededError"); };
+  breakStorage.counts = () => ({ reads, writes });
+  return () => { proto.getItem = getItem; proto.setItem = setItem; };
+}
+breakStorage.counts = () => ({ reads: 0, writes: 0 });
+
+test("with storage refusing reads and writes a banner still shows and an acknowledgement holds for this visit", async () => {
+  stub(manifest([
+    { id: "soon", severity: "info", message: reminder, ack_key: "soon:30" },
+    { id: "other", severity: "warning", message: { code: "NO_SUCH_CODE", message: "Other matter" } },
+  ]));
+  const restore = breakStorage();
+  try {
+    const user = renderBanners();
+    // A read that throws is "not acknowledged": the banner shows.
+    assert.ok(await screen.findByText("Renew soon"));
+    assert.ok(breakStorage.counts().reads > 0, "the read was attempted");
+    await user.click(screen.getByRole("button", { name: ack }));
+    // The write threw; the acknowledgement holds in memory for this visit.
+    await waitFor(() => assert.equal(screen.queryByText("Renew soon"), null));
+    assert.equal(breakStorage.counts().writes, 1);
+    assert.ok(screen.getByText("Other matter"));
+    cleanup();
+    renderBanners();
+    assert.ok(await screen.findByText("Other matter"));
+    assert.equal(screen.queryByText("Renew soon"), null, "still acknowledged on another page of the same visit");
+    cleanup();
+    // A reload forgets what could not be stored: the banner is back, without an error.
+    resetBannerAckForTest();
+    renderBanners();
+    assert.ok(await screen.findByText("Renew soon"));
+  } finally {
+    restore();
+  }
+});
+
+test("after an acknowledgement focus moves to the next banner's control, or past the banners, never to the body", async () => {
+  stub(manifest([
+    { id: "soon", severity: "info", message: reminder, ack_key: "soon:30" },
+    { id: "other", severity: "warning", message: { code: "NO_SUCH_CODE", message: "Other matter" }, link: "/x/other" },
+  ]));
+  const user = userEvent.setup();
+  render(
+    <I18nextProvider i18n={i18n}>
+      <SessionUserContext.Provider value={{ id: 7, username: "ops", role: "admin" }}>
+        <MemoryRouter initialEntries={["/dashboard"]}>
+          <ConsoleBanners />
+          <button type="button">page control</button>
+        </MemoryRouter>
+      </SessionUserContext.Provider>
+    </I18nextProvider>,
+  );
+  const button = await screen.findByRole("button", { name: ack });
+  await user.tab();
+  assert.equal(document.activeElement, button);
+  await user.keyboard("{Enter}");
+  await waitFor(() => assert.equal(screen.queryByText("Renew soon"), null));
+  assert.equal(document.activeElement, screen.getByRole("link", { name: c.consoleBanners.details }), "the next banner's control");
+  cleanup();
+  window.localStorage.clear();
+  // The last banner gone, focus moves past the banners to the page.
+  stub(manifest([{ id: "soon", severity: "info", message: reminder, ack_key: "soon:30" }]));
+  resetConsoleManifestForTest();
+  render(
+    <I18nextProvider i18n={i18n}>
+      <SessionUserContext.Provider value={{ id: 7, username: "ops", role: "admin" }}>
+        <MemoryRouter initialEntries={["/dashboard"]}>
+          <ConsoleBanners />
+          <button type="button">page control</button>
+        </MemoryRouter>
+      </SessionUserContext.Provider>
+    </I18nextProvider>,
+  );
+  (await screen.findByRole("button", { name: ack })).focus();
+  await user.keyboard("{Enter}");
+  await waitFor(() => assert.equal(region(), null));
+  assert.equal(document.activeElement, screen.getByRole("button", { name: "page control" }));
+  assert.notEqual(document.activeElement, document.body);
 });

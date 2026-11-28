@@ -313,7 +313,8 @@ For the CLI, run `gpuworks-agent doctor` on the node; its exit code is always `0
 
 | Observed Result | Next Step |
 |---|---|
-| GPU count is 0, no vendor tool | On the node, check whether the driver and tool are installed and check the agent user's `PATH`; use `nvidia-smi`, `npu-smi info`, `ppu-smi`, or `hy-smi` according to the hardware |
+| GPU count is 0, no vendor tool | On the node, check whether the driver and tool are installed and check the agent user's `PATH`; use `nvidia-smi`, `npu-smi info`, `ppu-smi`, `hy-smi`, or `amd-smi list` as appropriate. On Kunlun P800, try `/usr/local/xpu/bin/xpu-smi -L`. SSH may omit the SDK directory from `PATH` |
+| Add Node GPU precheck shows `skip / CHECK_COMMAND_NOT_RUN` | On Linux, the GPU probe has a 10-second budget across all vendors. A busy driver can time out. The other checks continue. Run the vendor command as the same SSH user, check the elapsed time and card list, then retry |
 | **Vendor tool did not answer**, `gpu probe failed` | Run the corresponding tool on the node and check its duration and errors; if it remains stuck, check driver logs. Do not treat stale GPU memory readings as current capacity |
 | **Runtime cannot use it**, **Driver init failed** | Check the diagnostic evidence for that card and the results for other cards; restore the driver first, then run diagnosis again |
 | **Not readable** | Check whether the vendor tool is executable and returns a result; do not conclude from this alone that the hardware is faulty |
@@ -328,14 +329,9 @@ After taking action, run diagnosis again and confirm that card health and alloca
 
 If the driver or `nvidia-smi` is not installed or is not in `PATH`, the prober returns 0 GPUs without an error; the node is online but has no GPUs.
 
-**How the platform identifies the vendor**: the agent tries `hy-smi`, `npu-smi`, `ppu-smi`, and `nvidia-smi` in that order, selecting the first one that actually responds.
-For NVIDIA, `nvidia-smi --query-gpu=index` must succeed. NVIDIA is last because the PPU SDK includes
-a CUDA-compatible `nvidia-smi` (`/usr/local/PPU_SDK/CUDA_SDK/bin`) that responds normally with PPU cards presented as GPUs.
+**The Add Node SSH precheck** tries `nvidia-smi`, `npu-smi`, `ppu-smi`, `hy-smi`, and `amd-smi` in order, then checks Kunlun. Both Intel and Kunlun ship `xpu-smi`. The precheck requires the `/dev/xpuctrl` character device and runs `/usr/local/xpu/bin/xpu-smi -L` if executable. Otherwise it looks up `xpu-smi` in the SSH session's `PATH`. The command must succeed and list at least one card on an `XPU <number>:` line. A completed probe returns `CHECK_GPU_TOOL_MISSING` if all vendor checks fail.
 
-If none responds, the agent checks **vendor device files** (`/dev/davinci_manager`, `/dev/alixpu_ctl`, `/dev/nvidiactl`), then **which vendor's CLI is installed**
-(in the order `npu-smi`, `hy-smi`, `ppu-smi`, `nvidia-smi`, with NVIDIA last because hosts from other vendors often retain an outdated `nvidia-smi`);
-only if none is found is the node classified as having “no accelerator”, with an empty vendor. While the driver is still loading (after an Ascend host boots, the agent starts first, `npu-smi` has not yet responded,
-and the device files have not been created), the node therefore remains an Ascend node, and later probes can add its cards.
+**After registration, the agent's automatic detection** checks Hygon, Ascend, PPU, Kunlun, NVIDIA, Apple, and AMD in order. The Kunlun probe reads the card brand from `xpu-smi -q -x`. PPU precedes NVIDIA because the PPU SDK ships a CUDA-compatible tool that also answers `nvidia-smi`. If no probe is ready, the agent checks vendor control devices (including Kunlun's `/dev/xpuctrl`), then installed tools that identify a vendor, then PCI devices.
 
 **Temporarily 0 during Ascend startup**
 
@@ -939,6 +935,21 @@ Start from the code in `metadata_notice` or in the "fetch metadata" error. It te
 
 When a model is `failed` or `download_required` on a node, the deployment wait reason is `model_unavailable`, with the model, node, and error specified. Replicas with automatic node selection skip that node and try placement elsewhere.
 
+### A placed replica does not start
+
+When a replica already has a node but does not start, the deployment's scheduling reason is `waiting_on_node`, and the `stage` parameter says what it waits for:
+
+| stage | meaning | what to do |
+|---|---|---|
+| `cache_eviction` | the node is evicting model cache to make room for another model | wait for the eviction to finish (usually tens of seconds to minutes); if it hangs, check the node's cache operations and the agent log |
+| `model_arriving` | the model is still being transferred to that node | watch the node's download progress on the models page; for a failure see `model_unavailable` above |
+| `node_offline` | the node the replica names is offline | wait for it to reconnect, or pick another node under Adjust replicas |
+| `node_missing` | the node the replica names is no longer part of the placement | pick a node again under Adjust replicas |
+| `previous_generation_leaving` | the generation it replaces still holds the node's master port | wait for it to retire; if it does not, check that instance's events |
+| `pool_unreadable` | the candidate nodes could not be read | the platform retries shortly; if it persists, check the server log |
+
+These waits rewrite the scheduling event once per window; past the pending timeout the deployment shows as stalled in scheduling, and the reason says what to check.
+
 ### Long Downloads: Check Source Switching and Resume Progress
 
 Candidates consist of the alternative addresses in site rules and the site itself. The host in progress and failure messages identifies the source currently being tried and the reason for switching; while a download waits to retry the same address, progress shows the next attempt's number, the seconds until it, and the last failure, and it shows at most 99.9% until all files are in place. See [How Nodes Try Sources in Sequence](configure-pull-settings.md#节点怎样依次尝试).
@@ -1262,6 +1273,8 @@ The gateway error body has the OpenAI shape: `{"error":{"message":"…","type":"
 | 503 | `MODEL_NODE_OFFLINE` | A replica is running, but its node's agent is not connected. Check the node's connection state |
 | 503 | `DISTRIBUTED_NOT_READY`, `DISTRIBUTED_LEADER_OFFLINE` | A rank or the leader in a multi-node deployment is not ready |
 | 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE` (`message` contains `did not reattach within 5s`) | The node data lane did not reconnect within 5 seconds of disconnecting. **Retryable**; there is no fallback to the control lane |
+| 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE` (`message` contains `has no live agent session`) | The agent is reconnecting: its old session closed and no new one registered within 5 seconds. **Retryable**. A node that was already offline when the request was routed gets `MODEL_NODE_OFFLINE`; one that disconnected after routing and sent no heartbeat in the last 30 seconds is not waited for and gets a 502 `UPSTREAM_UNAVAILABLE` |
+| 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE` (`message` contains `agent session did not accept the stream within 5s`) | The node's session did not accept the stream within the 5-second budget (opening it on that session's control or data lane timed out). **Retryable**. Usually right after an agent reconnect; it also happens when a session is stuck without any reconnect |
 | 503 + `Retry-After: 2` | `DATA_LANE_UNAVAILABLE` (`message` contains `data lane closed under an open stream`) | The data lane disconnected after the request reached the node but before a response arrived. **Retryable**. If it disconnects after the response starts, the client receives a truncated response |
 | 503 + `Retry-After: 2` | `PD_PREFILL_UNAVAILABLE` | The PD deployment has no available prefill instance |
 | 502 | `UPSTREAM_UNAVAILABLE` | The tunnel or connection to the engine failed. Check node connectivity and engine logs |
@@ -1575,8 +1588,8 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: eff0f8cdc1fc6886c10dc53cd6c1f66d5c3447d6318015a3a7fa450ff2a50ed1 ### Reconnect Manually -->
 <!-- translation-source-sha256: 64e3842de1709fe48ffaf23670317d1da0b979ce090588bb8acef71a5e0de5b2 ### Resolve the Last Error -->
 <!-- translation-source-sha256: 108381a2d432f34b03b95ee5b8f83943512a95ae31ab0880187e387eee3f2e4e ### The Cloud Platform Changed the Connection Address -->
-<!-- translation-source-sha256: 4cb2a31ae8190359d18ee9d2c1bc63060937865e41802aa7e28d3140166e74cc ## GPU Not Detected or Vendor Tool Did Not Answer -->
-<!-- translation-source-sha256: 01d3dc422ad78b78fae551b18c06a077ef09938261b3e75bac1bc11c05e22052 ### GPU Count Is 0: Check Tools and Drivers First -->
+<!-- translation-source-sha256: 4f206b6067f403eb46d96dc113a00ebc2d489aef79cd5ba6ed1abbe891445e73 ## GPU Not Detected or Vendor Tool Did Not Answer -->
+<!-- translation-source-sha256: 7c0cbae4bad413115d729d80091059b5efd0bbc0e0312f0dc914d6dcfc084bc2 ### GPU Count Is 0: Check Tools and Drivers First -->
 <!-- translation-source-sha256: a53303c45629885919cc151f74fd4bb036c0e159c65ca4ef4d3aadff3c10def4 ### Vendor Tool Did Not Answer or Readings Are Stale -->
 <!-- translation-source-sha256: c40739d95375b5423c001d772cdeb5770f2f8c11f507b388a3810a77b6d18f98 ### A Card Is Unusable by the Runtime or Fails Driver Initialization -->
 <!-- translation-source-sha256: 7ebf5c9174ef8583f382fdc9479446b523c3851af93fa26195569e89ad2a8a6c ### Host Sees the Card but Container Does Not -->
@@ -1596,6 +1609,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 42fed8d49a7803ff38e5219e59e18fbd01e2d979874ce46b0f29cd76d6b78913 ## Model Downloads Stall, Fail, or Leave Incomplete Directories -->
 <!-- translation-source-sha256: 178536686b1efd8668c7e8d46049e9e86b9e70f96c29fb441228f7b2442ca5ff ### Check Completeness First -->
 <!-- translation-source-sha256: 013d23a93b7ad4aa7bca003a2fcbbfb97c6e17c6571ac8fa8df03ea0144fda27 ### Choose a Resolution Based on the Error -->
+<!-- translation-source-sha256: 94368dfd351ab7b7d77506dc1f74de9909e7769e9de5680d4c09e6fa4303814d ### A placed replica does not start -->
 <!-- translation-source-sha256: 5a7b086b91b907b2bfa866cb337a4c68fcc148c423d0ff3c9885d0f957d15aa1 ### Long Downloads: Check Source Switching and Resume Progress -->
 <!-- translation-source-sha256: 15199cdc0f07486d121b220a634cb7cbd7198b8935c85f1396a0eca8440eb136 ### Retry After the Fix and Confirm the Result -->
 <!-- translation-source-sha256: e0dfe8a8bfbb8a0f359c56d406e3618b4b7ea94111dbc7526470cc3e9f9a6848 ## Image Pull Failures -->
@@ -1612,7 +1626,7 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 9fc0546899e8801217945461926cdfddbf92aeaebba15b22768f0392951830e5 ### Container Exits After Reaching Running -->
 <!-- translation-source-sha256: 9b440725e326934e1723979abbdb7feca7f9a96cf5fac88ee19b1482db1500e2 ### Engine Stops Responding After Reaching Running -->
 <!-- translation-source-sha256: add832ec4ab268d576c36b2fc99eba23a41a9ba25040cceb7b68ff0583f0f8ab ### Retry After Fixing the Cause -->
-<!-- translation-source-sha256: b13f0f68455c5a89e6f54e0035b7999cb6b7f94cdb9e5abafa81f18c85e4618a ## Gateway Returns 401, 404, or 503 -->
+<!-- translation-source-sha256: 9a0d3b26f07b18af50009812e57ba83c2151a2d170f03f4dad39c0699c395d42 ## Gateway Returns 401, 404, or 503 -->
 <!-- translation-source-sha256: 2c0e5a7c9e97b4735744c0fee373cf39d0326a987466dd32c03c0357bb55abe1 ## dGPU Capability Unavailable -->
 <!-- translation-source-sha256: 0e3041f49383f6df9bdad9e0f779abe9dad3c8fc082a5d108e8da5e178c515bc ## Sleep / Wake Failure -->
 <!-- translation-source-sha256: 6bed70deff3f0668d6c10fbbf64777d85d384d8c080f53cef873e0f3e0a97a34 ### Schedules, Yielding, or Waiting Did Not Run as Expected -->
