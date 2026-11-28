@@ -6,7 +6,7 @@ Date: 2026-11-28 · Status: Accepted (tightens the rule, from the implementation
 
 A module can set the whole server to read-only or locked with `Host.LimitPlatform` ([Extension Points](../dev/extensions.md#整台-server-的可用性)). While limited, the core classifies requests by route pattern: reads are served, changes are refused, and the recovery surface (signing in, health checks, the console shell, the connection of machines that already joined, and so on) is served under any limit.
 
-An extension's public routes (callable without signing in) did not go through this classification. A plugin package's `access: public` routes were served under any limit, on the grounds that "a package that signs users in must keep working"; when step 2 of [ADR 0085](0085-external-identity-connectors.md) brought `AccessPublic` to compiled modules, it carried the same exemption. So any public write route still ran while the server was read-only or locked. "Needs no sign-in" says who may call a route, not whether it changes anything; it is the sign-in flow that a limited server has to keep.
+A plugin package's public routes (callable without signing in, `access: public`) did not go through this classification: they were served under any limit, on the grounds that "a package that signs users in must keep working" (GWKS-477). So any public write route of a package still ran while the server was read-only or locked. Compiled modules had no public routes yet; step 2 of [ADR 0085](0085-external-identity-connectors.md) planned to give them `AccessPublic` and meant to carry the same exemption. "Needs no sign-in" says who may call a route, not whether it changes anything; it is the sign-in flow that a limited server has to keep.
 
 ## Decision
 
@@ -38,7 +38,7 @@ An extension's public routes (callable without signing in) did not go through th
 Implemented: `api.AccessPublic`, `RouteSpec.SignIn`, the mount-time checks, the route inventory markers, the classification and the immediate refusal in `platformGuard`, with tests and a contract test. Sign-in routes for plugin packages come with step 3 of ADR 0085.
 
 <!-- translation-source-sha256: 14709db69bc4d609625cf55190c69a8c5d4fe3a1711910ec742dda64b2a74245 # ADR 0088: Extension Routes That Need No Sign-in Follow Their Method While the Whole Server Is Limited; Only Routes Declared Part of Signing In Are Served Under Any Limit -->
-<!-- translation-source-sha256: 3f45eb8dded2ec67a6a0d06788880a96edd761fb532ebfaa4523a1bea01afc7b ## Background -->
+<!-- translation-source-sha256: 4fda9a7f800f500599c2a709b892ca953a4c4c2fb5fa659ac64980833af6ea04 ## Background -->
 <!-- translation-source-sha256: fd395d392c6c57317bd46eca37ac0b864fe7694f49d0c08755fffa13637c282c ## Decision -->
 <!-- translation-source-sha256: 0f8d8d3042b02a5252342703452b17a470de574c313e0bd76da663214c5aa148 ## Extension level -->
 <!-- translation-source-sha256: e7ca6fa6225b3cfc4c99bc84786998b3219e180998af4dd6650882fac3a40fb7 ## Trade-offs -->

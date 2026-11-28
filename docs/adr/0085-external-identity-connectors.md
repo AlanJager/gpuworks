@@ -85,9 +85,9 @@
 
 ## 实施状态
 
-第 1 步已实施（2026-11-27）；第 2–4 步未实施。顺序，每一步都带契约测试（编译模块走 `internal/testenv/extmodule`，插件包走假插件进程，ADR 0071 决策 21）：
+第 1 步已实施（2026-11-27）；第 2 步的 `api.AccessPublic` 与 `RouteSpec.SignIn` 已按 [ADR 0088](0088-extension-public-routes-under-a-platform-limit.md) 实施（2026-11-28），第 2 步其余部分与第 3–4 步未实施。顺序，每一步都带契约测试（编译模块走 `internal/testenv/extmodule`，插件包走假插件进程，ADR 0071 决策 21）：
 
 1. **已实施。** `user_identities`（迁移 252）与 `users.disabled_at`；停用的执行（会话、登录、平台令牌、API key）；管理员的停用、恢复、查看链接、链接与删除链接接口（`/api/v1/users…`，见 [API 参考](../reference/api.md#accounts账号与外部身份)）；`auth.local_password`。
-2. 浏览器绑定与 `GET /api/v1/auth/sign-in/start`、票据与 `GET /api/v1/auth/complete`，管理员不受连接器管辖的检查，`app.Host.Accounts()`，`api.AccessPublic`，`GET /api/v1/auth/sign-in-options` 与登录页入口。到这一步，编译模块就能实现跳转式连接器。
+2. 浏览器绑定与 `GET /api/v1/auth/sign-in/start`、票据与 `GET /api/v1/auth/complete`，管理员不受连接器管辖的检查，`app.Host.Accounts()`，`api.AccessPublic`（**已实施**，连同 `RouteSpec.SignIn`，见 ADR 0088），`GET /api/v1/auth/sign-in-options` 与登录页入口。到这一步，编译模块就能实现跳转式连接器。
 3. 插件包的 `write:accounts` 权限、`host.accounts` 宿主接口与清单的 `sign_in` 声明。
 4. 密码式连接器的同步校验接口。

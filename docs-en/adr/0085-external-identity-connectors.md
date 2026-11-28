@@ -85,10 +85,10 @@ These identity sources all differ, and the variation is on the side of sites and
 
 ## Implementation status
 
-Not implemented. Order, each step with contract tests (compiled modules through `internal/testenv/extmodule`, plugin packages against a fake plugin process, ADR 0071 decision 21):
+Step 1 is implemented (2026-11-27); `api.AccessPublic` and `RouteSpec.SignIn` from step 2 are implemented under [ADR 0088](0088-extension-public-routes-under-a-platform-limit.md) (2026-11-28); the rest of step 2 and steps 3–4 are not implemented. Order, each step with contract tests (compiled modules through `internal/testenv/extmodule`, plugin packages against a fake plugin process, ADR 0071 decision 21):
 
-1. Migrations for `user_identities` and `users.disabled_at`; enforcing disablement (sessions, sign-in, platform tokens, API keys) and the administrator interfaces to disable, restore and link; `auth.local_password`.
-2. The browser binding and `GET /api/v1/auth/sign-in/start`, tickets and `GET /api/v1/auth/complete`, the check that keeps administrators out of connectors' reach, `app.Host.Accounts()`, `api.AccessPublic`, `GET /api/v1/auth/sign-in-options` and the sign-in page entries. After this step, a compiled module can implement a redirect connector.
+1. **Implemented.** `user_identities` (migration 252) and `users.disabled_at`; enforcing disablement (sessions, sign-in, platform tokens, API keys); the administrator interfaces to disable, restore, view links, link and unlink (`/api/v1/users…`, see the [API reference](../reference/api.md#accounts账号与外部身份)); `auth.local_password`.
+2. The browser binding and `GET /api/v1/auth/sign-in/start`, tickets and `GET /api/v1/auth/complete`, the check that keeps administrators out of connectors' reach, `app.Host.Accounts()`, `api.AccessPublic` (**implemented**, together with `RouteSpec.SignIn`, see ADR 0088), `GET /api/v1/auth/sign-in-options` and the sign-in page entries. After this step, a compiled module can implement a redirect connector.
 3. The `write:accounts` permission for plugin packages, the `host.accounts` host interface and the manifest's `sign_in` declaration.
 4. The synchronous check interface for password connectors.
 
@@ -97,4 +97,4 @@ Not implemented. Order, each step with contract tests (compiled modules through 
 <!-- translation-source-sha256: c310b88ac2bf88ed16a7f9ba6aa2b9cbd15427adde6fd78c3be1b07781cf1814 ## Decision -->
 <!-- translation-source-sha256: faf40b805c5bc1b22d8a18f0d7b80320fcc208a69eef6823e055d6e845901ffc ## Extension level -->
 <!-- translation-source-sha256: eaeee62586f9665447d7722bc0da9c3226e048659e0d3d461eaedb9575fdadbb ## Trade-offs -->
-<!-- translation-source-sha256: beb8b9c4519a933d70d7b44a64a368a6fededada856225311490e5a22634b33a ## Implementation status -->
+<!-- translation-source-sha256: 5b55a41e3b536b24baa9697159c07dc3d94b6cc6d9f56dd900dce27f94be7e06 ## Implementation status -->
