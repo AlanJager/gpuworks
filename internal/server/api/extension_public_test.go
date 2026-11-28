@@ -104,12 +104,16 @@ func TestPublicAndSignInRoutesAreCheckedWhenMounted(t *testing.T) {
 // read is served, a change is refused at once with the limit's code, before
 // any session is asked for. A compiled module's SignIn route is served under
 // any limit, POST included. A package's public route has no sign-in role,
-// so its change is refused too. Routes that need a session are unchanged.
+// so its change is refused too. A public route of a hidden feature answers
+// 404 as on an unlimited server, and a public path asked with a method it
+// does not declare is a route that needs a session: the limit shows neither.
+// Routes that need a session are unchanged.
 func TestExtensionPublicRoutesUnderALimitFollowTheirMethod(t *testing.T) {
 	limiter := newSwitchLimiter(featuregate.Full)
 	rig := newDynamicRig(t, []DynamicRoute{
 		dynRoute("GET", "/hook", DynamicPublic, func(r *DynamicRoute) { r.RatePerMinute, r.RateBurst = 600, 600 }),
 		dynRoute("POST", "/hook", DynamicPublic, func(r *DynamicRoute) { r.RatePerMinute, r.RateBurst = 600, 600 }),
+		dynRoute("POST", "/concealed", DynamicPublic, func(r *DynamicRoute) { r.Feature, r.RatePerMinute, r.RateBurst = "acme.hidden", 600, 600 }),
 		dynRoute("POST", "/items", DynamicMember),
 	}, func(d *Deps) {
 		d.Extensions.Platform = limiter
@@ -117,6 +121,7 @@ func TestExtensionPublicRoutesUnderALimitFollowTheirMethod(t *testing.T) {
 			{Method: http.MethodGet, Pattern: "/x/fake/start", Access: AccessPublic, Community: true},
 			{Method: http.MethodPost, Pattern: "/x/fake/hook", Access: AccessPublic, Community: true},
 			{Method: http.MethodPost, Pattern: "/x/fake/acs", Access: AccessPublic, SignIn: true, Community: true},
+			{Method: http.MethodPost, Pattern: "/x/fake/concealed", Access: AccessPublic, Feature: "acme.hidden"},
 			{Method: http.MethodPost, Pattern: "/x/fake/things", Community: true},
 		}}}
 	})
@@ -140,6 +145,10 @@ func TestExtensionPublicRoutesUnderALimitFollowTheirMethod(t *testing.T) {
 		{"a package's public change", "", "POST", "/api/v1/x/acme_fake/hook", served, want{403, readOnly}, want{403, locked}},
 		{"a package's change that needs a session", rig.member, "POST", "/api/v1/x/acme_fake/items", served, want{403, readOnly}, want{403, locked}},
 		{"a package's change that needs a session, without one", "", "POST", "/api/v1/x/acme_fake/items", want{code: 401}, want{code: 401}, want{code: 401}},
+		{"a module's public change of a hidden feature", "", "POST", "/api/v1/x/fake/concealed", want{code: 404}, want{code: 404}, want{code: 404}},
+		{"a package's public change of a hidden feature", "", "POST", "/api/v1/x/acme_fake/concealed", want{code: 404}, want{code: 404}, want{code: 404}},
+		{"a module's public path by a method it does not declare", "", "DELETE", "/api/v1/x/fake/start", want{code: 401}, want{code: 401}, want{code: 401}},
+		{"a package's public path by a method it does not declare", "", "DELETE", "/api/v1/x/acme_fake/hook", want{code: 401}, want{code: 401}, want{code: 401}},
 	} {
 		for _, state := range []struct {
 			access featuregate.Access
