@@ -219,3 +219,34 @@ test("an untraversable ancestor of the agent directory names the blocking direct
   assert.ok(within(enFindings).getByText("/root is not searchable by udocker, the user workloads run as, so it cannot reach the agent directory /root/gpuworks."));
   assert.ok(within(enFindings).getByText(/Open the directory with `chmod o\+x \/root`/));
 });
+
+// A die whose runtime check timed out during the diagnosis gets no verdict:
+// it is listed as not checked with what the periodic check does about it, not
+// as a failure; a die queued behind another runtime check says so too.
+test("a runtime check that timed out in the diagnosis reads as no verdict, in both languages", async () => {
+  const timedOut: ReportT = {
+    ...runpod,
+    findings: [
+      { id: "card_runtime", code: "RUNTIME_CHECK_TIMED_OUT", status: "skip", targets: [
+        { index: 3, evidence: [{ name: "reason", value: "the runtime check did not finish within 30s; Diagnose does not check it again with a wider budget, so the card's scheduling follows the periodic check" }] },
+      ] },
+      { id: "card_runtime", code: "CARD_CHECK_SKIPPED_IN_PROGRESS", status: "skip", targets: [
+        { index: 4, evidence: [{ name: "reason", value: "another runtime check on this node held the driver" }] },
+      ] },
+    ],
+  };
+  wrap(<NodeDoctorReport report={timedOut} />);
+  const findings = screen.getByRole("region", { name: "需要处理" });
+  assert.ok(within(findings).getByText("未下结论：运行时检查超时"));
+  assert.ok(within(findings).getByText(/周期检查会对超时的卡按 3 倍预算再查一次才下结论/));
+  assert.ok(within(findings).getByText("未检查：节点上另一项运行时检查正在进行"));
+  assert.equal(within(findings).queryByText(/运行时无法使用/), null);
+  cleanup();
+
+  const en = (await createI18n(["nodes"], "en")).i18n;
+  wrap(<NodeDoctorReport report={timedOut} />, en);
+  const enFindings = screen.getByRole("region", { name: "Action required" });
+  assert.ok(within(enFindings).getByText("No verdict: runtime check timed out"));
+  assert.ok(within(enFindings).getByText(/one more try with three times the budget/));
+  assert.ok(within(enFindings).getByText("Not checked: Another runtime check on the node was in progress"));
+});

@@ -20,6 +20,12 @@ const (
 	SkipNotHeld = "not_held"
 	// SkipUnavailable: the host cannot be asked right now.
 	SkipUnavailable = "unavailable"
+	// SkipInProgress: another runtime check was in progress, so this one
+	// asked nothing. Either it was this card's own (a timed-out attempt
+	// waiting to come back or being checked again, which answers for the
+	// card), or one on another card that held the runtime for all the time
+	// this one had (Queued).
+	SkipInProgress = "in_progress"
 )
 
 // Record takes an answer the card gave to a check made outside the runner
@@ -31,7 +37,8 @@ const (
 //
 // Only an answer about the card belongs here. A check that could not reach
 // the runtime, or was cut off by the caller's own budget, has no verdict and
-// is not recorded.
+// is not recorded; nor has one that ran out of its timeout without the wider
+// re-check a round makes before it judges a timeout (attemptWithRecheck).
 func (r *Runner) Record(ident string, err error) {
 	r.RecordTimed(ident, err, 0)
 }
@@ -54,10 +61,27 @@ func (r *Runner) RecordTimed(ident string, err error, took time.Duration) {
 	r.scheduleNext(ident, outcome, at)
 }
 
+// CheckCardBudget is the longest CheckCard spends asking a card: the first
+// attempt, the wait for it to come back once killed, the wider re-check and
+// the moment the re-check leaves before the caller's deadline. A caller that
+// gives CheckCard less than this (and the time it takes to list the cards)
+// gets the first timeout as the answer, not the re-check's.
+func (r *Runner) CheckCardBudget() time.Duration {
+	if r == nil {
+		return 0
+	}
+	if r.cfg.WideTimeout <= r.cfg.Timeout {
+		return r.cfg.Timeout
+	}
+	return r.cfg.Timeout + r.cfg.ReapGrace + r.cfg.WideTimeout + recheckSlack
+}
+
 // CheckCard asks about one card now, whatever its schedule or backoff, and
-// returns what it answered, or why it was not asked (a Skip* reason). A card an instance serves on, or somebody outside the
-// platform uses, is left alone like a round leaves it; so is every card while
-// the host cannot be asked.
+// returns what it answered, or why it was not asked (a Skip* reason). A card
+// an instance serves on, or somebody outside the platform uses, is left alone
+// like a round leaves it; so is every card while the host cannot be asked. A
+// card whose timed-out check is being checked again, or that could not be
+// asked because another check held the runtime all along, is SkipInProgress.
 func (r *Runner) CheckCard(ctx context.Context, ident string) (Outcome, string) {
 	if r == nil {
 		return Outcome{}, SkipUnavailable
@@ -79,9 +103,15 @@ func (r *Runner) CheckCard(ctx context.Context, ident string) (Outcome, string) 
 			return Outcome{}, SkipBusy
 		}
 		before, heldBefore := r.answerCount(ident), r.notHeldCount(ident)
-		r.tryUnlessBusy(ctx, card, false)
+		_, inProgress := r.tryUnlessBusy(ctx, card, false)
 		if r.notHeldCount(ident) != heldBefore {
 			return Outcome{}, SkipNotHeld
+		}
+		if inProgress != "" {
+			// The card's own timed-out check is being waited for or
+			// checked again, or another check held the runtime all along:
+			// that check answers, at the next report.
+			return Outcome{}, inProgress
 		}
 		after, ok := r.Outcomes()[ident]
 		if !ok || r.answerCount(ident) == before {

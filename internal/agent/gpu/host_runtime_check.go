@@ -20,6 +20,11 @@ type HostRuntimeCheck struct {
 	CLI string
 	// Timeout bounds one card's attempt, or zero for the scheduler's default.
 	Timeout time.Duration
+	// ReapGrace is how long Try may take to return once its deadline has
+	// passed, or zero for the scheduler's default (cardsmoke.DefaultReapGrace).
+	// A Try that cleans up after its deadline for longer than that says so,
+	// or a card that timed out is never checked again with a wider budget.
+	ReapGrace time.Duration
 	// Prerequisite says why the check cannot run on this host at all, or "".
 	Prerequisite func() string
 	// Visible identifies the card to Try and is false when the card cannot be
@@ -81,14 +86,26 @@ func runRuntimeCheck(ctx context.Context, env []string, name string, args ...str
 	return []byte(out), err
 }
 
-// stillRunning is what a check refused because an earlier one is stuck says:
-// the host's problem, not the card's.
+// stillRunning is what a check that never started says, or nil for one that
+// ran. One refused because an earlier check is stuck is the host's problem,
+// not the card's. One that spent its whole time waiting for another check's
+// turn (ErrNoTurn) keeps that error, so its caller can tell the wait from the
+// card running out of time (RuntimeCheckQueued).
 func stillRunning(err error) error {
+	if errors.Is(err, ErrNoTurn) {
+		return err
+	}
 	if errors.Is(err, ErrStillRunning) {
 		return &HostRuntimeUnavailableError{Reason: "an earlier runtime check on this node was killed and has not exited: " + err.Error()}
 	}
 	return nil
 }
+
+// RuntimeCheckQueued reports that a runtime check never started: another
+// check on this node held the driver (RuntimeCheckKey) for all the time it was
+// given. Its deadline passed, but nothing about the card was asked, so it is
+// not the card's timeout.
+func RuntimeCheckQueued(err error) bool { return errors.Is(err, ErrNoTurn) }
 
 // HostRuntimeUnavailableError reports that a check never reached the card:
 // the vendor runtime would not load or initialize, the device mapping could

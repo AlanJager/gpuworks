@@ -14,10 +14,8 @@ package cardsmoke
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 )
@@ -45,57 +43,6 @@ const (
 	DefaultRetryAfter = time.Minute
 )
 
-// Inconclusive marks an attempt's failure as saying nothing about the card:
-// the attempt never reached it. The card is then left exactly as it was, and
-// the round stops because whatever stopped the attempt would stop every other
-// one in it too.
-func Inconclusive(reason string) error {
-	return inconclusiveError{reason: strings.TrimSpace(reason)}
-}
-
-type inconclusiveError struct{ reason string }
-
-func (e inconclusiveError) Error() string { return e.reason }
-
-// NotHeld marks an attempt's failure as "the platform does not hold this
-// card": it is not the platform's to ask (on a Kubernetes node, the kubelet may
-// give it to another pod at any moment). The attempt never touched the card, so
-// nothing is recorded about it except that it was skipped, and — unlike
-// Inconclusive — the round goes on with the other cards.
-func NotHeld(reason string) error {
-	return notHeldError{reason: strings.TrimSpace(reason)}
-}
-
-type notHeldError struct{ reason string }
-
-func (e notHeldError) Error() string {
-	if e.reason == "" {
-		return "the platform does not hold this card"
-	}
-	return e.reason
-}
-
-// NotHeldReason is why the platform does not hold the card the attempt was
-// about, or "" for any other error.
-func NotHeldReason(err error) string {
-	var held notHeldError
-	if errors.As(err, &held) {
-		return held.Error()
-	}
-	return ""
-}
-
-func inconclusiveReason(err error) string {
-	var inconclusive inconclusiveError
-	if errors.As(err, &inconclusive) {
-		if inconclusive.reason == "" {
-			return "the runtime check could not be made"
-		}
-		return inconclusive.reason
-	}
-	return ""
-}
-
 // Card is what the runner needs to know about one accelerator: how to name
 // it, how to ask the runtime for it alone, and how a caller refers to it.
 type Card struct {
@@ -122,6 +69,10 @@ type Outcome struct {
 	Failures int
 	// Duration is how long the attempt took, when the runner timed it.
 	Duration time.Duration
+	// Recheck is set when this is the answer of the wider re-check a
+	// timed-out first attempt earned (attemptWithRecheck), so an operator
+	// can tell a card that is slow to answer from one that does not.
+	Recheck Recheck
 }
 
 // Skip is why the card was last left unasked (one of the Skip* reasons), and
@@ -160,6 +111,16 @@ type Config struct {
 
 	Interval time.Duration
 	Timeout  time.Duration
+	// WideTimeout is what the one re-check after a timed-out attempt is
+	// given; zero for WideTimeoutFactor times Timeout. One no larger than
+	// Timeout makes no re-check.
+	WideTimeout time.Duration
+	// ReapGrace is how long after its deadline a killed attempt is waited
+	// for before it counts as stuck and earns no re-check; zero for
+	// DefaultReapGrace or Timeout, whichever is shorter. A Try that cleans
+	// up for longer after its deadline (stopping and removing a container)
+	// needs as long as that, or it never earns the re-check.
+	ReapGrace time.Duration
 	// MaxBackoffRounds caps the per-card failure backoff. One limits the wait
 	// to a single interval.
 	MaxBackoffRounds int
@@ -198,12 +159,22 @@ type Runner struct {
 	// and has not returned since. The process behind it is still waiting
 	// on the driver; starting another would add a second one to the same
 	// wait every round, which is the pile-up this package exists to avoid.
-	stuck map[string]bool
+	// Each maps to the deadline the check was given.
+	stuck map[string]time.Duration
+	// rechecking are the cards whose attempt ran out of its deadline and
+	// that are waiting for it to come back within ReapGrace, or making the
+	// wider re-check (attemptWithRecheck). That check answers for the card,
+	// so another one asked meanwhile is in progress, not a failure.
+	rechecking map[string]bool
 	// nextAttempt is when a failed card may be tried again.
 	nextAttempt map[string]time.Time
 	// roundStart is when the round in flight began, so a long round does not
 	// stretch the backoff of cards tried near its end.
 	roundStart time.Time
+	// wideRound is that a card of the round in flight passed only on the
+	// wider re-check, so the rest of the round is given the wide budget
+	// first (firstBudget). It is cleared when a round begins.
+	wideRound bool
 	// skipped is why the last round asked no card at all, or "".
 	skipped string
 	// deferred is whether the last round asked no card because what this
@@ -229,6 +200,14 @@ func New(cfg Config) *Runner {
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = DefaultTimeout
 	}
+	if cfg.WideTimeout <= 0 {
+		cfg.WideTimeout = WideTimeoutFactor * cfg.Timeout
+	}
+	if cfg.ReapGrace <= 0 {
+		// Never longer than the attempt itself was given: a round waits at
+		// most twice an attempt's budget for a card that never comes back.
+		cfg.ReapGrace = min(DefaultReapGrace, cfg.Timeout)
+	}
 	if cfg.FirstRound <= 0 {
 		cfg.FirstRound = DefaultFirstRound
 	}
@@ -241,7 +220,7 @@ func New(cfg Config) *Runner {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
-	return &Runner{cfg: cfg, outcomes: map[string]Outcome{}, stuck: map[string]bool{}, nextAttempt: map[string]time.Time{}, skips: map[string]Skip{}, answers: map[string]uint64{}, notHeld: map[string]uint64{}}
+	return &Runner{cfg: cfg, outcomes: map[string]Outcome{}, stuck: map[string]time.Duration{}, rechecking: map[string]bool{}, nextAttempt: map[string]time.Time{}, skips: map[string]Skip{}, answers: map[string]uint64{}, notHeld: map[string]uint64{}}
 }
 
 // Run keeps running rounds until ctx ends.
@@ -300,6 +279,7 @@ func (r *Runner) RunOnce(ctx context.Context) {
 		return
 	}
 	r.running = true
+	r.wideRound = false
 	r.roundStart = r.cfg.Now()
 	r.mu.Unlock()
 	defer func() {
@@ -375,7 +355,7 @@ func (r *Runner) CheckNow(ctx context.Context, idents map[string]bool) {
 		if !idents[card.Ident] || r.answeredRecently(card.Ident) {
 			continue
 		}
-		if stopped := r.tryUnlessBusy(ctx, card, false); stopped != "" {
+		if stopped, _ := r.tryUnlessBusy(ctx, card, false); stopped != "" {
 			return
 		}
 	}
@@ -394,109 +374,71 @@ func (r *Runner) answeredRecently(ident string) bool {
 // round must stop: a host-wide inconclusive answer, a timed-out attempt, or an
 // older attempt that has not returned.
 func (r *Runner) try(ctx context.Context, card Card) string {
-	return r.tryUnlessBusy(ctx, card, true)
+	stop, _ := r.tryUnlessBusy(ctx, card, true)
+	return stop
 }
 
 // tryUnlessBusy is try, with whether a card an instance holds is left alone.
-func (r *Runner) tryUnlessBusy(ctx context.Context, card Card, skipBusy bool) string {
+// It also returns SkipInProgress when another runtime check kept this one
+// from asking the card, so an on-demand caller can say so (CheckCard).
+func (r *Runner) tryUnlessBusy(ctx context.Context, card Card, skipBusy bool) (stop, inProgress string) {
 	r.mu.Lock()
-	stuck := r.stuck[card.Ident]
-	anyStuck := len(r.stuck) > 0
+	stuckFor := r.stuck[card.Ident]
+	stuck := stuckFor > 0
+	rechecking := r.rechecking[card.Ident]
+	var longest time.Duration
+	for _, given := range r.stuck {
+		longest = max(longest, given)
+	}
 	failures := r.outcomes[card.Ident].Failures
 	r.mu.Unlock()
-	if anyStuck {
-		detail := fmt.Sprintf("an earlier runtime check has not returned after more than %s; no new card can be checked", r.cfg.Timeout)
+	if rechecking {
+		// Another check of this card timed out a moment ago and is waiting
+		// for its process to come back, or checking it again: that check
+		// answers for the card, so this one starts nothing and records
+		// nothing, not even a skip that would outlive it.
+		return "", SkipInProgress
+	}
+	if longest > 0 {
+		detail := fmt.Sprintf("an earlier runtime check has not returned after more than %s; no new card can be checked", longest)
 		if !stuck {
 			r.skip(card.Ident, SkipUnavailable)
 		}
 		if stuck {
-			detail = fmt.Sprintf("the previous runtime check of this card has not returned after more than %s", r.cfg.Timeout)
+			detail = fmt.Sprintf("the previous runtime check of this card has not returned after more than %s", stuckFor)
 			r.record(card.Ident, Outcome{At: r.cfg.Now(), Failures: failures, Detail: detail})
 		}
-		return detail
+		return detail, ""
 	}
 	if r.cfg.Foreign != nil && r.cfg.Foreign(card) {
 		// Like a serving card, the card keeps whatever it last said.
 		r.skip(card.Ident, SkipForeign)
-		return ""
+		return "", ""
 	}
 	if skipBusy && r.busy(card) {
 		// Serving work is itself the answer, so the card keeps whatever it
 		// last said rather than being recorded as untried.
 		r.skip(card.Ident, SkipBusy)
-		return ""
+		return "", ""
 	}
 	if skipBusy && r.backingOff(card.Ident) {
 		// Its last answer, a failure, stands until the backoff lets a
 		// round ask again; that is not a skip worth stating.
-		return ""
+		return "", ""
 	}
-	attempt, cancel := context.WithTimeout(ctx, r.cfg.Timeout)
-	defer cancel()
-	// The deadline is the runner's, not only the attempt's. A check that
-	// ignores its context — a python stuck in D state on the very driver
-	// this package exists to survive — would otherwise hold the round
-	// open forever, and with it every round after it.
-	type attemptAnswer struct {
-		err        error
-		finishedAt time.Time
+	answer, recheck := r.attemptWithRecheck(ctx, card, skipBusy)
+	if answer.cancelled {
+		// The round was cancelled (agent shutdown), not the card's deadline:
+		// no outcome, no failure count, no backoff.
+		return "", ""
 	}
-	done := make(chan attemptAnswer, 1)
-	started := time.Now()
-	end := r.Begin(card.Ident)
-	go func() {
-		err := r.cfg.Try(attempt, card)
-		end()
-		// Sent before the mark is cleared, so the runner either sees the
-		// answer or finds the mark already gone, never a mark left behind.
-		done <- attemptAnswer{err: err, finishedAt: time.Now()}
-		r.mu.Lock()
-		delete(r.stuck, card.Ident)
-		r.mu.Unlock()
-	}()
-	deadline, _ := attempt.Deadline()
-	timeoutErr := fmt.Errorf("the runtime check did not finish within %s", r.cfg.Timeout)
-	// When done and the deadline are both ready, select's random choice must
-	// not decide the verdict. The attempt state and completion timestamp give
-	// both paths the same answer; a returned attempt is never left marked stuck.
-	grade := func(answer attemptAnswer) error {
-		if attempt.Err() != nil || !answer.finishedAt.Before(deadline) {
-			return timeoutErr
-		}
-		return answer.err
-	}
-	var err error
-	took := r.cfg.Timeout
-	select {
-	case answer := <-done:
-		err = grade(answer)
-		took = answer.finishedAt.Sub(started)
-	case <-attempt.Done():
-		if ctx.Err() != nil {
-			// The round was cancelled (agent shutdown), not the card's
-			// deadline. The attempt is discarded: no outcome, no failure
-			// count, no backoff, and nothing is marked stuck because the
-			// runner is going away.
-			return ""
-		}
-		err = timeoutErr
-		r.mu.Lock()
-		r.stuck[card.Ident] = true
-		r.mu.Unlock()
-		// The check may have returned between the deadline and this mark.
-		select {
-		case answer := <-done:
-			err = grade(answer)
-			r.mu.Lock()
-			delete(r.stuck, card.Ident)
-			r.mu.Unlock()
-		default:
-		}
-	}
-	if err != nil && ctx.Err() != nil {
-		// A failure that arrived with the round's cancellation is the
-		// shutdown's, not the card's.
-		return ""
+	err := answer.err
+	if queued(err) {
+		// Another check held the runtime for all the time this one had: the
+		// card was not asked. It keeps whatever it last answered, and the
+		// round goes on, since that check ends on its own.
+		r.skip(card.Ident, SkipInProgress)
+		return "", SkipInProgress
 	}
 	if err != nil && r.claimedDuring(card, skipBusy) {
 		// An instance was placed on the card, or somebody outside the
@@ -504,10 +446,10 @@ func (r *Runner) tryUnlessBusy(ctx context.Context, card Card, skipBusy bool) st
 		// only one process may open, the failure is theirs having got
 		// there first, not the card's: nothing is recorded and no backoff
 		// is earned. A round asks it again once it is free.
-		if err == timeoutErr {
-			return timeoutErr.Error()
+		if answer.timedOut {
+			return err.Error(), ""
 		}
-		return ""
+		return "", ""
 	}
 	if NotHeldReason(err) != "" {
 		// The platform does not hold the card: it was never asked, and
@@ -516,24 +458,30 @@ func (r *Runner) tryUnlessBusy(ctx context.Context, card Card, skipBusy bool) st
 		r.skips[card.Ident] = Skip{Reason: SkipNotHeld, At: r.cfg.Now()}
 		r.notHeld[card.Ident]++
 		r.mu.Unlock()
-		return ""
+		return "", ""
 	}
 	if inconclusive := inconclusiveReason(err); inconclusive != "" {
 		// A host failure cannot push a card into a backoff it did not earn.
 		r.skip(card.Ident, SkipUnavailable)
-		return inconclusive
+		return inconclusive, ""
 	}
-	outcome := Outcome{OK: err == nil, At: r.cfg.Now(), Duration: took}
+	outcome := Outcome{OK: err == nil, At: r.cfg.Now(), Duration: answer.took, Recheck: recheck}
 	if err != nil {
 		outcome.Detail = err.Error()
 		outcome.Failures = failures + 1
 	}
+	if outcome.OK && recheck.Made() {
+		// Usable, but only with more time than the check allows: a card
+		// that needs this every round is worth an operator's look.
+		slog.Warn("accelerator runtime check passed only on the wider re-check",
+			"card", card.Ident, "took", answer.took, "timeout", recheck.FirstTimeout, "recheck_timeout", recheck.Timeout)
+	}
 	r.record(card.Ident, outcome)
 	r.scheduleNext(card.Ident, outcome, r.roundFrom(outcome.At))
-	if err == timeoutErr {
-		return timeoutErr.Error()
+	if answer.timedOut {
+		return err.Error(), ""
 	}
-	return ""
+	return "", ""
 }
 
 // claimedDuring reports whether the card was taken by an instance (only when

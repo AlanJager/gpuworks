@@ -7,8 +7,9 @@ import { apiErrorText, productMessageText } from "../../apiError";
 // CardSchedulingTag marks a card an operator took out of scheduling, one an
 // extension holds out of it, or one they let work onto although the platform
 // judged it unusable; a card left to the platform shows nothing here (its
-// health tag already speaks).
-export function CardSchedulingTag({ gpu }: { gpu: GPU }) {
+// health tag already speaks). The GPU list shows it too: there it is the only
+// thing that says why a healthy card of this node's takes no work.
+export function CardSchedulingTag({ gpu }: { gpu: Pick<GPU, "scheduling_stopped" | "scheduling_allowed" | "scheduling_hold"> }) {
   const { t } = useTranslation("nodes");
   const { t: tCommon } = useTranslation("common");
   if (gpu.scheduling_stopped || gpu.scheduling_hold) {

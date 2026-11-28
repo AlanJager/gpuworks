@@ -802,6 +802,10 @@
         "label": "未检查：超出时间",
         "summary": "诊断在检查这些卡之前用完了时间，它们不算通过。"
       },
+      "RUNTIME_CHECK_TIMED_OUT": {
+        "label": "未下结论：运行时检查超时",
+        "summary": "运行时检查在这里超时，不算失败。周期检查会对超时的卡按 3 倍预算再查一次才下结论，调度以周期检查为准。"
+      },
       "CARD_UNADDRESSABLE": {
         "label": "未检查：没有设备号",
         "summary": "厂商工具没有给这些卡可用于检查的设备号。"
@@ -1096,6 +1100,7 @@
       "CARD_CHECK_SKIPPED_NOT_HELD": "这张卡没有借给平台（归 Kubernetes 调度）",
       "CARD_CHECK_SKIPPED_UNAVAILABLE": "宿主暂时不能检查",
       "CARD_CHECK_SKIPPED_PROBE_FAILED": "厂商工具本轮没应答",
+      "CARD_CHECK_SKIPPED_IN_PROGRESS": "节点上另一项运行时检查正在进行",
       "CARD_CHECK_NOT_RUN_YET": "agent 启动后还没运行过"
     },
     "reason": {

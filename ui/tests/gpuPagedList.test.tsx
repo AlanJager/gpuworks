@@ -36,7 +36,7 @@ Object.defineProperty(globalThis, "EventSource", { value: Events, configurable: 
 const read = (ns: string) => JSON.parse(fs.readFileSync(new URL(`../src/i18n/locales/en/${ns}.json`, import.meta.url), "utf8"));
 const gpus = read("gpus");
 const i18n = createInstance();
-await i18n.use(initReactI18next).init({ lng: "en", fallbackLng: "en", resources: { en: { gpus, common: read("common") } }, defaultNS: "gpus", interpolation: { escapeValue: false } });
+await i18n.use(initReactI18next).init({ lng: "en", fallbackLng: "en", resources: { en: { gpus, common: read("common"), nodes: read("nodes") } }, defaultNS: "gpus", interpolation: { escapeValue: false } });
 
 const { MemoryRouter } = await import("react-router-dom");
 const userEvent = (await import("@testing-library/user-event")).default;
@@ -107,6 +107,29 @@ test("a card on an unreachable node is listed as unknown and offers nothing", as
   assert.ok(within(row).getByText("H100"));
   const legend = document.querySelectorAll(".gpu-overview-legend")[1];
   assert.ok(legend.textContent?.includes("Unknown1"), "allocation summary must include offline devices exactly once");
+});
+
+// A healthy card of this node's can still take no work: an operator stopped
+// it, or an extension holds it. The row says which, beside "unusable", so a
+// card at OK that takes nothing is never left unexplained.
+test("a healthy card that takes no work says whose decision keeps it off", async () => {
+  const cs = read("nodes").cardScheduling;
+  const hold = { code: "CARD_SCHEDULING_HELD", message: "held by the maintenance window" };
+  api.gpusPage = async () => ({
+    items: [
+      { ...fleet[1], uuid: "GPU-stopped", schedulable: false, allocation_state: "unusable", health_status: "OK", scheduling_stopped: true },
+      { ...fleet[2], uuid: "GPU-held", schedulable: false, allocation_state: "unusable", health_status: "OK", scheduling_held_by: "maint", scheduling_hold: hold },
+    ],
+    page: 1, page_size: 20, total: 2,
+    overview: { total: 2, health: { ok: 2, warning: 0, error: 0 }, allocation: { allocated: 0, allocatable: 0, unusable: 2, unknown: 0 } },
+    facets: { nodes: [], models: [], vendors: [] },
+  });
+  renderPage();
+  const stopped = await waitFor(() => screen.getByText(cs.stoppedTag));
+  assert.ok(within(stopped.closest("tr")!).getByText("Unavailable for allocation"));
+  const held = screen.getByText(cs.heldTag);
+  assert.ok(within(held.closest("tr")!).getByText("Unavailable for allocation"));
+  assert.equal(held.closest(".ant-tag")?.getAttribute("title"), read("common").apiError.CARD_SCHEDULING_HELD, "the hold says why, in the reader's language");
 });
 
 test("the GPU list asks the server for one page; the overview counts the fleet", async () => {

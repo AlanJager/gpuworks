@@ -12,6 +12,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/gpu/cardsmoke"
 	"gpuworks.ai/gpuworks/internal/agent/runtime"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
@@ -42,6 +43,10 @@ const (
 	containerSmokeStartBudget = 30 * time.Second
 	// containerSmokeScriptBudget bounds the check inside it, as on the host.
 	containerSmokeScriptBudget = 45 * time.Second
+	// containerSmokeCleanupBudget bounds stopping and removing the container
+	// once the check is over, its deadline included: the stop alone gives
+	// the check ten seconds to exit before it is killed.
+	containerSmokeCleanupBudget = 30 * time.Second
 	// containerSmokeStaleAfter is how old a check container must be before
 	// any agent may take it for abandoned.
 	containerSmokeStaleAfter = engine.CardSmokeContainerStaleAfter
@@ -285,7 +290,7 @@ func (c *containerSmoke) try(ctx context.Context, visible string) (err error) {
 		return unavailable("did not start from %s: %v", image, err)
 	}
 	defer func() {
-		cleanup, cancelCleanup := context.WithTimeout(context.Background(), 30*time.Second)
+		cleanup, cancelCleanup := context.WithTimeout(context.Background(), containerSmokeCleanupBudget)
 		defer cancelCleanup()
 		if !containerGone(cleanup, d, id) {
 			c.leaveBehind(id)
@@ -363,6 +368,11 @@ func composeCardRuntimeCheck(vendor string, host gpu.HostRuntimeCheck, hasHost b
 	check := gpu.HostRuntimeCheck{
 		CLI:     strings.Fields(accelerator.ToolCommand(vendor) + " ")[0],
 		Timeout: containerSmokeStartBudget + containerSmokeScriptBudget,
+		// A check in a container returns only once the container is
+		// stopped and removed, after its deadline; within this it may
+		// still earn the wider re-check. The host's check returns sooner,
+		// so the longer wait costs it nothing.
+		ReapGrace: containerSmokeCleanupBudget + cardsmoke.DefaultReapGrace,
 		Visible: func(g proto.GPUInfo) (string, bool) {
 			if g.Index < 0 {
 				return "", false

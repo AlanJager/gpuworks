@@ -57,6 +57,7 @@ func (n *NodeRuntime) startCardSmoke(ctx context.Context) {
 		},
 		Unavailable: func() string { return smokeUnavailable(check) },
 		Timeout:     check.Timeout,
+		ReapGrace:   check.ReapGrace,
 		Interval:    accelerator.RuntimeCheckPeriod,
 	})
 	if n.engine != nil {
@@ -67,12 +68,16 @@ func (n *NodeRuntime) startCardSmoke(ctx context.Context) {
 }
 
 // cardSmokeAttempt translates a runtime that never reached the card into the
-// scheduler's host-level inconclusive answer.
+// scheduler's host-level inconclusive answer, and a check that spent all its
+// time waiting for another one's turn into the scheduler's queued one.
 func cardSmokeAttempt(check gpu.HostRuntimeCheck) func(context.Context, cardsmoke.Card) error {
 	return func(ctx context.Context, card cardsmoke.Card) error {
 		err := check.Try(ctx, card.Visible)
 		if reason := gpu.HostRuntimeUnavailable(err); reason != "" {
 			return cardsmoke.Inconclusive(reason)
+		}
+		if gpu.RuntimeCheckQueued(err) {
+			return cardsmoke.Queued("another runtime check on this node held the driver for all the time this one had: " + err.Error())
 		}
 		return err
 	}
@@ -174,7 +179,8 @@ func (n *NodeRuntime) applyRuntimeFindings(gpus []proto.GPUInfo) {
 		if accelerator.MostSevereHealth(card.HealthCode, accelerator.HealthRuntimeUnusable) != accelerator.HealthRuntimeUnusable {
 			continue
 		}
-		gpu.SetCardFinding(card, accelerator.HealthRuntimeUnusable, runtimeUnusableEvidence(outcome.At, outcome.Detail))
+		evidence := append(runtimeUnusableEvidence(outcome.At, outcome.Detail), runtimeAttemptEvidence(outcome)...)
+		gpu.SetCardFinding(card, accelerator.HealthRuntimeUnusable, evidence)
 	}
 }
 
@@ -186,6 +192,24 @@ func runtimeUnusableEvidence(at time.Time, detail string) []accelerator.HealthFi
 		{Name: "Checked At", Value: at.UTC().Format("2006-01-02 15:04:05Z")},
 		{Name: "Detail", Value: strings.TrimSpace(detail)},
 	}
+}
+
+// runtimeAttemptEvidence is how the runtime check's last answer came about:
+// how long it took and, when the first attempt timed out and the card was
+// checked once more with a wider budget (cardsmoke.Recheck), both budgets. It
+// is what tells a card that is slow to answer from one whose driver refuses
+// it: a refusal comes back in about a second, without a re-check.
+func runtimeAttemptEvidence(outcome cardsmoke.Outcome) []accelerator.HealthField {
+	var fields []accelerator.HealthField
+	if outcome.Duration > 0 {
+		fields = append(fields, accelerator.HealthField{Name: "Took", Value: outcome.Duration.Round(time.Millisecond).String()})
+	}
+	if outcome.Recheck.Made() {
+		fields = append(fields,
+			accelerator.HealthField{Name: "Timeout", Value: outcome.Recheck.FirstTimeout.String()},
+			accelerator.HealthField{Name: "Recheck Timeout", Value: outcome.Recheck.Timeout.String()})
+	}
+	return fields
 }
 
 // recheckCardsAfterStartFailure asks the runtime about the cards an instance

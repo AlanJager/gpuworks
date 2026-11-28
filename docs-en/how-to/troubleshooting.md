@@ -409,9 +409,35 @@ runs the same check inside (about 0.45 s per card on PPU, container start includ
 This is done only on docker / nerdctl nodes; on udocker a container means unpacking or copying the whole image into a rootfs (27–61 s and 17 GB of disk each time for a 17 GB image on ext4),
 so udocker nodes are not checked this way. A container that does not start, or an image without the runtime or python, is a host problem, not a card failure. Apple has no check.
 
+**A card that times out is checked once more, automatically, with three times the budget.** When a check runs past its budget, is killed and returns, the card is checked again straight away with three times the budget, and that answer is the card's: if it passes, the card stays schedulable, with no failure counted and no backoff,
+and the agent log records a warning (card, time taken, both budgets), so a card that keeps needing the re-check is visible;
+only if it times out as well is the card judged `RUNTIME_UNUSABLE`, and the detail names both budgets. A definite error (such as `cuInit=101`) is not checked again: a driver that refuses a card usually says so within a second.
+The budgets depend on the vendor and on where the check runs ("wait to return" is how long a killed check is waited for; a check in a container returns only after its container is stopped and removed, which takes up to 30 s):
+
+| Vendor and where the check runs | First budget | Wait to return | Re-check budget |
+|---|---|---|---|
+| NVIDIA, on the host | 30 s | 5 s | 90 s |
+| Hygon, on the host | 30 s | 5 s | 90 s |
+| Ascend, Kubernetes node, on the host | 45 s | 5 s | 135 s |
+| Ascend, other nodes (on the host, or in a runner image container when the host has no CANN) | 75 s | 35 s | 225 s |
+| PPU, in a runner image container (not on Kubernetes nodes) | 75 s | 35 s | 225 s |
+
+If the killed check does not come back within that wait (it is stuck in the driver), there is no re-check and the first timeout stands; if it came back but its process has not exited, the re-check is refused without starting a process and the first timeout stands too; after that no new check starts until it exits, so processes do not pile up on the same driver lock.
+While the wait and the re-check run, another check of the same card (one triggered by an instance that failed to start, or a Recheck) is treated as in progress, not as a failure: Recheck shows the card as not checked because another runtime check on the node is in progress (`CARD_CHECK_SKIPPED_IN_PROGRESS`), and the re-check's answer comes with the next report.
+The runtime checks on a node (the periodic check, Recheck and Diagnose) take turns on the driver, and the time a check waits for its turn counts against its own budget; a check that never got its turn within its budget, and so started nothing, is not the card timing out: the periodic check skips the card for that round (also as another check in progress) and goes on to the next one, and Diagnose lists it as not checked. Neither counts a failure or a backoff.
+Once a card of a round has needed the re-check to pass, the rest of that round's cards are checked with three times the budget from the start, so eight slow cards do not each pay a timeout and a re-check, and a round still finishes within its 15 minutes; the cost is that a card later in that round that really hangs is judged `RUNTIME_UNUSABLE` only after the full three-times budget, and is not checked again.
+A card that passed only on the re-check, or took longer than the first budget when checked with three times it, is checked with three times the budget from the start in the following rounds, instead of timing out first every round; once it answers within the first budget again, or fails, it goes back to the first budget.
+Recheck on a single card gives the check its first budget, the wait and the re-check from the table, plus a minute to list the cards (about six and a half minutes in total for a check in a container, seven at most), and the server waits longer than that, so a re-check that runs its full budget still returns an answer;
+when the caller's time cannot fit the re-check, none is made and the first timeout stands, rather than the card showing as not checked, and the detail says there was no re-check and why (how much time the caller had left).
+Cards that are slow to create their first context, such as H20-3e, time out near 30 s; with the re-check they are no longer taken out of scheduling by mistake.
+The card's evidence has `Took` (how long the check ran) and, after a re-check, both budgets as `Timeout` and `Recheck Timeout`: timing out on both points to a driver that is stuck,
+while an error within a second is the driver refusing the card. A card that passed its re-check keeps the same fields in its check record.
+
 **Diagnose now runs the same per-card check (per die on Ascend) on NVIDIA, Ascend, Hygon and PPU, on demand.** Node details → Diagnose and `gpuworks-agent doctor` run the runtime check above once for each die this node owns
 (it is the same code as the periodic check, not a second implementation), so a die the periodic check has already marked `RUNTIME_UNUSABLE` always shows up in the diagnosis.
 A failing die is shown as “Runtime cannot use it” in the accelerator table, and **Action required** lists a `RUNTIME_UNUSABLE` item per die (result Failed, with the same evidence the periodic check records).
+Diagnose does not make the re-check above, so a die that times out gets no verdict: it is listed as not checked (`RUNTIME_CHECK_TIMED_OUT`, "No verdict: runtime check timed out"), with the timeout in its evidence and a note that its scheduling follows the periodic check;
+it is not a failure, is not marked as runtime unusable in the accelerator table, and is not recorded for the periodic check, so it does not take the card out of scheduling. A definite error and a pass are recorded as before.
 When the table already carries a more specific vendor verdict for the die (for example `RESET_REQUIRED`), the table keeps that one and `RUNTIME_UNUSABLE` is still listed on its own.
 The **Per-card runtime check** entry (`card_runtime`) under Information summarizes how many dies passed, failed and were not checked.
 NVIDIA also has whole-node CUDA, P2P and NCCL checks: the whole-node CUDA check sees every card at once and only says whether the driver initialises and the first visible card takes a context; each card's verdict comes from the per-card check.
@@ -556,7 +582,7 @@ the card stays schedulable, and only PD modes that move KV over RDMA stay off th
 | State | Meaning |
 |---|---|
 | Pass / Warning / Fail | What the check last found |
-| Not checked | It did not run last time, with the reason: the card is serving, used outside the platform, the platform does not yet know what the node runs, the host cannot be asked right now (the driver is not answering, the runtime is missing, an earlier check has not returned), the vendor tool did not answer this round, or it has not run since the agent started. Not checked is not a pass |
+| Not checked | It did not run last time, with the reason: the card is serving, used outside the platform, the platform does not yet know what the node runs, the host cannot be asked right now (the driver is not answering, the runtime is missing, an earlier check has not returned), another runtime check on the node is in progress, the vendor tool did not answer this round, or it has not run since the agent started. Not checked is not a pass |
 | Not applicable | The card has nothing for the check to look at (no NVLink, no AER reporting on the host); the cell has a dashed outline |
 | Stale | No report for more than two report periods (about 2.5 minutes), or the node is offline: the last known result is shown, not what holds now |
 
@@ -654,8 +680,8 @@ an unresponsive selected container runtime, accelerator tool execution failures,
 
 Each item is a failure, a warning or **not checked**. A check that should have run and did not is never left out: it is listed as not checked with a code saying why: the mount table could not be read (`MOUNT_TABLE_UNREADABLE`),
 the CUDA check did not pass so the multi-GPU checks were not run (`CUDA_CHECK_NOT_PASSED`), the host lacks something the check needs (`CHECK_PREREQUISITE_MISSING`, such as torch),
-the command it reads failed (`CHECK_TOOL_FAILED`), the diagnosis was cancelled or ran out of time (`CHECK_CANCELLED`, `CHECK_BUDGET_EXHAUSTED`), or a card has no device number (`CARD_UNADDRESSABLE`);
-the per-card check also uses the card health checks' skip reasons (the card is serving, used outside the platform, and so on). On a single-card host the multi-GPU checks do not apply and are not listed.
+the command it reads failed (`CHECK_TOOL_FAILED`), the diagnosis was cancelled or ran out of time (`CHECK_CANCELLED`, `CHECK_BUDGET_EXHAUSTED`), a card has no device number (`CARD_UNADDRESSABLE`), or a card's runtime check timed out (`RUNTIME_CHECK_TIMED_OUT`, its verdict follows the periodic check);
+the per-card check also uses the card health checks' skip reasons (the card is serving, used outside the platform, another runtime check on the node is in progress, and so on). On a single-card host the multi-GPU checks do not apply and are not listed.
 The verdict at the top of a diagnosis and each stage take their most serious item: failed, warning, not checked, passed in that order, so a stage with a check that did not run never reads as passed.
 
 There are five additional runtime and filesystem checks (see [Runtime Provisioning Failures and Filesystems on Container Nodes](#运行时初始化失败与容器节点的文件系统)):
@@ -1591,14 +1617,14 @@ When filing an issue or asking for help, attach a [diagnostics archive](#无法�
 <!-- translation-source-sha256: 4f206b6067f403eb46d96dc113a00ebc2d489aef79cd5ba6ed1abbe891445e73 ## GPU Not Detected or Vendor Tool Did Not Answer -->
 <!-- translation-source-sha256: 7c0cbae4bad413115d729d80091059b5efd0bbc0e0312f0dc914d6dcfc084bc2 ### GPU Count Is 0: Check Tools and Drivers First -->
 <!-- translation-source-sha256: a53303c45629885919cc151f74fd4bb036c0e159c65ca4ef4d3aadff3c10def4 ### Vendor Tool Did Not Answer or Readings Are Stale -->
-<!-- translation-source-sha256: c40739d95375b5423c001d772cdeb5770f2f8c11f507b388a3810a77b6d18f98 ### A Card Is Unusable by the Runtime or Fails Driver Initialization -->
+<!-- translation-source-sha256: 74b2722aad0df34ca6e673ef831a35a798f246c639a3dfd718e0a47d6b0afb58 ### A Card Is Unusable by the Runtime or Fails Driver Initialization -->
 <!-- translation-source-sha256: 7ebf5c9174ef8583f382fdc9479446b523c3851af93fa26195569e89ad2a8a6c ### Host Sees the Card but Container Does Not -->
 <!-- translation-source-sha256: c82ecdd35a71817d12d7d211f000826eb7579542a79020dc17542ddaf09e7e33 ### Card Is Passed Through, Has an Unavailable Vendor Driver, or Is Held by Another Driver -->
-<!-- translation-source-sha256: 84ed9834f5fe373c63f23e0f1213537fc016979bcf791704b582f3665483b7e1 ### Card Health Checks -->
+<!-- translation-source-sha256: 59d4fd18ab6c3df62708bd59d220007ee7f82d925d5629e989bbb6fd9ae28ec8 ### Card Health Checks -->
 <!-- translation-source-sha256: f21b0e1066763e69c4b7a21b31d457963df4ad672a72d602f692c25d3260ec54 ### Enabling or Disabling Scheduling on a Card by Hand -->
 <!-- translation-source-sha256: ea953d23612e21c2dd6138b94e0c8e87f6b306c392842579fed602afacdcca64 ### Card Is in Use by Processes Outside the Platform -->
 <!-- translation-source-sha256: 13f5bcd92b822ca98eee304c3b8abb770dc00adaaf99922bfd175f416305b74f ### Diagnosis Finds an Unrecognized Accelerator -->
-<!-- translation-source-sha256: 4e4fcee6f19649faadd27b574a6029b4853563184f3943b86666f69048c0c995 ### Read the Diagnostic Report -->
+<!-- translation-source-sha256: ee757364d9f6ab51582b1385bf254d5a47bdb91fc5149888e0d78288ab0d7c4d ### Read the Diagnostic Report -->
 <!-- translation-source-sha256: 13b97b8ae33ac755d846e903ddc47768528d2a56aff80d40105d56844145d8a0 ## Accelerator Health States Such as “Reset Pending” and “Memory Fault” -->
 <!-- translation-source-sha256: ae1e7ae65061f59b3ccd96ad07ff82746825c0323d39a19b7259a60f1bb9a0dd ## Runtime Initialization Failures and Filesystems on Container Nodes -->
 <!-- translation-source-sha256: c39f990bfae3446ae07db51c1aa7e253e2cc65d35133caafa6bb63b3626f571a ### Identify the Affected Path First -->

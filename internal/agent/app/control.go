@@ -326,7 +326,7 @@ func (n *NodeRuntime) OnRPC(ctx context.Context, method string, params json.RawM
 		if err := json.Unmarshal(params, &req); err != nil {
 			return nil, fmt.Errorf("decode card recheck request: %w", err)
 		}
-		ctx, cancel := context.WithTimeout(ctx, doctorBudget)
+		ctx, cancel := context.WithTimeout(ctx, cardRecheckBudget(n.cardSmoke))
 		defer cancel()
 		return n.recheckCard(ctx, req.Ident)
 	case proto.RPCNodeSetAccelerator:

@@ -76,7 +76,7 @@ printf 'fabric_manager=%s fabric_manager_version=%s\n' "$fm" "$fmver"`)
 		proto.DoctorFact{Code: proto.DoctorFactNCCL, Value: nccl})
 	if diagnosticSkipped(cuda) {
 		r.Findings = append(r.Findings, proto.DoctorFinding{
-			ID: proto.DoctorCheckCUDAInit, Status: proto.CheckSkip, Code: proto.DoctorSkipPrerequisiteMissing,
+			ID: proto.DoctorCheckCUDAInit, Status: proto.CheckSkip, Code: diagnosticSkipCode(cuda),
 			Probe: cudaInitProbe, Evidence: []proto.DoctorField{{Name: "result", Value: cuda}}, Recheck: cudaRecheck,
 		})
 	}
@@ -114,7 +114,7 @@ printf 'fabric_manager=%s fabric_manager_version=%s\n' "$fm" "$fmver"`)
 			})
 		case diagnosticSkipped(check.result):
 			r.Findings = append(r.Findings, proto.DoctorFinding{
-				ID: check.id, Status: proto.CheckSkip, Code: proto.DoctorSkipPrerequisiteMissing,
+				ID: check.id, Status: proto.CheckSkip, Code: diagnosticSkipCode(check.result),
 				Probe: check.probe, Evidence: []proto.DoctorField{{Name: "result", Value: check.result}},
 			})
 		}
@@ -124,6 +124,16 @@ printf 'fabric_manager=%s fabric_manager_version=%s\n' "$fm" "$fmver"`)
 // cudaDependentSkip is what the multi-GPU checks say when the CUDA check did
 // not pass.
 const cudaDependentSkip = "SKIP (the CUDA runtime check did not pass)"
+
+// diagnosticSkipCode is why a whole-node check that said SKIP did not run: it
+// waited out its time for another runtime check, or the host lacks what it
+// needs (its own words say what).
+func diagnosticSkipCode(result string) string {
+	if result == runtimeCheckQueuedSkip {
+		return proto.CardCheckSkipInProgress
+	}
+	return proto.DoctorSkipPrerequisiteMissing
+}
 
 // diagnosticFailed and diagnosticSkipped read the first word of a diagnostic
 // command's output (PASS, FAIL or SKIP), which the scripts above print and
@@ -163,6 +173,9 @@ func diagnosticCUDA(ctx context.Context) string {
 	if err := gpu.CUDARuntimeSmoke(probeCtx); err != nil {
 		if reason := gpu.HostRuntimeUnavailable(err); reason != "" {
 			return "SKIP (" + reason + ")"
+		}
+		if gpu.RuntimeCheckQueued(err) {
+			return runtimeCheckQueuedSkip
 		}
 		return "FAIL: " + err.Error()
 	}
@@ -279,9 +292,17 @@ func runPythonFileDiagnostic(ctx context.Context, dir, script string) string {
 	return formatDiagnosticOutput([]byte(out), err)
 }
 
+// runtimeCheckQueuedSkip is what a check that waited out its time for another
+// runtime check on this node (gpu.RuntimeCheckQueued) says: nothing about the
+// cards, so not a failure.
+const runtimeCheckQueuedSkip = "SKIP (another runtime check on this node held the driver for all the time this one had; nothing was started)"
+
 func formatDiagnosticOutput(out []byte, err error) string {
 	if errors.Is(err, gpu.ErrStillRunning) {
 		return "SKIP (an earlier runtime check on this node was killed and has not exited; nothing new is started until it does)"
+	}
+	if gpu.RuntimeCheckQueued(err) {
+		return runtimeCheckQueuedSkip
 	}
 	result := strings.TrimSpace(string(out))
 	if err != nil {

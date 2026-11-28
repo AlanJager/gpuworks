@@ -202,6 +202,12 @@ const (
 	// DoctorSkipCardUnaddressable: the vendor tool gave the card no device
 	// number to ask its runtime about.
 	DoctorSkipCardUnaddressable = "CARD_UNADDRESSABLE"
+	// DoctorSkipRuntimeCheckTimedOut: the card's runtime check did not
+	// finish within its timeout during the diagnosis. That is no verdict: the
+	// periodic check gives a timed-out card one more try with a wider budget
+	// before it judges it, which a diagnosis has no time for, so the card's
+	// scheduling follows the periodic check (evidence: the timeout).
+	DoctorSkipRuntimeCheckTimedOut = "RUNTIME_CHECK_TIMED_OUT"
 )
 
 // DoctorFinding is one check result that needs attention: a check that
