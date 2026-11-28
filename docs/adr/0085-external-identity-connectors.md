@@ -58,7 +58,7 @@
 
 8. **本地登录与兜底。** 站点策略 `auth.local_password` 取 `all`（默认）或 `local_admin`。为 `local_admin` 时，只有 `users.local_admin` 为真的用户能用本地密码登录，其余人只能走外部身份；本地管理员的密码登录永远可用，与 ADR 0071 决策 11 一致，所以所有连接器都掉线时管理员仍能登录。
 
-9. **编译模块的 `public` 路由。** `api.RouteAccess` 增加 `AccessPublic`：不认证，按客户端地址限流（规则同插件路由的 `public`），不能是会话写入；路由仍须指明功能或标为社区路由。
+9. **编译模块的 `public` 路由。** `api.RouteAccess` 增加 `AccessPublic`：不认证，按客户端地址限流（规则同插件路由的 `public`），链路从不读取、也从不续期会话；路由仍须指明功能或标为社区路由。连接器的起始与回调路由标 `RouteSpec.SignIn`，整台服务端受限时只有这些公开路由照常放行，其他公开路由按方法分类，见 [ADR 0088](0088-extension-public-routes-under-a-platform-limit.md)。
 
 10. **码。** `IDENTITY_TICKET_INVALID`（票据不存在、过期、已使用、来源不符，或与浏览器绑定不对应）、`IDENTITY_PROTECTED_USER`（连接器试图停用、恢复、改名或踢下线管理员）、`IDENTITY_NOT_PROVISIONED`、`IDENTITY_USERNAME_TAKEN{username}`、`IDENTITY_SOURCE_CONFLICT{source}`（来源名已被别的包或模块拥有）、`IDENTITY_SOURCE_UNAVAILABLE{source}`（密码式校验时身份源不可达）、`USER_DISABLED`、`LOCAL_PASSWORD_DISABLED`。
 
