@@ -12,6 +12,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/proto"
 	"gpuworks.ai/gpuworks/internal/server/cardhealth"
+	"gpuworks.ai/gpuworks/internal/server/rpccontext"
 	"gpuworks.ai/gpuworks/internal/server/store"
 )
 
@@ -255,6 +256,27 @@ func TestNodeHealthCheckDetail(t *testing.T) {
 		if (name == "offline" || name == "old agent") && len(fake.asked) != 0 {
 			t.Fatalf("%s asked the agent anyway", name)
 		}
+	}
+}
+
+// The recheck waits for the agent as long as the agent may take: a card that
+// timed out is checked again with three times its budget before it is judged
+// (proto.CardRecheckTimeout), which the doctor's two minutes would cut off.
+func TestRecheckCardWaitsAsLongAsTheAgentMayTake(t *testing.T) {
+	a, _, _, _, _ := cardHealthFixture(t)
+	var left, budget time.Duration
+	a.d.CallNode = func(ctx context.Context, _, _ string, _ any) (json.RawMessage, error) {
+		if deadline, ok := ctx.Deadline(); ok {
+			left = time.Until(deadline)
+		}
+		budget = rpccontext.Timeout(ctx, 0)
+		return json.RawMessage(`{"ident":"uuid:GPU-b","check":"runtime"}`), nil
+	}
+	if code, body := callNode(t, a.recheckCard, http.MethodPost, "drain-a", "/gpus/recheck", `{"uuid":"GPU-b"}`); code != http.StatusOK {
+		t.Fatalf("= %d %s", code, body)
+	}
+	if budget <= proto.CardRecheckTimeout || left <= proto.CardRecheckTimeout {
+		t.Fatalf("RPC budget %s, deadline in %s: want both beyond the agent's %s", budget, left, proto.CardRecheckTimeout)
 	}
 }
 

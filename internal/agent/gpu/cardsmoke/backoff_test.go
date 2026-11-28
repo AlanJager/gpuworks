@@ -227,7 +227,7 @@ func TestDeadlineAndDoneCannotDisagreeAboutTimeout(t *testing.T) {
 		deadline := time.Now().Add(time.Second)
 		for {
 			r.mu.Lock()
-			stuck := r.stuck["a"]
+			stuck := r.stuck["a"] > 0
 			r.mu.Unlock()
 			if !stuck {
 				break

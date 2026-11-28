@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -27,7 +26,8 @@ var doctorHostRuntimeCheck = gpu.HostRuntimeCheckFor
 
 // What a doctor run keeps for the rest of its report, and the least time worth
 // starting a die's check with. A healthy die answers in about a second; a
-// failing one can take its full timeout (45 seconds on Ascend), so a run that
+// failing one can take its full timeout (45 seconds on Ascend on a Kubernetes
+// node, 75 where the check may run in a container), so a run that
 // finds several of them cannot finish inside doctorBudget. Package vars so a
 // test can shrink them.
 var (
@@ -210,12 +210,22 @@ func (run *doctorDieRun) ask(ctx context.Context, dies []doctorDie) {
 			run.notChecked = append(run.notChecked, doctorDieNotChecked{die: die, code: proto.DoctorSkipBudgetExhausted, reason: "the diagnosis time budget ran out while this " + run.unit + " was being checked"})
 			run.notChecked = append(run.notChecked, notChecked(dies[i+1:], proto.DoctorSkipBudgetExhausted, "the diagnosis time budget ran out")...)
 			return
+		case gpu.RuntimeCheckQueued(err):
+			// It waited all its time for another runtime check on this
+			// node (the periodic one re-checking a card with a wider
+			// budget, say) and never started: nothing about the die.
+			run.notChecked = append(run.notChecked, doctorDieNotChecked{die: die, code: proto.CardCheckSkipInProgress,
+				reason: fmt.Sprintf("another runtime check on this node held the driver for all the %s this %s had; nothing was started", attemptTimeout, run.unit)})
 		case expired:
-			// The automatic check grades a die that does not answer within
-			// its timeout as failed, and so does this.
-			detail := fmt.Sprintf("the runtime check did not finish within %s", attemptTimeout)
-			run.failed = append(run.failed, doctorDieFailed{die: die, at: at, detail: detail})
-			doctorRecordOutcome(ctx, die, errors.New(detail))
+			// Reported as it is, a timeout, and not as a verdict: the
+			// periodic check judges a timeout only after one more try with
+			// a wider budget — more than a diagnosis has for each die — so
+			// a die merely slow to create its first context is neither
+			// shown as failed nor taken out of scheduling by a click on
+			// Diagnose. Nothing is recorded for the periodic check; what it
+			// said about the die stands.
+			run.notChecked = append(run.notChecked, doctorDieNotChecked{die: die, code: proto.DoctorSkipRuntimeCheckTimedOut,
+				reason: fmt.Sprintf("the runtime check did not finish within %s; Diagnose does not check it again with a wider budget, so the %s's scheduling follows the periodic check", attemptTimeout, run.unit)})
 		default:
 			if why := cardsmoke.NotHeldReason(err); why != "" {
 				run.notChecked = append(run.notChecked, doctorDieNotChecked{die: die, code: proto.CardCheckSkipNotHeld, reason: why})
@@ -270,7 +280,9 @@ type doctorOutcomesKey struct{}
 
 // withDoctorOutcomes tells a doctor run where a card's answer goes
 // (cardsmoke.Runner.Record), so the card's state follows the diagnosis at the
-// next report instead of waiting out the periodic check's backoff.
+// next report instead of waiting out the periodic check's backoff. A pass and
+// a definite error are answers; a timeout, or a wait for another check's turn,
+// is not (doctorDieRun.ask).
 func withDoctorOutcomes(ctx context.Context, record func(ident string, err error)) context.Context {
 	return context.WithValue(ctx, doctorOutcomesKey{}, record)
 }

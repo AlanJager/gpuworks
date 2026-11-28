@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
@@ -14,6 +17,7 @@ import (
 	"gpuworks.ai/gpuworks/internal/accelerator"
 	"gpuworks.ai/gpuworks/internal/agent/engine"
 	"gpuworks.ai/gpuworks/internal/agent/gpu"
+	"gpuworks.ai/gpuworks/internal/agent/gpu/cardsmoke"
 	"gpuworks.ai/gpuworks/internal/proto"
 )
 
@@ -409,9 +413,12 @@ func TestDoctorAscendLeavesTheReserveForTheRestOfTheReport(t *testing.T) {
 	}
 }
 
-// A die that does not answer within the check's own timeout is failed, as the
-// automatic check fails it: a die that hangs is not a healthy one.
-func TestDoctorAscendDieThatHangsForItsWholeTimeoutFails(t *testing.T) {
+// A die that does not answer within the check's own timeout gets no verdict
+// from the diagnosis: the automatic check judges a timeout only after one more
+// try with a wider budget, which a diagnosis has no time for. It is reported
+// as timed out, with the timeout, and neither listed as failed nor marked
+// unusable in the inventory.
+func TestDoctorAscendDieThatHangsForItsWholeTimeoutHasNoVerdict(t *testing.T) {
 	h := &ascendHost{timeout: 50 * time.Millisecond, try: func(ctx context.Context, die string) error {
 		if die == "1" {
 			<-ctx.Done()
@@ -424,15 +431,74 @@ func TestDoctorAscendDieThatHangsForItsWholeTimeoutFails(t *testing.T) {
 
 	r := h.report(context.Background(), ascendDies(3))
 
-	finding, ok := findingByCode(r, accelerator.HealthRuntimeUnusable)
-	if !ok || len(finding.Targets) != 1 || finding.Targets[0].Index != 1 {
-		t.Fatalf("findings = %+v, want die 1", r.Findings)
+	if f, ok := findingByCode(r, accelerator.HealthRuntimeUnusable); ok {
+		t.Fatalf("RUNTIME_UNUSABLE finding %+v for a die that only timed out", f)
 	}
-	if got := cardRuntimeFact(r); !strings.Contains(got, "2 passed") || !strings.Contains(got, "1 failed") {
+	finding, ok := findingByCode(r, proto.DoctorSkipRuntimeCheckTimedOut)
+	if !ok || finding.Status != proto.CheckSkip || len(finding.Targets) != 1 || finding.Targets[0].Index != 1 {
+		t.Fatalf("findings = %+v, want die 1 as timed out", r.Findings)
+	}
+	if reason := evidenceOf(finding.Targets[0].Evidence)["reason"]; !strings.Contains(reason, "did not finish within 50ms") {
+		t.Fatalf("reason = %q, want the timeout", reason)
+	}
+	if got := cardRuntimeFact(r); !strings.Contains(got, "2 passed, 0 failed, 1 not checked") {
 		t.Fatalf("fact = %q", got)
 	}
-	if detail := finding.Targets[0].Evidence[2].Value; !strings.Contains(detail, "did not finish within 50ms") {
-		t.Fatalf("detail = %q", detail)
+	for _, row := range r.Accelerators.GPUs {
+		if row.HealthCode == accelerator.HealthRuntimeUnusable {
+			t.Fatalf("inventory row %+v marked unusable by a timeout", row)
+		}
+	}
+}
+
+// A die whose check waited all its time for another runtime check on the node
+// (the periodic one re-checking a card with a wider budget) never started: it
+// is reported as not checked because another check was in progress, is not
+// failed, and nothing is recorded for the periodic check.
+func TestDoctorAscendDieThatWaitedForAnotherCheckIsNotChecked(t *testing.T) {
+	// Another check holding the node's runtime-check turn for longer than
+	// the die's timeout.
+	started := filepath.Join(t.TempDir(), "started")
+	holding := make(chan struct{})
+	go func() {
+		defer close(holding)
+		_, _ = gpu.RunTracked(context.Background(), gpu.RuntimeCheckKey, 0, func(ctx context.Context) *exec.Cmd {
+			return exec.CommandContext(ctx, "sh", "-c", `touch "`+started+`"; sleep 0.5`)
+		})
+	}()
+	t.Cleanup(func() { <-holding })
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(time.Millisecond) {
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the other check never started")
+		}
+	}
+	h := &ascendHost{timeout: 50 * time.Millisecond, try: func(ctx context.Context, _ string) error {
+		// The host's check, as far as its turn: RunTracked under the
+		// node's one key, graded by the vendor verdict.
+		_, err := gpu.RunTracked(ctx, gpu.RuntimeCheckKey, 0, func(ctx context.Context) *exec.Cmd {
+			return exec.CommandContext(ctx, "true")
+		})
+		return err
+	}}
+	h.install(t)
+	doctorAscendReserve, doctorAscendMinAttempt = 0, time.Millisecond
+	dies := ascendDies(1)
+	runner := cardsmoke.New(cardsmoke.Config{Cards: func(context.Context) []cardsmoke.Card { return nil }})
+
+	r := h.report(withDoctorOutcomes(context.Background(), runner.Record), dies)
+
+	if len(runner.Outcomes()) != 0 {
+		t.Fatalf("periodic outcomes = %+v, want nothing recorded for a wait", runner.Outcomes())
+	}
+	finding, ok := findingByCode(r, proto.CardCheckSkipInProgress)
+	if !ok || finding.Status != proto.CheckSkip || len(finding.Targets) != 1 {
+		t.Fatalf("findings = %+v, want the die not checked as another check was in progress", r.Findings)
+	}
+	if got := cardRuntimeFact(r); !strings.Contains(got, "0 passed, 0 failed, 1 not checked") {
+		t.Fatalf("fact = %q", got)
 	}
 }
 
@@ -701,24 +767,5 @@ func TestDoctorRecordsEachDiesAnswerForThePeriodicCheck(t *testing.T) {
 	cut.report(budget, ascendDies(2))
 	if len(recorded) != 0 {
 		t.Fatalf("a die the budget cut off was recorded: %v", recorded)
-	}
-}
-
-// A die that does not answer within the check's own timeout is graded failed
-// by the diagnosis, and recorded as failed too.
-func TestDoctorRecordsADieThatDoesNotAnswerAsFailed(t *testing.T) {
-	h := &ascendHost{timeout: 50 * time.Millisecond, try: func(ctx context.Context, _ string) error {
-		<-ctx.Done()
-		return ctx.Err()
-	}}
-	h.install(t)
-	doctorAscendReserve, doctorAscendMinAttempt = 0, 10*time.Millisecond
-	var got []string
-	ctx := withDoctorOutcomes(context.Background(), func(_ string, err error) {
-		got = append(got, fmt.Sprint(err))
-	})
-	h.report(ctx, ascendDies(1))
-	if len(got) != 1 || !strings.Contains(got[0], "did not finish within") {
-		t.Fatalf("recorded %v, want one timeout failure", got)
 	}
 }

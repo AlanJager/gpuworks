@@ -802,6 +802,10 @@
         "label": "Not checked: out of time",
         "summary": "The diagnosis ran out of time before these cards were checked. They are not counted as passed."
       },
+      "RUNTIME_CHECK_TIMED_OUT": {
+        "label": "No verdict: runtime check timed out",
+        "summary": "The runtime check ran past its timeout here, which is not a failure. The periodic check gives a timed-out card one more try with three times the budget before judging it, and scheduling follows that."
+      },
       "CARD_UNADDRESSABLE": {
         "label": "Not checked: no device number",
         "summary": "The vendor tool gave these cards no device number to check them by."
@@ -1096,6 +1100,7 @@
       "CARD_CHECK_SKIPPED_NOT_HELD": "Kubernetes has not lent this card to the platform",
       "CARD_CHECK_SKIPPED_UNAVAILABLE": "The host cannot be asked right now",
       "CARD_CHECK_SKIPPED_PROBE_FAILED": "The vendor tool did not answer this round",
+      "CARD_CHECK_SKIPPED_IN_PROGRESS": "Another runtime check on the node was in progress",
       "CARD_CHECK_NOT_RUN_YET": "Not run since the agent started"
     },
     "reason": {

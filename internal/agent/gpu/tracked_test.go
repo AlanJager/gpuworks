@@ -142,3 +142,46 @@ func TestHCCNKeyIsTheDie(t *testing.T) {
 		}
 	}
 }
+
+// A call whose context ends while another call under the same key still has
+// its turn never starts. It says so (ErrNoTurn), with the context's own error,
+// so a runtime check that only waited is not read as a card that ran out of
+// time; the vendor verdicts keep it rather than turning it into a failure.
+func TestRunTrackedCallThatNeverGetsItsTurnSaysSo(t *testing.T) {
+	dir := t.TempDir()
+	started := filepath.Join(dir, "started")
+	ran := filepath.Join(dir, "ran")
+	holding := make(chan struct{})
+	go func() {
+		defer close(holding)
+		_, _ = RunTracked(t.Context(), "gw-test-no-turn", 5*time.Second, shCmd(`touch "`+started+`"; sleep 0.5`))
+	}()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the first call never started")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := RunTracked(ctx, "gw-test-no-turn", 0, shCmd(`touch "`+ran+`"`))
+
+	if !errors.Is(err, ErrNoTurn) || !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrCLIUnresponsive) {
+		t.Fatalf("err = %v, want ErrNoTurn with the deadline, not an unresponsive CLI", err)
+	}
+	if _, statErr := os.Stat(ran); statErr == nil {
+		t.Fatal("a call that never got its turn ran anyway")
+	}
+	for name, verdict := range map[string]func([]byte, error) error{"cuda": cudaSmokeVerdict, "ascend": ascendSmokeVerdict, "hygon": hygonSmokeVerdict} {
+		got := verdict(nil, err)
+		if !RuntimeCheckQueued(got) || HostRuntimeUnavailable(got) != "" {
+			t.Fatalf("%s verdict = %v, want the wait kept as such", name, got)
+		}
+	}
+	<-holding
+}

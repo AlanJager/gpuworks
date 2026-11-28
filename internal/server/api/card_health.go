@@ -225,6 +225,13 @@ func (a *apiHandlers) nodeHealthCheckDetail(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, toCardCheckDetail(detail))
 }
 
+// nodeCardRecheckTimeout is how long the card re-check RPC is waited for:
+// the agent's own bound on it (proto.CardRecheckTimeout) and a little more
+// for the answer to come back. A card that times out is checked once more
+// with three times the budget before it is judged, which in a container takes
+// minutes; the doctor's two minutes would give up on the card's answer.
+const nodeCardRecheckTimeout = proto.CardRecheckTimeout + 15*time.Second
+
 // recheckCard answers POST /nodes/{uuid}/gpus/recheck: the runtime check on
 // one card, now. The agent records the answer like the periodic check's own,
 // so the card's state follows at the next report.
@@ -253,7 +260,7 @@ func (a *apiHandlers) recheckCard(w http.ResponseWriter, r *http.Request) {
 	if !a.cardChecksReachable(w, node.UUID) {
 		return
 	}
-	ctx, cancel := rpccontext.WithTimeout(r.Context(), nodeDoctorTimeout)
+	ctx, cancel := rpccontext.WithTimeout(r.Context(), nodeCardRecheckTimeout)
 	defer cancel()
 	raw, err := a.d.CallNode(ctx, node.UUID, proto.RPCNodeCardRecheck, proto.CardRecheckRequest{Ident: ident})
 	if err != nil {

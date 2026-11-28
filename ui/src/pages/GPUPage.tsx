@@ -21,6 +21,7 @@ import PartitionCapability from "../components/PartitionCapability";
 import { stateLabel } from "./state";
 import { cardHasDetail, physicalCardKey } from "../nodes/cardIdentity";
 import GPUHealthTag, { gpuHealthStatus, gpuOwned } from "../components/GPUHealth";
+import { CardSchedulingTag } from "./nodes/CardScheduling";
 import ResourceTable, { storedPageSize, type ResourceColumn, type ServerSort } from "../components/resourceTable/ResourceTable";
 import DGPUQuotaModal from "./DGPUQuotaModal";
 import { DGPUDetail, PhysicalGPUDetail, SliceReadingAbsent } from "./gpus/GPUDetailDrawers";
@@ -190,10 +191,12 @@ function PhysicalGPUView({ page, loading, error, pagination, query, onQuery, fil
         <Space size={4} wrap>
           <Tag color={allocationLabels[gpu.allocation_state].color} style={{ marginInlineEnd: 0 }}>{t(allocationLabels[gpu.allocation_state].labelKey)}</Tag>
           {/* Why it takes no work, beside the verdict: a finding, or a card
-              that is not this node's, or one held outside the platform. A
-              card without a device number has no detail page, so the row
-              is the only place this is said. */}
+              that is not this node's, or one held outside the platform, or
+              an operator's or an extension's decision. A card without a
+              device number has no detail page, so the row is the only place
+              this is said. */}
           {(gpuHealthStatus(gpu) !== "OK" || !!gpu.health_code || !gpuOwned(gpu) || !!gpu.foreign_processes?.length) && <GPUHealthTag gpu={gpu} />}
+          <CardSchedulingTag gpu={gpu} />
         </Space>
       ),
     },

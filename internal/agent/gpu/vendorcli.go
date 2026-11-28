@@ -66,6 +66,13 @@ func trackedTurn(key string) chan struct{} {
 // go of an earlier process.
 var ErrStillRunning = fmt.Errorf("an earlier call has not exited: %w", ErrCLIUnresponsive)
 
+// ErrNoTurn marks a call whose context ended while an earlier call under the
+// same key still had its turn. Nothing was started, so like ErrStillRunning it
+// says nothing about the device: the time went to waiting, not to the device
+// answering. The error also wraps the context's own (context.DeadlineExceeded
+// or context.Canceled).
+var ErrNoTurn = errors.New("waited for an earlier call under the same key the whole time; nothing was started")
+
 // RunTracked runs the command build makes (bound to the context it is given)
 // under key and returns its combined output. Calls under
 // one key take turns; one that outlives timeout (or ctx) has its whole process
@@ -73,13 +80,15 @@ var ErrStillRunning = fmt.Errorf("an earlier call has not exited: %w", ErrCLIUnr
 // behind, marked stuck under key, and the call returns. Until it exits every
 // call under key fails at once with ErrStillRunning without starting
 // anything, so however often the callers ask, a key never has more than one
-// process stuck in the driver. timeout <= 0 leaves the deadline to ctx.
+// process stuck in the driver. timeout <= 0 leaves the deadline to ctx. A
+// call whose ctx ends before its turn comes fails with ErrNoTurn; timeout
+// counts only from its turn.
 func RunTracked(ctx context.Context, key string, timeout time.Duration, build func(context.Context) *exec.Cmd) (string, error) {
 	turn := trackedTurn(key)
 	select {
 	case turn <- struct{}{}:
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return "", fmt.Errorf("%s: %w: %w", key, ErrNoTurn, ctx.Err())
 	}
 	defer func() { <-turn }()
 

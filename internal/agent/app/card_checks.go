@@ -218,15 +218,28 @@ func (n *NodeRuntime) runtimeChecks(gpus []proto.GPUInfo, now time.Time, round c
 		switch {
 		case answered && !outcome.OK:
 			// A failing card's backoff is not a skip: its failure stands.
-			round.put(ident, accelerator.CheckRuntime, checkResult{status: proto.CheckFail, code: accelerator.HealthRuntimeUnusable,
-				at: outcome.At, took: outcome.Duration, ownSchedule: true,
-				evidence: []accelerator.HealthField{{Name: "Detail", Value: outcome.Detail}}})
+			round.put(ident, accelerator.CheckRuntime, runtimeCheckResult(outcome))
 		case skipped && (!answered || skip.At.After(outcome.At)):
 			round.put(ident, accelerator.CheckRuntime, checkResult{status: proto.CheckSkip, code: runtimeSkipReason(skip.Reason), at: skip.At, ownSchedule: true})
 		case answered:
-			round.put(ident, accelerator.CheckRuntime, checkResult{status: proto.CheckPass, at: outcome.At, took: outcome.Duration, ownSchedule: true})
+			round.put(ident, accelerator.CheckRuntime, runtimeCheckResult(outcome))
 		}
 	}
+}
+
+// runtimeCheckResult is the runtime check's last answer as a check result. A
+// pass that took the wider re-check keeps how it came about with its run
+// (checkDetail), though a report carries evidence only for a problem.
+func runtimeCheckResult(outcome cardsmoke.Outcome) checkResult {
+	result := checkResult{status: proto.CheckPass, at: outcome.At, took: outcome.Duration, ownSchedule: true}
+	if outcome.Recheck.Made() {
+		result.evidence = runtimeAttemptEvidence(outcome)
+	}
+	if !outcome.OK {
+		result.status, result.code = proto.CheckFail, accelerator.HealthRuntimeUnusable
+		result.evidence = append([]accelerator.HealthField{{Name: "Detail", Value: outcome.Detail}}, runtimeAttemptEvidence(outcome)...)
+	}
+	return result
 }
 
 // finishChecks puts each card's check results on it and keeps their runs. A
@@ -348,6 +361,21 @@ func (n *NodeRuntime) checkDetail(ident, check string) proto.CardCheckDetail {
 	return detail
 }
 
+// cardRecheckListing is what an on-demand re-check of one card is given
+// beyond the check itself, for the vendor tool to list the cards and the host
+// to be found ready (a runner image picked, under its own 30 s bound).
+const cardRecheckListing = time.Minute
+
+// cardRecheckBudget bounds an on-demand re-check of one card on this node
+// (RPCNodeCardRecheck): what the runner's check can take on this node's
+// vendor and path, the first attempt, its reap grace and the wider re-check
+// (cardsmoke.Runner.CheckCardBudget), and the listing, within the bound the
+// server waits for. Less would cut the wider re-check short and report the
+// card as not checked.
+func cardRecheckBudget(r *cardsmoke.Runner) time.Duration {
+	return min(proto.CardRecheckTimeout, r.CheckCardBudget()+cardRecheckListing)
+}
+
 // recheckCard runs the runtime check on one card now and keeps its answer as
 // the check's last run; the periodic runner records it like its own.
 func (n *NodeRuntime) recheckCard(ctx context.Context, ident string) (proto.CardCheckDetail, error) {
@@ -363,11 +391,9 @@ func (n *NodeRuntime) recheckCard(ctx context.Context, ident string) (proto.Card
 	switch {
 	case skip != "":
 		result = checkResult{status: proto.CheckSkip, code: runtimeSkipReason(skip), at: n.checks.clock()}
-	case outcome.OK:
-		result = checkResult{status: proto.CheckPass, at: outcome.At, took: outcome.Duration}
 	default:
-		result = checkResult{status: proto.CheckFail, code: accelerator.HealthRuntimeUnusable, at: outcome.At, took: outcome.Duration,
-			evidence: []accelerator.HealthField{{Name: "Detail", Value: outcome.Detail}}}
+		result = runtimeCheckResult(outcome)
+		result.ownSchedule = false
 	}
 	n.checks.mu.Lock()
 	runs := n.checks.runs[ident]
@@ -400,6 +426,8 @@ func runtimeSkipReason(reason string) string {
 		return proto.CardCheckSkipDeferred
 	case cardsmoke.SkipNotHeld:
 		return proto.CardCheckSkipNotHeld
+	case cardsmoke.SkipInProgress:
+		return proto.CardCheckSkipInProgress
 	}
 	return proto.CardCheckSkipUnavailable
 }

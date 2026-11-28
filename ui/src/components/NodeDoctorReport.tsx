@@ -89,7 +89,7 @@ const nodeFindingCodes = new Set([
   "PEER_MEMORY_MISSING", "UCX_NETLINK_HANG",
   // Why a check did not run.
   "MOUNT_TABLE_UNREADABLE", "CUDA_CHECK_NOT_PASSED", "CHECK_PREREQUISITE_MISSING", "CHECK_TOOL_FAILED", "CHECK_CANCELLED", "CHECK_BUDGET_EXHAUSTED",
-  "CARD_UNADDRESSABLE",
+  "CARD_UNADDRESSABLE", "RUNTIME_CHECK_TIMED_OUT",
 ]);
 
 const findingStatus: Record<DoctorFinding["status"], BadgeStatus> = { fail: "danger", warn: "warning", skip: "neutral" };

@@ -156,11 +156,13 @@ var findingSummary = map[string]string{
 	proto.DoctorSkipCancelled:            "not run: the diagnosis was cancelled first",
 	proto.DoctorSkipBudgetExhausted:      "not run: the diagnosis ran out of time first",
 	proto.DoctorSkipCardUnaddressable:    "not run: the vendor tool gave the card no device number",
+	proto.DoctorSkipRuntimeCheckTimedOut: "no verdict: the runtime check timed out; the periodic check checks a timed-out card again with a wider budget before it judges it, and the card's scheduling follows that",
 	proto.CardCheckSkipBusy:              "not run: an instance is serving on the card",
 	proto.CardCheckSkipForeign:           "not run: a process outside the platform is using the card",
 	proto.CardCheckSkipDeferred:          "not run: which instances hold the cards is not known yet",
 	proto.CardCheckSkipNotHeld:           "not run: the platform does not hold the card",
 	proto.CardCheckSkipUnavailable:       "not run: the runtime cannot be used on this host",
+	proto.CardCheckSkipInProgress:        "not run: another runtime check on this node was in progress",
 }
 
 // doctorStatusWord is how the CLI report heads a finding by its status.

@@ -1,5 +1,7 @@
 package proto
 
+import "time"
+
 // Card checks on the wire. The ids and periods are accelerator's card check
 // catalog; the statuses are the five check statuses (check.go); the codes a
 // check reports are below, or an accelerator health code for what the vendor
@@ -36,6 +38,12 @@ const (
 	// CardCheckSkipProbeFailed: the vendor tool did not answer this round,
 	// so nothing it would have said is known.
 	CardCheckSkipProbeFailed = "CARD_CHECK_SKIPPED_PROBE_FAILED"
+	// CardCheckSkipInProgress: another runtime check on the node was in
+	// progress, so this one asked nothing: the card's own timed-out check
+	// being checked again with a wider budget, whose answer comes with a
+	// later report, or a check of another card that held the driver for all
+	// the time this one had.
+	CardCheckSkipInProgress = "CARD_CHECK_SKIPPED_IN_PROGRESS"
 )
 
 // CapCardChecks: the agent reports each card's checks (GPUInfo.Checks) and
@@ -53,6 +61,13 @@ const (
 	// the periodic check records its own.
 	RPCNodeCardRecheck = "node.card_recheck"
 )
+
+// CardRecheckTimeout bounds RPCNodeCardRecheck on the agent, which gives it
+// what the card's check can take — the first attempt, the wait for it to come
+// back once killed and the wider re-check, 75+35+225 s where the check runs in
+// a container — and a minute to list the cards, but never more than this. The
+// server waits a little longer, so the answer is never lost to its wait.
+const CardRecheckTimeout = 7 * time.Minute
 
 // CardCheck is one check's result on a card, as a status report carries it.
 // Short keys: every report carries one per card and check.
